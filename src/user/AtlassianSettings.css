@@ -1,0 +1,32 @@
+.atlassian-settings-container {
+    display: flex;
+    justify-content: space-between;
+    border-radius: 8px;
+    height: 80%;
+    max-width: 15rem;
+}
+
+.atlassian-auth-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.atlassian-settings-item {
+    display: flex;
+    justify-content: flex-end;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+}
+
+.atlassian-settings-item-label {
+    justify-content: flex-end;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.atlassian-settings-icon-wrapper {
+    height: 36px;
+    width: 36px;
+}

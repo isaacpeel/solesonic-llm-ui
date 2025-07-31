@@ -1,0 +1,117 @@
+.settings-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    display: flex;
+    padding-top: 44px;
+    padding-left: 24px;
+    padding-right: 24px;
+    border-radius: 20px 20px 0 0;
+}
+
+.settings-content-container {
+    display: flex;
+    flex: 1;
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+}
+
+.settings-content {
+    flex: 1;
+    padding: 20px;
+    color: #ffffff;
+    background-color: #303134;
+    position: relative;
+    overflow-y: auto
+}
+
+.settings-sidebar-header {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-align: center;
+    padding-top: 16px;
+}
+
+.settings-sidebar {
+    width: 150px;
+    transition: width 0.3s ease;
+    background-color: var(--background-color);
+}
+
+.settings-sidebar-item {
+    cursor: pointer;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px 16px;
+    margin-right: 6px;
+    align-items: center;
+}
+
+.settings-sidebar-item:hover,
+.settings-sidebar-item.selected {
+    background-color: var(--accent-color);
+    border-radius: 0 50px 50px 0; /* Same as hover */
+}
+
+.settings-sidebar-item:hover {
+    background-color: var(--accent-color);
+    border-radius: 0 50px 50px 0;
+}
+
+.settings-sidebar-item-label {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.settings-sidebar-icon {
+    width: 24px;
+    height: 24px;
+}
+
+.settings-close-container {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+.settings-sidebar-mobile {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .settings-sidebar {
+        width: 150px;
+    }
+}
+
+@media (max-width: 480px) {
+    .settings-sidebar {
+        width: 80px;
+    }
+
+    .settings-sidebar-item-label {
+        display: none;
+    }
+
+    .settings-sidebar-header {
+        display: none;
+    }
+
+    .settings-sidebar {
+        padding-top: 16px;
+    }
+
+    .settings-close-container {
+        display: none;
+    }
+
+    .settings-sidebar-mobile {
+        display: block;
+    }
+}

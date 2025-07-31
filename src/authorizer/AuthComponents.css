@@ -1,0 +1,89 @@
+/* Dark theme styles for the login page */
+body {
+    background-color: #121212;
+    color: #ffffff;
+    font-family: 'Arial', sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.login-header {
+    background-color: #1f1f1f;
+    text-align: center;
+    padding: 20px;
+    border-bottom-left-radius: 25px; /* Rounded corners on the bottom */
+    border-bottom-right-radius: 25px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), /* General shadow for floating effect */
+    0 6px 6px rgba(0, 0, 0, 0.3); /* More defined shadow below the rounded part */
+    position: relative;
+    z-index: 1;
+    border: none; /* Remove all borders */
+}
+
+
+.login-main {
+    margin-top: 30px; /* Increased spacing to accommodate shadow */
+    padding: 20px;
+}
+
+.login-header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo {
+    width: 120px;
+    height: auto;
+    margin-bottom: 10px;
+}
+
+.welcome-text {
+    font-size: 1.8rem;
+    color: #e0e0e0;
+}
+
+.login-footer {
+    background-color: #1f1f1f;
+    text-align: center;
+    padding: 10px;
+    border-top: 1px solid #333;
+    font-size: 0.9rem;
+    color: #b3b3b3;
+}
+
+/* Button styling */
+.login-button {
+    background-color: #007bff;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    margin: 20px auto;
+    display: block;
+    font-size: 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.login-button:hover {
+    background-color: #0056b3;
+}
+
+.amplify-authenticator .amplify-header {
+    border: none !important; /* Removes any border from the Authenticator header */
+    background: transparent !important; /* Optional: Adjust background to match */
+}
+
+.amplify-authenticator {
+    border: none !important; /* Remove any border from the Authenticator container */
+    box-shadow: none !important; /* Remove any shadows Amplify might apply */
+    background-color: transparent !important; /* Adjust background to match your theme */
+}
+
+.auth-wrapper {
+    border: none;
+    box-shadow: none;
+    background-color: transparent;
+}
+

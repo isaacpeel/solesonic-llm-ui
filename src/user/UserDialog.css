@@ -1,0 +1,117 @@
+/* General Reset */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+.user-icon-button {
+    height: 26px;
+    width: 26px;
+    cursor: pointer;
+}
+
+@media (hover: none) {
+    .icon-wrapper[data-dialog]::after {
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+}
+
+.user-icon-container {
+}
+
+.user-icon-container:hover {
+    /*background-color: rgba(255, 255, 255, 0.2);*/
+}
+
+/* Dropdown Container */
+.user-dialog-container {
+    background-color: var(--secondary-color);
+    position: absolute;
+    top: 50px;
+    right: 16px;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    width: 240px; /* Consistent width for structure */
+    animation: fadeIn 0.2s ease-in-out;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Header Section (Username) */
+.dialog-header {
+    font-size: 16px;
+    font-weight: bold;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 8px;
+}
+
+/* Section Styling */
+.dialog-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Dropdown Item */
+.dropdown-item {
+    cursor: pointer;
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.dropdown-item:hover {
+    color: #000;
+    background-color: #f9f9f9;
+}
+
+/* Icon Styling */
+.icon {
+    width: 20px;
+    height: 20px;
+    /*color: #666;*/
+    transition: color 0.2s ease;
+}
+
+.dropdown-item:hover .icon {
+    color: #333;
+}
+
+/* Fade-In Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .user-dialog-container {
+        right: 8px;
+        top: 48px;
+    }
+
+    .dropdown-item {
+        font-size: 16px;
+        padding: 10px 16px;
+    }
+
+    .icon {
+        width: 24px;
+        height: 24px;
+    }
+}

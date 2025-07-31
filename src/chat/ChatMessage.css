@@ -1,0 +1,140 @@
+.chat-message-container {
+    display: flex;
+    margin: 8px 0;
+    width: 100%;
+    overflow: hidden;
+    gap: 10px;
+    align-items: flex-start;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+}
+
+.chat-message-container.USER {
+    justify-content: flex-end;
+}
+
+.chat-message-container.ASSISTANT {
+    justify-content: flex-start;
+}
+
+.chat-message-container.SYSTEM {
+    justify-content: flex-start;
+}
+
+.message {
+    margin-top: 16px;
+    max-width: 70%;
+    padding: 8px 16px;
+    border-radius: 8px;
+    word-wrap: break-word;
+    display: flex;
+    justify-content: center;
+}
+
+.message.USER {
+    background-color: #e0e0e0;
+    color: #000;
+    align-self: flex-end;
+}
+
+.message.ASSISTANT {
+    background-color: #4a4a4a;
+    color: #dedede;
+    align-self: flex-start;
+}
+
+.message.SYSTEM {
+    background-color: #3b4d61;
+    color: #ffffff;
+    align-self: flex-start;
+}
+
+.message-info {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    margin-bottom: 5px;
+    visibility: hidden; /* Initially hidden */
+}
+
+.message:hover .message-info,
+.message:focus .message-info {
+    visibility: visible; /* Show on hover or focus */
+}
+
+.message-text {
+    flex-grow: 1; /* Allow it to take up available space */
+    word-wrap: break-word; /* Ensure long words wrap */
+    overflow-wrap: anywhere; /* Break long strings at any point */
+    white-space: pre-wrap; /* Preserve whitespace and wrap text */
+    max-width: 100%; /* Constrain to container width */
+    overflow: hidden; /* Prevent overflow */
+    text-overflow: ellipsis;
+}
+
+.info-icon {
+    margin-right: 5px;
+    font-size: 16px;
+}
+
+.model-name {
+    font-weight: bold;
+    display: inline-block;
+    visibility: hidden; /* Hide initially */
+}
+
+/* For mobile (on touch, display model name) */
+.message:active .message-info,
+.message:focus-within .message-info {
+    visibility: visible; /* Show on tap or when the message is focused */
+}
+
+.info-icon-wrapper[data-dialog]:hover::after {
+    content: attr(data-dialog);
+    position: absolute;
+    background-color: var(--dialog-bg);
+    color: var(--dialog-text-color);
+    padding: 5px 10px;
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    max-width: 200px;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.info-icon-wrapper[data-dialog]:hover::after {
+    visibility: visible;
+    opacity: 1;
+}
+
+.info-icon-wrapper svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    fill: currentColor;  /* Ensures the icon inherits the color */
+}
+
+.info-icon-wrapper:hover svg {
+    fill: var(--icon-hover-color);
+}
+
+.info-icon-wrapper[data-dialog]:hover[data-edge-left]::after {
+    left: 5%;
+    transform: translateX(0); /* Align tooltip to the left edge */
+}
+
+.info-icon-wrapper[data-dialog]:hover[data-edge-right]::after {
+    right: 5%;
+    transform: translateX(0); /* Align tooltip to the right edge */
+}
+
+/*@media (hover: none) {*/
+/*    .info-icon-wrapper[data-dialog]::after {*/
+/*        visibility: hidden !important;*/
+/*        opacity: 0 !important;*/
+/*    }*/
+/*}*/
+

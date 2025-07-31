@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  solesonic-llm-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: solesonic-llm-ui:latest
+    container_name: solesonic-llm-ui
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/log/nginx:/var/log/nginx
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    environment:
+      - TZ=UTC
+    networks:
+      - solesonic-llm-network
+
+networks:
+  solesonic-llm-network:
+    driver: bridge

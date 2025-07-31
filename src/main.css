@@ -1,0 +1,131 @@
+:root {
+    --background-color: #1e1e1e; /* Slightly lighter dark gray */
+    --primary-color: #2c2c2c;   /* Lighter dark gray for primary sections */
+    --secondary-color: #3a3a3a; /* Lighter gray for content sections */
+    --text-color: #e0e0e0;      /* Softer white text */
+    --accent-color: #4a4a4a;    /* Accent color remains the same */
+    --border-color: #4a4a4a;    /* Slightly lighter border */
+
+    --background-dark: #1e1e2f;
+    --background-darker: #14141f;
+    --text-light: #f0f0f5;
+    --logo-size: 100px;
+
+    /* Button colors */
+    --icon-bg: transparent;         /* Transparent background (since it's an icon) */
+    --icon-color: #fff;             /* Default white icon color */
+    --icon-hover-bg: #4a4a4a;       /* Light gray background on hover */
+    --icon-hover-color: #d3d3d3;       /* Black icon color on hover */
+
+    /* Tooltip colors */
+    --dialog-bg: #000;              /* Black dialog background */
+    --dialog-text-color: #fff;      /* White text in the dialog */
+
+    /* Optional additional styling */
+    --border-radius: 6px;           /* Border radius for icons */
+    --icon-size: 1.5rem;            /* Icon size */
+    --transition-speed: 0.3s;       /* Transition speed for hover effects */
+    --padding: 10px;                /* Padding for icon */
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Basic icon wrapper styling */
+.icon-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: var(--padding);
+    border-radius: var(--border-radius);
+    transition: background-color var(--transition-speed), color var(--transition-speed);
+    position: relative; /* Needed for positioning the tooltip */
+    background-color: var(--background-color);
+}
+
+/* Hover effect on icons */
+.icon-wrapper:hover {
+    background-color: var(--icon-hover-bg);
+    color: var(--icon-hover-color);
+}
+
+.drawer-open.icon-wrapper {
+    background-color: var(--primary-color); /* Replace with your drawer background color */
+}
+
+.drawer-open.icon-wrapper:hover {
+    background-color: var(--icon-hover-bg);
+    color: var(--icon-hover-color);
+}
+
+/* Tooltip (dialog) styling */
+.icon-wrapper[data-dialog]:hover::after {
+    content: attr(data-dialog);
+    position: absolute;
+    background-color: var(--dialog-bg);
+    color: var(--dialog-text-color);
+    padding: 5px 10px;
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    white-space: nowrap;
+    top: calc(100% + 5px); /* Position the tooltip below the icon */
+    z-index: 10;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    max-width: 200px; /* Optionally limit the max width of the tooltip */
+    visibility: hidden; /* Hidden by default */
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Tooltip visibility on hover */
+.icon-wrapper[data-dialog]:hover::after {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Icon styling */
+.icon-wrapper svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    fill: currentColor;  /* Ensures the icon inherits the color */
+}
+
+/* Icon color on hover */
+.icon-wrapper:hover svg {
+    fill: var(--icon-hover-color);
+}
+
+/* Adjust tooltip position based on icon's edge alignment */
+
+/* If the tooltip goes off-screen on the left side */
+.icon-wrapper[data-dialog]:hover[data-edge-left]::after {
+    left: 5%;
+    transform: translateX(0); /* Align tooltip to the left edge */
+}
+
+/* If the tooltip goes off-screen on the right side */
+.icon-wrapper[data-dialog]:hover[data-edge-right]::after {
+    right: 5%;
+    transform: translateX(0); /* Align tooltip to the right edge */
+}
+
+@media (hover: none) {
+    .icon-wrapper[data-dialog]::after {
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+}
