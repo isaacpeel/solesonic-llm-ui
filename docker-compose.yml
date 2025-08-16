@@ -14,8 +14,10 @@ services:
     volumes:
       - /var/log/nginx:/var/log/nginx
       - /etc/letsencrypt:/etc/letsencrypt:ro
+    env_file:
+      - ./.env
     environment:
-      - TZ=UTC
+      - TZ=${TZ}
     networks:
       - solesonic-llm-network
 
