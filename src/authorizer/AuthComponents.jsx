@@ -1,4 +1,4 @@
-import logo from "/solesonic-llm-logo-dark.webp?url";
+import logo from "/solesonic-llm-ui-logo-dark.webp?url";
 import './AuthComponents.css';
 
 const components = {
