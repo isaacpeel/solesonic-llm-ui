@@ -22,7 +22,7 @@ RUN npm run build
 FROM nginx:alpine
 
 # Install SSL dependencies
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl gettext
 
 # Create necessary directories
 RUN mkdir -p /var/log/nginx
@@ -36,7 +36,7 @@ VOLUME /var/log/nginx
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Copy Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Set proper permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
