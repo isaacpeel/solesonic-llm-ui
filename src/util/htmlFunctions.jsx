@@ -6,9 +6,7 @@ const options ={
 }
 
 const toJsx = (text) => {
-    // Remove <think> ... </think> blocks from the text
-    const cleanedText = (text ?? "No Message In Response").replace(/<think>[\s\S]*?<\/think>/g, '');
-    const lines = cleanedText.split(/\r\n|\r|\n/);
+    const lines = text.split(/\r\n|\r|\n/);
 
     return (
         <div>
