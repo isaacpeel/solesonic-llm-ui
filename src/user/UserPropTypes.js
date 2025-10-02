@@ -9,13 +9,15 @@ const modelProps = PropTypes.propTypes = {
             censored: PropTypes.bool.isRequired,
             embedding: PropTypes.bool.isRequired,
             vision: PropTypes.bool.isRequired,
-            details: PropTypes.shape({
-                parentModel: PropTypes.string,
-                format: PropTypes.string.isRequired,
-                family: PropTypes.string.isRequired,
-                families: PropTypes.array.isRequired,
-                parameter_size: PropTypes.string.isRequired,
-                quantization_level: PropTypes.string.isRequired,
+            ollamaModel: PropTypes.shape({
+                details: PropTypes.shape({
+                    parentModel: PropTypes.string,
+                    format: PropTypes.string.isRequired,
+                    family: PropTypes.string.isRequired,
+                    families: PropTypes.array.isRequired,
+                    parameter_size: PropTypes.string.isRequired,
+                    quantization_level: PropTypes.string.isRequired,
+                })
             })
         }
     )

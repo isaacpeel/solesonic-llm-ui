@@ -43,29 +43,29 @@ const ModelDetails = ({selectedModel}) => {
                 </div>
                 <div className="model-detail">
                     <strong>Parent Model:</strong>{" "}
-                    {selectedModel.details.parent_model || "N/A"}
+                    {selectedModel.ollamaModel.details.parent_model || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Format:</strong>{" "}
-                    {selectedModel.details.format || "N/A"}
+                    {selectedModel.ollamaModel.details.format || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Family:</strong>{" "}
-                    {selectedModel.details.family || "N/A"}
+                    {selectedModel.ollamaModel.details.family || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Families:</strong>{" "}
-                    {selectedModel.details.families
-                        ? selectedModel.details.families.join(", ")
+                    {selectedModel.ollamaModel.details.families
+                        ? selectedModel.ollamaModel.details.families.join(", ")
                         : "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Parameter Size:</strong>{" "}
-                    {selectedModel.details.parameter_size || "N/A"}
+                    {selectedModel.ollamaModel.details.parameter_size || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Quantization Level:</strong>{" "}
-                    {selectedModel.details.quantization_level || "N/A"}
+                    {selectedModel.ollamaModel.details.quantization_level || "N/A"}
                 </div>
             </div>
         </div>
