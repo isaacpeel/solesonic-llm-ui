@@ -1,7 +1,8 @@
 import {useState, useEffect} from 'react';
 import ollamaService from '../service/OllamaService.js';
 import './OllamaModelSettings.css';
-import {PlusIcon, PencilIcon} from "@heroicons/react/24/solid";
+import {PencilIcon} from "@heroicons/react/24/solid";
+import {BoltIcon, BoltSlashIcon} from "@heroicons/react/16/solid";
 
 const OllamaModelSettings = () => {
     const [models, setModels] = useState([]);
@@ -14,9 +15,6 @@ const OllamaModelSettings = () => {
     const [formData, setFormData] = useState({
         name: '',
         censored: false,
-        embedding: false,
-        tools: false,
-        vision: false
     });
 
     useEffect(() => {
@@ -82,56 +80,6 @@ const OllamaModelSettings = () => {
         setFormData(editFormData);
         setIsEditing(true);
         setIsCreating(false);
-    };
-
-    const handleCreateClick = () => {
-        const initialFormData = {
-            name: '',
-            model: '',
-            censored: false,
-            embedding: false,
-            tools: false,
-            vision: false
-        };
-        setFormData(initialFormData);
-        setSelectedInstalledModel('');
-        setIsCreating(true);
-        setIsEditing(false);
-        setSelectedModel(null);
-    };
-
-    const handleInstalledModelSelect = (event) => {
-        const modelName = event.target.value;
-        setSelectedInstalledModel(modelName);
-
-        if (modelName) {
-            // Find the selected installed model
-            const selectedModel = installedModels.find(model => model.ollamaModel.model === modelName);
-
-            if (selectedModel) {
-                const modelName = selectedModel.model || '';
-
-                const updatedFormData = {
-                    name: modelName,
-                    model: modelName,
-                    embedding: (selectedModel.ollamaShow.capabilities || []).includes("embedding") || false,
-                    tools: (selectedModel.ollamaShow.capabilities || []).includes("tools") || false,
-                    vision: (selectedModel.ollamaShow.capabilities || []).includes("vision") || false,
-                };
-
-                setFormData(updatedFormData);
-            }
-        } else {
-            const resetFormData = {
-                name: '',
-                model: '',
-                censored: false,
-                embedding: false,
-                tools: false,
-                vision: false
-            };
-            setFormData(resetFormData);
-        }
     };
 
     const handleInputChange = (e) => {
@@ -246,7 +194,8 @@ const OllamaModelSettings = () => {
                             className={selectedModel && selectedModel.ollamaModel.model === model.ollamaModel.model ? 'selected' : ''}
                             onClick={() => handleSelectModel(model)}
                         >
-                            {model.ollamaModel.model}
+                            <div className="ollama-model-icon"><BoltIcon/></div>
+                            <div>{model.ollamaModel.model}</div>
                         </li>
                     ))}
 
@@ -256,7 +205,8 @@ const OllamaModelSettings = () => {
                             className={selectedModel && selectedModel.ollamaModel.model === installedModel.ollamaModel.model ? 'selected' : ''}
                             onClick={() => handleSelectModel(installedModel)}
                         >
-                            {installedModel.ollamaModel.model}
+                            <div className="ollama-model-icon"><BoltSlashIcon/></div>
+                            <div>{installedModel.ollamaModel.model}</div>
                         </li>
                     ))
                     }
@@ -268,42 +218,10 @@ const OllamaModelSettings = () => {
     const renderModelForm = () => {
         return (
             <form onSubmit={handleSubmit} className="model-form">
-                <h3>{isCreating ? 'Create New Model' : 'Edit Model'}</h3>
-
-                {isCreating && (
-                    <div className="form-group">
-                        <label htmlFor="installedModel">Select Installed Model:</label>
-                        <select
-                            id="installedModel"
-                            value={selectedInstalledModel}
-                            onChange={handleInstalledModelSelect}
-                            className="model-select-dropdown"
-                        >
-                            <option value="">-- Select an installed model --</option>
-                            {Array.isArray(availableInstalledModels) && availableInstalledModels.map(model => (
-                                <option key={model.id} value={model.id}>
-                                    {model.name || model.model}
-                                </option>
-                            ))}
-                        </select>
+                <div className="model-details">
+                    <div className="model-details-header">
+                        <h3>{formData.name || selectedModel?.name || selectedModel?.ollamaModel?.model || ''}</h3>
                     </div>
-                )}
-
-                <div className="form-group">
-                    <label htmlFor="name">Name:</label>
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        value={formData.name || ''}
-                        onChange={handleInputChange}
-                        required
-                        readOnly={!!(isCreating && selectedInstalledModel)}
-                        className={isCreating && selectedInstalledModel ? 'readonly-input' : ''}
-                    />
-                    {isCreating && selectedInstalledModel &&
-                        <small className="form-hint">Name is set from the selected model</small>
-                    }
                 </div>
 
                 <div className="form-group checkbox">
@@ -359,21 +277,20 @@ const OllamaModelSettings = () => {
                         </ul>
                     </div>
 
-                    {selectedModel.details && (
+                    {selectedModel.ollamaModel && (
                         <div className="model-details-section">
                             <p><strong>Details:</strong></p>
                             <ul>
-                                {selectedModel.details.parentModel &&
+                                {selectedModel.ollamaModel.details.parent_model &&
                                     <li><strong>Parent Model:</strong> {selectedModel.details.parentModel}</li>}
-                                {selectedModel.details.format &&
-                                    <li><strong>Format:</strong> {selectedModel.details.format}</li>}
-                                {selectedModel.details.family &&
-                                    <li><strong>Family:</strong> {selectedModel.details.family}</li>}
+                                {selectedModel.ollamaModel.details.format &&
+                                    <li><strong>Format:</strong> {selectedModel.ollamaModel.details.format}</li>}
+                                {selectedModel.ollamaModel.details.family &&
+                                    <li><strong>Family:</strong> {selectedModel.ollamaModel.details.family}</li>}
                                 {selectedModel.ollamaModel.details.parameter_size &&
-                                    <li><strong>Parameter Size:</strong> {selectedModel.details.parameterSize}</li>}
+                                    <li><strong>Parameter Size:</strong> {selectedModel.ollamaModel.details.parameter_size}</li>}
                                 {selectedModel.ollamaModel.details.quantization_level &&
-                                    <li><strong>Quantization Level:</strong> {selectedModel.details.quantizationLevel}
-                                    </li>}
+                                    <li><strong>Quantization Level:</strong> {selectedModel.ollamaModel.details.quantization_level}</li>}
                             </ul>
                         </div>
                     )}
