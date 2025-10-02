@@ -14,8 +14,8 @@ const ModelDetails = ({selectedModel}) => {
             </div>
             <div className="model-detail">
                 <strong>Size:</strong>{" "}
-                {selectedModel && selectedModel.size
-                    ? formatSize(selectedModel.size)
+                {selectedModel && selectedModel.ollamaModel.size
+                    ? formatSize(selectedModel.ollamaModel.size)
                     : "N/A"}
             </div>
 
@@ -23,7 +23,7 @@ const ModelDetails = ({selectedModel}) => {
                 <h3>Details</h3>
                 <div className="model-detail">
                     <strong>Tools:</strong>{" "}
-                    {selectedModel.tools ? <CheckIcon height={16} width={16}/> :
+                    {(selectedModel.ollamaShow.capabilities || []).includes("tools") ? <CheckIcon height={16} width={16}/> :
                         <XCircleIcon height={16} width={16}/>}
                 </div>
                 <div className="model-detail">
@@ -33,12 +33,12 @@ const ModelDetails = ({selectedModel}) => {
                 </div>
                 <div className="model-detail">
                     <strong>Embedding:</strong>{" "}
-                    {selectedModel.embedding ? <CheckIcon height={16} width={16}/> :
+                    {(selectedModel.ollamaShow.capabilities || []).includes("embedding") ? <CheckIcon height={16} width={16}/> :
                         <XCircleIcon height={16} width={16}/>}
                 </div>
                 <div className="model-detail">
                     <strong>Vision:</strong>{" "}
-                    {selectedModel.vision ? <CheckIcon height={16} width={16}/> :
+                    {(selectedModel.ollamaShow.capabilities || []).includes("vision") ? <CheckIcon height={16} width={16}/> :
                         <XCircleIcon height={16} width={16}/>}
                 </div>
                 <div className="model-detail">

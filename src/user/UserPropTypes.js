@@ -18,6 +18,9 @@ const modelProps = PropTypes.propTypes = {
                     parameter_size: PropTypes.string.isRequired,
                     quantization_level: PropTypes.string.isRequired,
                 })
+            }),
+            ollamaShow: PropTypes.shape({
+                capabilities: PropTypes.arrayOf(PropTypes.string).isRequired,
             })
         }
     )
