@@ -1,4 +1,4 @@
-import {createBrowserRouter, Outlet, RouterProvider, Routes} from "react-router-dom";
+import {createBrowserRouter, Outlet, RouterProvider} from "react-router-dom";
 import './App.css';
 import ChatPage from "./chat/ChatScreen.jsx";
 import UserSettings from "./user/UserSettings.jsx";

@@ -9,7 +9,6 @@ const OllamaModelSettings = () => {
     const [installedModels, setInstalledModels] = useState([]);
     const [availableInstalledModels, setAvailableInstalledModels] = useState([]);
     const [selectedModel, setSelectedModel] = useState(null);
-    const [selectedInstalledModel, setSelectedInstalledModel] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [formData, setFormData] = useState({
