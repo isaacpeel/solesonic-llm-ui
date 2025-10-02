@@ -1,12 +1,11 @@
 import {render, screen, waitFor} from '@testing-library/react';
 import AuthenticationWrapper from '../../src/authorizer/AuthenticationWrapper';
-import {useAuthenticator} from '@aws-amplify/ui-react';
+import {useKeycloak} from '../../src/providers/KeycloakProvider';
 import authService from '../../src/service/AuthService.js';
 import { describe, vi, expect, beforeEach, afterEach, test } from 'vitest';
 
-vi.mock('@aws-amplify/ui-react', () => ({
-    useAuthenticator: vi.fn(),
-    Authenticator: vi.fn(() => <div>Mocked Authenticator Component</div>)
+vi.mock('../../src/providers/KeycloakProvider', () => ({
+    useKeycloak: vi.fn(),
 }));
 
 vi.mock('../../src/service/AuthService.js', () => ({
@@ -14,14 +13,14 @@ vi.mock('../../src/service/AuthService.js', () => ({
         isBlocked: vi.fn(),
         remainingBlockTime: vi.fn(),
         authFailure: vi.fn().mockResolvedValue(),
+        setKeycloakInstance: vi.fn(),
     }
 }));
 
 describe('AuthenticationWrapper', () => {
-    let mockUseAuthenticator;
-
     beforeEach(() => {
-        mockUseAuthenticator = useAuthenticator;
+        authService.isBlocked.mockReturnValue(false);
+        authService.remainingBlockTime.mockReturnValue(0);
     });
 
     afterEach(() => {
@@ -29,7 +28,12 @@ describe('AuthenticationWrapper', () => {
     });
 
     test('should render children if authenticated', () => {
-        mockUseAuthenticator.mockReturnValue({ authStatus: 'authenticated', error: null });
+        useKeycloak.mockReturnValue({ 
+            keycloak: {}, 
+            authenticated: true, 
+            loading: false,
+            login: vi.fn()
+        });
 
         render(
             <AuthenticationWrapper>
@@ -37,11 +41,34 @@ describe('AuthenticationWrapper', () => {
             </AuthenticationWrapper>
         );
 
-        expect(screen.getByText('Mocked Authenticator Component')).toBeDefined();
+        expect(screen.getByText('Authenticated Content')).toBeDefined();
+    });
+
+    test('should show loading state while Keycloak initializes', () => {
+        useKeycloak.mockReturnValue({ 
+            keycloak: null, 
+            authenticated: false, 
+            loading: true,
+            login: vi.fn()
+        });
+
+        render(
+            <AuthenticationWrapper>
+                <div>Authenticated Content</div>
+            </AuthenticationWrapper>
+        );
+
+        expect(screen.getByText('Loading...')).toBeDefined();
+        expect(screen.getByText('Initializing authentication...')).toBeDefined();
     });
 
     test('should show account locked message if blocked', async () => {
-        mockUseAuthenticator.mockReturnValue({ authStatus: 'unauthenticated', error: "error" });
+        useKeycloak.mockReturnValue({ 
+            keycloak: {}, 
+            authenticated: false, 
+            loading: false,
+            login: vi.fn()
+        });
         authService.isBlocked.mockReturnValue(true);
         authService.remainingBlockTime.mockReturnValue(5000);
 
@@ -57,8 +84,14 @@ describe('AuthenticationWrapper', () => {
         });
     });
 
-    test('should call authFailure when error occurs', async () => {
-        mockUseAuthenticator.mockReturnValue({ authStatus: 'unauthenticated', error: 'some-error' });
+    test('should call authFailure when keycloak has error', async () => {
+        const mockKeycloak = { error: 'some-error' };
+        useKeycloak.mockReturnValue({ 
+            keycloak: mockKeycloak, 
+            authenticated: false, 
+            loading: false,
+            login: vi.fn()
+        });
 
         render(
             <AuthenticationWrapper>
@@ -67,13 +100,18 @@ describe('AuthenticationWrapper', () => {
         );
 
         await waitFor(() => {
-            expect(authService.authFailure).toHaveBeenCalledTimes(1);
+            expect(authService.authFailure).toHaveBeenCalledWith('some-error');
         });
     });
 
-    test('should render Authenticator when unauthenticated', () => {
-        mockUseAuthenticator.mockReturnValue({ authStatus: 'unauthenticated', error: null });
-        authService.isBlocked.mockReturnValue(false);
+    test('should show login prompt when unauthenticated', () => {
+        const mockLogin = vi.fn();
+        useKeycloak.mockReturnValue({ 
+            keycloak: {}, 
+            authenticated: false, 
+            loading: false,
+            login: mockLogin
+        });
 
         render(
             <AuthenticationWrapper>
@@ -81,7 +119,8 @@ describe('AuthenticationWrapper', () => {
             </AuthenticationWrapper>
         );
 
-        // Expect that Authenticator component is rendered
-        expect(screen.getByText('Mocked Authenticator Component')).toBeDefined();
+        expect(screen.getByText('Authentication Required')).toBeDefined();
+        expect(screen.getByText('Please log in to continue.')).toBeDefined();
+        expect(screen.getByText('Log In')).toBeDefined();
     });
 });

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import {SYSTEM} from "../chat/ChatMessage.jsx";
+import authService from '../service/AuthService.js';
 
 class AxiosClientError extends Error {
     constructor({ errorMessage, requestMethod, requestUri, stack }) {
@@ -18,6 +19,60 @@ const axiosInstance = axios.create({
         'Content-Type': 'application/json',
     }
 });
+
+// Request interceptor to add Authorization header with Keycloak token
+axiosInstance.interceptors.request.use(
+    async (config) => {
+        try {
+            const token = await authService.getAccessToken();
+            if (token) {
+                config.headers.Authorization = `Bearer ${token}`;
+            }
+        } catch (error) {
+            console.error('Failed to get access token:', error);
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
+// Response interceptor to handle 401 errors and token refresh
+axiosInstance.interceptors.response.use(
+    (response) => {
+        // Return successful response as-is
+        return response;
+    },
+    async (error) => {
+        const originalRequest = error.config;
+
+        // Check if error is 401 and we haven't retried yet
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            originalRequest._retry = true;
+
+            try {
+                // Attempt to refresh token
+                const token = await authService.getAccessToken();
+                
+                if (token) {
+                    // Update the authorization header with new token
+                    originalRequest.headers.Authorization = `Bearer ${token}`;
+                    // Retry the original request
+                    return axiosInstance(originalRequest);
+                }
+            } catch (refreshError) {
+                console.error('Token refresh failed:', refreshError);
+                // Token refresh failed, redirect to login
+                // The Keycloak instance will handle re-authentication
+                return Promise.reject(refreshError);
+            }
+        }
+
+        // Return error for other status codes or if retry failed
+        return Promise.reject(error);
+    }
+);
 
 export default {
     get: async (uri, options = {}) => {

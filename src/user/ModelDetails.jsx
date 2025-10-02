@@ -14,8 +14,8 @@ const ModelDetails = ({selectedModel}) => {
             </div>
             <div className="model-detail">
                 <strong>Size:</strong>{" "}
-                {selectedModel && selectedModel.size
-                    ? formatSize(selectedModel.size)
+                {selectedModel && selectedModel.ollamaModel.size
+                    ? formatSize(selectedModel.ollamaModel.size)
                     : "N/A"}
             </div>
 
@@ -23,7 +23,7 @@ const ModelDetails = ({selectedModel}) => {
                 <h3>Details</h3>
                 <div className="model-detail">
                     <strong>Tools:</strong>{" "}
-                    {selectedModel.tools ? <CheckIcon height={16} width={16}/> :
+                    {(selectedModel.ollamaShow.capabilities || []).includes("tools") ? <CheckIcon height={16} width={16}/> :
                         <XCircleIcon height={16} width={16}/>}
                 </div>
                 <div className="model-detail">
@@ -33,39 +33,39 @@ const ModelDetails = ({selectedModel}) => {
                 </div>
                 <div className="model-detail">
                     <strong>Embedding:</strong>{" "}
-                    {selectedModel.embedding ? <CheckIcon height={16} width={16}/> :
+                    {(selectedModel.ollamaShow.capabilities || []).includes("embedding") ? <CheckIcon height={16} width={16}/> :
                         <XCircleIcon height={16} width={16}/>}
                 </div>
                 <div className="model-detail">
                     <strong>Vision:</strong>{" "}
-                    {selectedModel.vision ? <CheckIcon height={16} width={16}/> :
+                    {(selectedModel.ollamaShow.capabilities || []).includes("vision") ? <CheckIcon height={16} width={16}/> :
                         <XCircleIcon height={16} width={16}/>}
                 </div>
                 <div className="model-detail">
                     <strong>Parent Model:</strong>{" "}
-                    {selectedModel.details.parent_model || "N/A"}
+                    {selectedModel.ollamaModel.details.parent_model || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Format:</strong>{" "}
-                    {selectedModel.details.format || "N/A"}
+                    {selectedModel.ollamaModel.details.format || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Family:</strong>{" "}
-                    {selectedModel.details.family || "N/A"}
+                    {selectedModel.ollamaModel.details.family || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Families:</strong>{" "}
-                    {selectedModel.details.families
-                        ? selectedModel.details.families.join(", ")
+                    {selectedModel.ollamaModel.details.families
+                        ? selectedModel.ollamaModel.details.families.join(", ")
                         : "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Parameter Size:</strong>{" "}
-                    {selectedModel.details.parameter_size || "N/A"}
+                    {selectedModel.ollamaModel.details.parameter_size || "N/A"}
                 </div>
                 <div className="model-detail">
                     <strong>Quantization Level:</strong>{" "}
-                    {selectedModel.details.quantization_level || "N/A"}
+                    {selectedModel.ollamaModel.details.quantization_level || "N/A"}
                 </div>
             </div>
         </div>

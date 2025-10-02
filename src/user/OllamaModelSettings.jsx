@@ -1,22 +1,19 @@
-import { useState, useEffect } from 'react';
+import {useState, useEffect} from 'react';
 import ollamaService from '../service/OllamaService.js';
 import './OllamaModelSettings.css';
-import { PlusIcon, PencilIcon } from "@heroicons/react/24/solid";
+import {BoltIcon, BoltSlashIcon, DocumentArrowDownIcon} from "@heroicons/react/16/solid";
+import {ToastContainer, toast, Bounce} from 'react-toastify';
 
 const OllamaModelSettings = () => {
     const [models, setModels] = useState([]);
     const [installedModels, setInstalledModels] = useState([]);
     const [availableInstalledModels, setAvailableInstalledModels] = useState([]);
     const [selectedModel, setSelectedModel] = useState(null);
-    const [selectedInstalledModel, setSelectedInstalledModel] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         censored: false,
-        embedding: false,
-        tools: false,
-        vision: false
     });
 
     useEffect(() => {
@@ -27,8 +24,9 @@ const OllamaModelSettings = () => {
     useEffect(() => {
         // Filter out installed models that are already configured
         if (installedModels.length > 0 && Array.isArray(models) && models.length > 0) {
-            const configuredModelNames = models.map(model => model.model);
-            const available = installedModels.filter(model => !configuredModelNames.includes(model.model));
+            const configuredModelNames = models.map(model => model.ollamaModel.model);
+            const available = installedModels.filter(model => !configuredModelNames.includes(model.ollamaModel.model));
+
             setAvailableInstalledModels(available);
         }
     }, [installedModels, models]);
@@ -43,7 +41,7 @@ const OllamaModelSettings = () => {
                 setSelectedModel(modelsArray[0]);
             }
         } catch (error) {
-            alert(false, 'Error fetching models: ' + error.message);
+            alert('Error fetching models: ' + error.message);
             setModels([]);
         }
     };
@@ -55,7 +53,7 @@ const OllamaModelSettings = () => {
             const installedArray = Array.isArray(installed) ? installed : [];
             setInstalledModels(installedArray);
         } catch (error) {
-            alert(false, 'Error fetching installed models: ' + error.message);
+            alert('Error fetching installed models: ' + error.message);
             setInstalledModels([]);
         }
     };
@@ -66,76 +64,8 @@ const OllamaModelSettings = () => {
         setIsCreating(false);
     };
 
-    const handleEditClick = () => {
-        const modelName = selectedModel.name;
-
-        const editFormData = {
-            name: modelName,
-            censored: selectedModel.censored || false,
-            embedding: selectedModel.embedding || false,
-            tools: selectedModel.tools || false,
-            vision: selectedModel.vision || false,
-            details: selectedModel.details || null
-        };
-
-        setFormData(editFormData);
-        setIsEditing(true);
-        setIsCreating(false);
-    };
-
-    const handleCreateClick = () => {
-        const initialFormData = {
-            name: '',
-            model: '',
-            censored: false,
-            embedding: false,
-            tools: false,
-            vision: false
-        };
-        setFormData(initialFormData);
-        setSelectedInstalledModel('');
-        setIsCreating(true);
-        setIsEditing(false);
-        setSelectedModel(null);
-    };
-
-    const handleInstalledModelSelect = (e) => {
-        const modelName = e.target.value;
-        setSelectedInstalledModel(modelName);
-
-        if (modelName) {
-            // Find the selected installed model
-            const selectedModel = installedModels.find(model => model.name === modelName);
-
-            if (selectedModel) {
-                const modelName = selectedModel.model || '';
-
-                const updatedFormData = {
-                    name: modelName,
-                    model: modelName,
-                    censored: selectedModel.censored || false,
-                    embedding: selectedModel.embedding || false,
-                    tools: selectedModel.tools || false,
-                    vision: selectedModel.vision || false
-                };
-
-                setFormData(updatedFormData);
-            }
-        } else {
-            const resetFormData = {
-                name: '',
-                model: '',
-                censored: false,
-                embedding: false,
-                tools: false,
-                vision: false
-            };
-            setFormData(resetFormData);
-        }
-    };
-
     const handleInputChange = (e) => {
-        const { name: fieldName, value, type, checked } = e.target;
+        const {name: fieldName, value, type, checked} = e.target;
 
         // If we're creating a model and a model is selected from the dropdown,
         // don't allow changing the name field manually
@@ -185,10 +115,10 @@ const OllamaModelSettings = () => {
                     name: newModel.name || '',
                     model: newModel.model || '',
                     censored: newModel.censored || false,
-                    embedding: newModel.embedding || false,
-                    tools: newModel.tools || false,
-                    vision: newModel.vision || false,
-                    details: newModel.details || null
+                    embedding: (selectedModel.ollamaShow.capabilities || []).includes("embedding") || false,
+                    tools: (selectedModel.ollamaShow.capabilities || []).includes("tools") || false,
+                    vision: (selectedModel.ollamaShow.capabilities || []).includes("vision") || false,
+                    details: selectedModel.ollamaModel.details || null
                 });
             } else if (isEditing && selectedModel) {
                 // Ensure details are preserved when updating
@@ -196,7 +126,7 @@ const OllamaModelSettings = () => {
                     ...formData,
                     name: formData.name,
                     model: formData.name,
-                    details: selectedModel.details || formData.details,
+                    details: selectedModel.ollamaModel.details || formData.details,
                     size: selectedModel.size,
                 };
 
@@ -218,11 +148,10 @@ const OllamaModelSettings = () => {
                 setFormData({
                     name: updatedModel.name,
                     censored: updatedModel.censored || false,
-                    embedding: updatedModel.embedding || false,
-                    tools: updatedModel.tools || false,
-                    vision: updatedModel.vision || false,
-                    details: updatedModel.details,
-                    size: updatedModel.size,
+                    embedding: (selectedModel.ollamaShow.capabilities || []).includes("embedding") || false,
+                    tools: (selectedModel.ollamaShow.capabilities || []).includes("tools") || false,
+                    vision: (selectedModel.ollamaShow.capabilities || []).includes("vision") || false,
+                    details: selectedModel.ollamaModel.details || null
                 });
             }
             setIsEditing(false);
@@ -237,29 +166,139 @@ const OllamaModelSettings = () => {
         setIsCreating(false);
     };
 
+    const handleInlineDataChange = async (e) => {
+        const newCensoredValue = e.target.checked;
+        
+        try {
+            // Determine if this is a native model (not yet configured) or an existing model
+            const isNativeModel = availableInstalledModels.some(
+                model => model.ollamaModel.model === selectedModel.ollamaModel.model
+            );
+
+            if (isNativeModel) {
+                // Create new model with censored value
+                const modelData = {
+                    name: selectedModel.ollamaModel.model,
+                    model: selectedModel.ollamaModel.model,
+                    censored: newCensoredValue,
+                    embedding: (selectedModel.ollamaShow?.capabilities || []).includes("embedding") || false,
+                    tools: (selectedModel.ollamaShow?.capabilities || []).includes("tools") || false,
+                    vision: (selectedModel.ollamaShow?.capabilities || []).includes("vision") || false,
+                    details: selectedModel.ollamaModel.details || null
+                };
+
+                const newModel = await ollamaService.createModel(modelData);
+                setModels(Array.isArray(models) ? [...models, newModel] : [newModel]);
+                setSelectedModel(newModel);
+
+                toast(
+                    "Model successfully added", {
+                        position: "top-right",
+                        autoClose: 2500,
+                        hideProgressBar: true,
+                        closeOnClick: true,
+                        pauseOnHover: false,
+                        draggable: false,
+                        progress: undefined,
+                        theme: "dark",
+                        transition: Bounce,
+                    });
+            } else {
+                // Update existing model
+                const modelToUpdate = {
+                    name: selectedModel.name,
+                    model: selectedModel.name,
+                    censored: newCensoredValue,
+                    details: selectedModel.ollamaModel.details,
+                    size: selectedModel.size,
+                };
+
+                const updatedModel = await ollamaService.updateModel(selectedModel.id, modelToUpdate);
+
+                if (Array.isArray(models)) {
+                    setModels(models.map(model => model.id === updatedModel.id ? updatedModel : model));
+                }
+
+                setSelectedModel(updatedModel);
+
+                toast(
+                    "Model successfully updated", {
+                        position: "top-right",
+                        autoClose: 2500,
+                        hideProgressBar: true,
+                        closeOnClick: true,
+                        pauseOnHover: false,
+                        draggable: false,
+                        progress: undefined,
+                        theme: "dark",
+                        transition: Bounce,
+                    });
+            }
+        } catch (error) {
+            toast.error('Failed to save model: ' + error.message);
+        }
+    };
+
+    const handleSaveNativeModel = async () => {
+        try {
+            // Create new model with default values (censored: false)
+            const modelData = {
+                name: selectedModel.ollamaModel.model,
+                model: selectedModel.ollamaModel.model,
+                censored: false,
+                embedding: (selectedModel.ollamaShow?.capabilities || []).includes("embedding") || false,
+                tools: (selectedModel.ollamaShow?.capabilities || []).includes("tools") || false,
+                vision: (selectedModel.ollamaShow?.capabilities || []).includes("vision") || false,
+                details: selectedModel.ollamaModel.details || null
+            };
+
+            const newModel = await ollamaService.createModel(modelData);
+            setModels(Array.isArray(models) ? [...models, newModel] : [newModel]);
+            setSelectedModel(newModel);
+
+            toast(
+                "Model successfully added", {
+                    position: "top-right",
+                    autoClose: 2500,
+                    hideProgressBar: true,
+                    closeOnClick: true,
+                    pauseOnHover: false,
+                    draggable: false,
+                    progress: undefined,
+                    theme: "dark",
+                    transition: Bounce,
+                });
+        } catch (error) {
+            toast.error('Failed to save model: ' + error.message);
+        }
+    };
+
     const renderModelsList = () => {
         return (
             <div className="models-list">
-                <div className="models-list-header">
-                    <h3>Ollama Models</h3>
-                    <button 
-                        className="create-model-button"
-                        onClick={handleCreateClick}
-                        title="Create new model"
-                    >
-                        <PlusIcon className="icon" />
-                    </button>
-                </div>
                 <ul>
                     {Array.isArray(models) && models.map(model => (
-                        <li 
-                            key={model.id} 
-                            className={selectedModel && selectedModel.id === model.id ? 'selected' : ''}
+                        <li
+                            key={model.ollamaModel.model}
+                            className={selectedModel && selectedModel.ollamaModel.model === model.ollamaModel.model ? 'selected' : ''}
                             onClick={() => handleSelectModel(model)}
                         >
-                            {model.name}
+                            <div className="ollama-model-icon"><BoltIcon/></div>
+                            <div>{model.ollamaModel.model}</div>
                         </li>
                     ))}
+
+                    {Array.isArray(availableInstalledModels) && availableInstalledModels.map(installedModel => (
+                        <li
+                            key={installedModel.ollamaModel.model}
+                            className={selectedModel && selectedModel.ollamaModel.model === installedModel.ollamaModel.model ? 'selected' : ''}
+                            onClick={() => handleSelectModel(installedModel)}
+                        >
+                            <div className="ollama-model-icon"><BoltSlashIcon/></div>
+                            <div>{installedModel.ollamaModel.model}</div>
+                        </li>
+                    ))
+                    }
                 </ul>
             </div>
         );
@@ -268,42 +307,10 @@ const OllamaModelSettings = () => {
     const renderModelForm = () => {
         return (
             <form onSubmit={handleSubmit} className="model-form">
-                <h3>{isCreating ? 'Create New Model' : 'Edit Model'}</h3>
-
-                {isCreating && (
-                    <div className="form-group">
-                        <label htmlFor="installedModel">Select Installed Model:</label>
-                        <select
-                            id="installedModel"
-                            value={selectedInstalledModel}
-                            onChange={handleInstalledModelSelect}
-                            className="model-select-dropdown"
-                        >
-                            <option value="">-- Select an installed model --</option>
-                            {Array.isArray(availableInstalledModels) && availableInstalledModels.map(model => (
-                                <option key={model.id} value={model.id}>
-                                    {model.name || model.model}
-                                </option>
-                            ))}
-                        </select>
+                <div className="model-details">
+                    <div className="model-details-header">
+                        <h3>{formData.name || selectedModel?.name || selectedModel?.ollamaModel?.model || ''}</h3>
                     </div>
-                )}
-
-                <div className="form-group">
-                    <label htmlFor="name">Name:</label>
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        value={formData.name || ''}
-                        onChange={handleInputChange}
-                        required
-                        readOnly={!!(isCreating && selectedInstalledModel)}
-                        className={isCreating && selectedInstalledModel ? 'readonly-input' : ''}
-                    />
-                    {isCreating && selectedInstalledModel && 
-                        <small className="form-hint">Name is set from the selected model</small>
-                    }
                 </div>
 
                 <div className="form-group checkbox">
@@ -315,39 +322,6 @@ const OllamaModelSettings = () => {
                         onChange={handleInputChange}
                     />
                     <label htmlFor="censored">Censored</label>
-                </div>
-
-                <div className="form-group checkbox">
-                    <input
-                        type="checkbox"
-                        id="embedding"
-                        name="embedding"
-                        checked={formData.embedding}
-                        onChange={handleInputChange}
-                    />
-                    <label htmlFor="embedding">Embedding</label>
-                </div>
-
-                <div className="form-group checkbox">
-                    <input
-                        type="checkbox"
-                        id="tools"
-                        name="tools"
-                        checked={formData.tools}
-                        onChange={handleInputChange}
-                    />
-                    <label htmlFor="tools">Tools</label>
-                </div>
-
-                <div className="form-group checkbox">
-                    <input
-                        type="checkbox"
-                        id="vision"
-                        name="vision"
-                        checked={formData.vision}
-                        onChange={handleInputChange}
-                    />
-                    <label htmlFor="vision">Vision</label>
                 </div>
 
                 <div className="form-actions">
@@ -365,42 +339,63 @@ const OllamaModelSettings = () => {
     const renderModelDetails = () => {
         if (!selectedModel) return null;
 
+        // Determine if this is a native model (not yet configured) or an existing model
+        const isNativeModel = availableInstalledModels.some(
+            m => m.ollamaModel.model === selectedModel.ollamaModel.model
+        );
+
         return (
             <div className="model-details">
+                <ToastContainer />
                 <div className="model-details-header">
                     <h3>{selectedModel.name}</h3>
-                    <button 
-                        className="edit-model-button"
-                        onClick={handleEditClick}
-                        title="Edit model"
-                    >
-                        <PencilIcon className="icon" />
-                    </button>
+                    {isNativeModel && (
+                        <button
+                            onClick={handleSaveNativeModel}
+                            className="edit-model-button"
+                            title="Save model"
+                        >
+                            <DocumentArrowDownIcon/>
+                        </button>
+                    )}
                 </div>
 
                 <div className="model-info">
                     <p><strong>Model:</strong> {selectedModel.name}</p>
-                    <p><strong>Size:</strong> {Math.round(selectedModel.size / (1024 * 1024))} MB</p>
+                    <p><strong>Size:</strong> {selectedModel.ollamaModel.details.parameter_size} MB</p>
 
                     <div className="model-features">
                         <p><strong>Features:</strong></p>
                         <ul>
-                            <li className={selectedModel.censored ? 'active' : ''}>Censored</li>
-                            <li className={selectedModel.embedding ? 'active' : ''}>Embedding</li>
-                            <li className={selectedModel.tools ? 'active' : ''}>Tools</li>
-                            <li className={selectedModel.vision ? 'active' : ''}>Vision</li>
+                            <li className={`editable-feature ${selectedModel.censored ? 'active' : ''}`}>
+                                <input
+                                    type="checkbox"
+                                    id="inline-censored"
+                                    checked={selectedModel.censored || false}
+                                    onChange={handleInlineDataChange}
+                                />
+                                <label htmlFor="inline-censored">Censored</label>
+                            </li>
+                            <li className={(selectedModel.ollamaShow.capabilities || []).includes("embedding") ? 'active' : ''}>Embedding</li>
+                            <li className={(selectedModel.ollamaShow.capabilities || []).includes("tools") ? 'active' : ''}>Tools</li>
+                            <li className={(selectedModel.ollamaShow.capabilities || []).includes("vision") ? 'active' : ''}>Vision</li>
                         </ul>
                     </div>
 
-                    {selectedModel.details && (
+                    {selectedModel.ollamaModel && (
                         <div className="model-details-section">
                             <p><strong>Details:</strong></p>
                             <ul>
-                                {selectedModel.details.parentModel && <li><strong>Parent Model:</strong> {selectedModel.details.parentModel}</li>}
-                                {selectedModel.details.format && <li><strong>Format:</strong> {selectedModel.details.format}</li>}
-                                {selectedModel.details.family && <li><strong>Family:</strong> {selectedModel.details.family}</li>}
-                                {selectedModel.details.parameterSize && <li><strong>Parameter Size:</strong> {selectedModel.details.parameterSize}</li>}
-                                {selectedModel.details.quantizationLevel && <li><strong>Quantization Level:</strong> {selectedModel.details.quantizationLevel}</li>}
+                                {selectedModel.ollamaModel.details.parent_model &&
+                                    <li><strong>Parent Model:</strong> {selectedModel.details.parentModel}</li>}
+                                {selectedModel.ollamaModel.details.format &&
+                                    <li><strong>Format:</strong> {selectedModel.ollamaModel.details.format}</li>}
+                                {selectedModel.ollamaModel.details.family &&
+                                    <li><strong>Family:</strong> {selectedModel.ollamaModel.details.family}</li>}
+                                {selectedModel.ollamaModel.details.parameter_size &&
+                                    <li><strong>Parameter Size:</strong> {selectedModel.ollamaModel.details.parameter_size}</li>}
+                                {selectedModel.ollamaModel.details.quantization_level &&
+                                    <li><strong>Quantization Level:</strong> {selectedModel.ollamaModel.details.quantization_level}</li>}
                             </ul>
                         </div>
                     )}

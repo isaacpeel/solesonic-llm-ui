@@ -1,4 +1,3 @@
-import {fetchAuthSession, getCurrentUser} from "aws-amplify/auth";
 import axiosClient from "../client/AxiosClient.js";
 import config from "../properties/ApplicationProperties.jsx";
 
@@ -7,36 +6,71 @@ const MAX_ATTEMPTS = 3;
 const AUTH_BLOCKED_UNTIL = 'authBlockedUntil';
 const AUTH_FAILURES_KEY = 'authFailuresKey';
 
-let accessToken = null;
-let userId = null;
+// Keycloak instance will be set by the provider
+let keycloakInstance = null;
 
 const authService = {
     /**
-     * Retrieves the access token from the current session.
+     * Sets the Keycloak instance (called by KeycloakProvider)
      */
-    getAccessToken: async () => {
-        const session = await authService.initializeUser();
-        accessToken = session.tokens.accessToken; // Assumes `tokens.accessToken` structure
-        return accessToken;
-    },
-
-    getUserId: async () => {
-        const session = await authService.initializeUser();
-        userId = session.userSub;
-
-        return userId;
-    },
-
-    getUsername: async () => {
-        const currentUser = await getCurrentUser();
-        return currentUser.username;
+    setKeycloakInstance: (keycloak) => {
+        keycloakInstance = keycloak;
     },
 
     /**
-     * Initializes the user session and retrieves tokens.
+     * Retrieves the access token from Keycloak.
      */
-    initializeUser: async () => {
-        return await fetchAuthSession(); // Returns the session object
+    getAccessToken: async () => {
+        if (!keycloakInstance) {
+            console.error('Keycloak instance not initialized');
+            return null;
+        }
+        
+        // Ensure token is fresh
+        try {
+            await keycloakInstance.updateToken(5);
+            return keycloakInstance.token;
+        } catch (error) {
+            console.error('Failed to refresh token:', error);
+            return null;
+        }
+    },
+
+    getUserId: async () => {
+        if (!keycloakInstance) {
+            console.error('Keycloak instance not initialized');
+            return null;
+        }
+        
+        const userProfile = keycloakInstance.tokenParsed;
+        return userProfile?.sub || null;
+    },
+
+    getUsername: async () => {
+        if (!keycloakInstance) {
+            console.error('Keycloak instance not initialized');
+            return null;
+        }
+        
+        const userProfile = keycloakInstance.tokenParsed;
+        return userProfile?.preferred_username || userProfile?.username || null;
+    },
+
+    /**
+     * Gets the user profile from Keycloak.
+     */
+    getUserProfile: async () => {
+        if (!keycloakInstance) {
+            console.error('Keycloak instance not initialized');
+            return null;
+        }
+        
+        try {
+            return await keycloakInstance.loadUserProfile();
+        } catch (error) {
+            console.error('Failed to load user profile:', error);
+            return null;
+        }
     },
     authFailure: async (error) => {
         const uri = `${config.uiBaseUri}/auth-failure`;
