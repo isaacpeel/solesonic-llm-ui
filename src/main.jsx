@@ -1,18 +1,26 @@
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App';
-import {Amplify} from 'aws-amplify';
-import {Authenticator} from '@aws-amplify/ui-react';
-import '@aws-amplify/ui-react/styles.css';
+import {KeycloakProvider} from './providers/KeycloakProvider.jsx';
+import {ToastContainer} from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import './main.css';
-import amplifyConfig from "./aws-exports";
-
-Amplify.configure(amplifyConfig);
 
 createRoot(document.getElementById('root')).render(
     <React.StrictMode>
-        <Authenticator.Provider>
+        <KeycloakProvider>
             <App/>
-        </Authenticator.Provider>
+            <ToastContainer
+                position="top-right"
+                autoClose={5000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+            />
+        </KeycloakProvider>
     </React.StrictMode>
 );

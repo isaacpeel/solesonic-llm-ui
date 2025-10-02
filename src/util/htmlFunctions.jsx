@@ -15,7 +15,7 @@ const toJsx = (text) => {
             {lines.map((line, index) => {
                 return (
                     <pre key={index} style={{ margin: '0.5em 0', whiteSpace: "pre-wrap", wordBreak: 'break-word', overflow: 'break-word', width: '100%' }}>
-                        <Linkify as="p" options={options}>{line}</Linkify>
+                        {line}
                     </pre>
                 );
             })}

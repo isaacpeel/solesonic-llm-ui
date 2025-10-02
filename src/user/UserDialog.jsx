@@ -1,12 +1,12 @@
 import {useEffect, useRef, useState} from 'react';
 import {useNavigate} from "react-router-dom";
 import {UserCircleIcon, Cog6ToothIcon, ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid";
-import {Authenticator} from '@aws-amplify/ui-react';
-import {signOut} from "@aws-amplify/auth";
+import {useKeycloak} from '../providers/KeycloakProvider.jsx';
 import authService from '../service/AuthService.js';
 import "./UserDialog.css";
 
 const UserDialog = () => {
+    const {logout} = useKeycloak();
     const [userName, setUserName] = useState(null);
     const [showUserDialog, setShowUserDialog] = useState(false);
     const userDialogRef = useRef(null);
@@ -61,15 +61,13 @@ const UserDialog = () => {
                     </div>
 
                     <div className="dialog-section">
-                        <Authenticator>
-                            <div
-                                onClick={async () => await signOut()}
-                                className="dropdown-item"
-                            >
-                                <ArrowLeftEndOnRectangleIcon className="icon"/>
-                                Sign Out
-                            </div>
-                        </Authenticator>
+                        <div
+                            onClick={() => logout()}
+                            className="dropdown-item"
+                        >
+                            <ArrowLeftEndOnRectangleIcon className="icon"/>
+                            Sign Out
+                        </div>
                     </div>
                 </div>
             )}
