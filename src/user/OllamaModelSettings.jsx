@@ -1,7 +1,7 @@
 import {useState, useEffect} from 'react';
 import ollamaService from '../service/OllamaService.js';
 import './OllamaModelSettings.css';
-import {BoltIcon, BoltSlashIcon, CheckIcon} from "@heroicons/react/16/solid";
+import {BoltIcon, BoltSlashIcon, DocumentArrowDownIcon} from "@heroicons/react/16/solid";
 import {ToastContainer, toast, Bounce} from 'react-toastify';
 
 const OllamaModelSettings = () => {
@@ -355,7 +355,7 @@ const OllamaModelSettings = () => {
                             className="edit-model-button"
                             title="Save model"
                         >
-                            <CheckIcon className="icon" />
+                            <DocumentArrowDownIcon/>
                         </button>
                     )}
                 </div>
