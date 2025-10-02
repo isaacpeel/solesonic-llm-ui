@@ -292,6 +292,31 @@
     display: inline-flex;
 }
 
+.editable-feature {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.editable-feature input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.editable-feature label {
+    cursor: pointer;
+    margin: 0;
+}
+
+.editable-feature .action-icon {
+    flex-shrink: 0;
+}
+
+.editable-feature.active {
+    background-color: #e6f7ff;
+    color: #0066cc;
+    font-weight: 500;
+}
+
 @media (max-width: 768px) {
     .ollama-model-settings-container {
         flex-direction: column;
