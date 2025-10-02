@@ -1,7 +1,7 @@
 import {useState, useEffect} from 'react';
 import ollamaService from '../service/OllamaService.js';
 import './OllamaModelSettings.css';
-import {BoltIcon, BoltSlashIcon} from "@heroicons/react/16/solid";
+import {BoltIcon, BoltSlashIcon, CheckIcon} from "@heroicons/react/16/solid";
 import {ToastContainer, toast, Bounce} from 'react-toastify';
 
 const OllamaModelSettings = () => {
@@ -239,6 +239,40 @@ const OllamaModelSettings = () => {
         }
     };
 
+    const handleSaveNativeModel = async () => {
+        try {
+            // Create new model with default values (censored: false)
+            const modelData = {
+                name: selectedModel.ollamaModel.model,
+                model: selectedModel.ollamaModel.model,
+                censored: false,
+                embedding: (selectedModel.ollamaShow?.capabilities || []).includes("embedding") || false,
+                tools: (selectedModel.ollamaShow?.capabilities || []).includes("tools") || false,
+                vision: (selectedModel.ollamaShow?.capabilities || []).includes("vision") || false,
+                details: selectedModel.ollamaModel.details || null
+            };
+
+            const newModel = await ollamaService.createModel(modelData);
+            setModels(Array.isArray(models) ? [...models, newModel] : [newModel]);
+            setSelectedModel(newModel);
+
+            toast(
+                "Model successfully added", {
+                    position: "top-right",
+                    autoClose: 2500,
+                    hideProgressBar: true,
+                    closeOnClick: true,
+                    pauseOnHover: false,
+                    draggable: false,
+                    progress: undefined,
+                    theme: "dark",
+                    transition: Bounce,
+                });
+        } catch (error) {
+            toast.error('Failed to save model: ' + error.message);
+        }
+    };
+
     const renderModelsList = () => {
         return (
             <div className="models-list">
@@ -315,6 +349,15 @@ const OllamaModelSettings = () => {
                 <ToastContainer />
                 <div className="model-details-header">
                     <h3>{selectedModel.name}</h3>
+                    {isNativeModel && (
+                        <button
+                            onClick={handleSaveNativeModel}
+                            className="edit-model-button"
+                            title="Save model"
+                        >
+                            <CheckIcon className="icon" />
+                        </button>
+                    )}
                 </div>
 
                 <div className="model-info">
