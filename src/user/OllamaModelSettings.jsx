@@ -127,7 +127,7 @@ const OllamaModelSettings = () => {
                     name: formData.name,
                     model: formData.name,
                     details: selectedModel.ollamaModel.details || formData.details,
-                    size: selectedModel.size,
+                    size: selectedModel.ollamaModel.details.parameter_size,
                 };
 
                 // Make sure both name and model are set and not empty
@@ -210,7 +210,7 @@ const OllamaModelSettings = () => {
                     model: selectedModel.name,
                     censored: newCensoredValue,
                     details: selectedModel.ollamaModel.details,
-                    size: selectedModel.size,
+                    size: selectedModel.ollamaModel.details.parameter_size,
                 };
 
                 const updatedModel = await ollamaService.updateModel(selectedModel.id, modelToUpdate);

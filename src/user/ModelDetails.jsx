@@ -1,4 +1,3 @@
-import {formatSize} from "../util/formatFunctions.js";
 import {CheckIcon, XCircleIcon} from "@heroicons/react/16/solid/index.js";
 import modelProps from "./UserPropTypes.js";
 
@@ -14,8 +13,8 @@ const ModelDetails = ({selectedModel}) => {
             </div>
             <div className="model-detail">
                 <strong>Size:</strong>{" "}
-                {selectedModel && selectedModel.ollamaModel.size
-                    ? formatSize(selectedModel.ollamaModel.size)
+                {selectedModel && selectedModel.ollamaModel.details.parameter_size
+                    ? selectedModel.ollamaModel.details.parameter_size
                     : "N/A"}
             </div>
 
