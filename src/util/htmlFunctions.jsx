@@ -1,21 +1,13 @@
 import Linkify from 'linkify-react';
 
+const options ={
+    target: "blank_",
+    className: "jira-issue-link"
+}
+
 const toJsx = (text) => {
   const cleanedText = (text ?? "No Message In Response").replace(/<think>[\s\S]*?<\/think>/g, '');
   const lines = cleanedText.split(/\r\n|\r|\n/);
-
-  const render = {
-    link: ({ attributes, content }) => (
-      <a
-        {...attributes}
-        className="jira-issue-link"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {content}
-      </a>
-    ),
-  };
 
   return (
     <div>
@@ -30,7 +22,7 @@ const toJsx = (text) => {
             width: '100%',
           }}
         >
-          <Linkify as="p" render={render}>{line}</Linkify>
+          <Linkify as="p" options={options}>{line}</Linkify>
         </pre>
       ))}
     </div>
