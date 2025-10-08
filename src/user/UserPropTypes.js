@@ -4,11 +4,7 @@ const modelProps = PropTypes.propTypes = {
     selectedModel: PropTypes.shape(
         {
             name: PropTypes.string.isRequired,
-            size: PropTypes.number.isRequired,
-            model: PropTypes.string.isRequired,
             censored: PropTypes.bool.isRequired,
-            embedding: PropTypes.bool.isRequired,
-            vision: PropTypes.bool.isRequired,
             ollamaModel: PropTypes.shape({
                 details: PropTypes.shape({
                     parentModel: PropTypes.string,

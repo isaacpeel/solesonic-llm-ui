@@ -25,12 +25,9 @@ export const KeycloakProvider = ({ children }) => {
     useEffect(() => {
         // Prevent double initialization (React StrictMode double-mount guard)
         if (didInitRef.current) {
-            console.log('[Keycloak] Init already called, skipping duplicate');
             return;
         }
         didInitRef.current = true;
-
-        console.log('[Keycloak] Init start, location.href:', window.location.href);
 
         // Initialize Keycloak instance with only constructor params
         const keycloakInstance = new Keycloak({
@@ -45,21 +42,18 @@ export const KeycloakProvider = ({ children }) => {
                 onLoad: 'login-required',
                 pkceMethod: 'S256',
                 checkLoginIframe: false,
-                redirectUri: window.location.origin + '/',
+                // redirectUri: window.location.origin + '/',
             })
             .then(async (auth) => {
-                console.log('[Keycloak] Init done: auth=', auth, 'location.href:', window.location.href);
                 setAuthenticated(!!auth);
                 setKeycloak(keycloakInstance);
 
                 // Load user profile if authenticated
                 if (auth) {
                     try {
-                        const userProfile = await keycloakInstance.loadUserProfile();
+                        const userProfile = await keycloakInstance.loadUserInfo();
                         setUser(userProfile);
-                        console.log('[Keycloak] User profile loaded:', userProfile.username);
                     } catch (error) {
-                        console.error('[Keycloak] Failed to load user profile:', error);
                         toast.error('Failed to load user profile');
                     }
                 }
@@ -67,15 +61,7 @@ export const KeycloakProvider = ({ children }) => {
                 setLoading(false);
             })
             .catch((error) => {
-                console.error('[Keycloak] Initialization failed. Details:', {
-                    href: window.location.href,
-                    realm: keycloakConfig.realm,
-                    clientId: keycloakConfig.clientId,
-                    kcUrl: keycloakConfig.url,
-                    error: error,
-                    stack: error?.stack
-                });
-                toast.error('Authentication initialization failed. Please refresh the page.');
+                toast.error('Authentication initialization failed. Please refresh the page. '+error);
                 setLoading(false);
             });
     }, []);
@@ -86,25 +72,17 @@ export const KeycloakProvider = ({ children }) => {
             return;
         }
 
-        console.log('[Keycloak] Starting token refresh interval');
         const tokenRefreshInterval = setInterval(() => {
             keycloak
-                .updateToken(70) // Refresh if token expires within 70 seconds
-                .then((refreshed) => {
-                    if (refreshed) {
-                        console.log('[Keycloak] Token refreshed successfully');
-                    }
-                })
+                .updateToken(70)
                 .catch((error) => {
-                    console.error('[Keycloak] Failed to refresh token:', error);
-                    toast.error('Session expired. Please log in again.');
+                    toast.error('Session expired. Please log in again.' +error);
                     keycloak.login({ redirectUri: window.location.origin + '/' });
                 });
         }, 60000); // 60 seconds
 
         // Cleanup interval on unmount or when authenticated changes
         return () => {
-            console.log('[Keycloak] Clearing token refresh interval');
             clearInterval(tokenRefreshInterval);
         };
     }, [authenticated, keycloak]);
