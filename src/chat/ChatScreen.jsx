@@ -3,38 +3,15 @@ import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 import './ChatScreen.css';
 import chatService from "../service/ChatService.js";
+import { parseSSELines } from "../service/SeeService.js";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {USER, AI} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
 
-// Helper to parse Server-Sent Events lines into {event, data}
-function parseSSELines(raw) {
-    // raw can contain multiple events like:
-    // event:chunk\ndata:hello\n\nevent:chunk\n...
-    const events = [];
-    const blocks = String(raw).split(/\n\n+/); // separate SSE messages
-    for (const block of blocks) {
-        if (!block.trim()) continue;
-        let evt = null;
-        let data = '';
-        for (const line of block.split('\n')) {
-            if (line.startsWith('event:')) {
-                evt = line.slice(6).trim();
-            } else if (line.startsWith('data:')) {
-                data += (data ? '\n' : '') + line.slice(5); // preserve multi-line data
-            }
-        }
-        if (evt || data) {
-            events.push({event: evt ?? 'message', data: data});
-        }
-    }
-    return events;
-}
 
 function ChatScreen() {
     const {chatId, setChatId} = useSharedData(null);
     const {chatHistory, setChatHistory} = useSharedData([]);
-    const {setReloadHistoryTrigger} = useSharedData();
     const sharedRef = useSharedData(SharedDataContext);
 
     const [loading, setLoading] = useState(false);
@@ -43,6 +20,55 @@ function ChatScreen() {
 
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
+    };
+
+    // Helper to append streaming text to the last AI message
+    const appendToLastAIMessage = (textToAppend) => {
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            const lastMessage = newHistory[lastIndex];
+
+            if (lastMessage.type === AI) {
+                newHistory[lastIndex] = {
+                    ...lastMessage,
+                    text: (lastMessage.text || '') + String(textToAppend),
+                };
+            }
+
+            return newHistory;
+        });
+    };
+
+    // Helper to ensure chatId exists when backend returns it
+    const ensureChatIdFromResponse = (response) => {
+        if (!chatId && response?.id) {
+            setChatId(response.id);
+        }
+    };
+
+    // Helper to finalize the last AI message with final content and metadata
+    const finalizeLastAIMessage = (response) => {
+        setChatHistory((previousHistory) => {
+            const newHistory = [...previousHistory];
+            const lastIndex = newHistory.length - 1;
+
+            if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                newHistory[lastIndex] = {
+                    ...newHistory[lastIndex],
+                    text: response?.message?.message ?? newHistory[lastIndex].text,
+                    model: response?.message?.model ?? newHistory[lastIndex].model,
+                    isStreaming: false,
+                };
+            }
+
+            return newHistory;
+        });
     };
 
     // ... existing code ...
@@ -80,7 +106,6 @@ function ChatScreen() {
             setChatHistory(formattedMessages)
         });
     }, [chatId, setChatHistory]);
-    // ... existing code ...
 
     const handleSubmit = async () => {
 
@@ -111,95 +136,38 @@ function ChatScreen() {
             // - onChunk receiving plain text tokens
             await chatService.chatStream(inputValue, chatId, {
                 onChunk: (raw) => {
-                    // Try to parse SSE frames; if none, treat as plain text token
                     const frames = parseSSELines(raw);
+
                     if (frames.length === 0) {
-                        // Plain token append
-                        setChatHistory((prev) => {
-                            const lastIndex = prev.length - 1;
-                            if (lastIndex < 0) return prev;
-                            const newHistory = [...prev];
-                            const lastMsg = newHistory[lastIndex];
-                            if (lastMsg.type === AI) {
-                                newHistory[lastIndex] = {
-                                    ...lastMsg,
-                                    text: (lastMsg.text || '') + String(raw),
-                                };
-                            }
-                            return newHistory;
-                        });
+                        appendToLastAIMessage(String(raw));
                         return;
                     }
 
                     for (const {event, data} of frames) {
                         if (event === 'chunk') {
-                            // Append the chunk's data to the last AI message
-                            setChatHistory((prev) => {
-                                const lastIndex = prev.length - 1;
-                                if (lastIndex < 0) return prev;
-                                const newHistory = [...prev];
-                                const lastMsg = newHistory[lastIndex];
-                                if (lastMsg.type === AI) {
-                                    newHistory[lastIndex] = {
-                                        ...lastMsg,
-                                        text: (lastMsg.text || '') + data,
-                                    };
-                                }
-                                return newHistory;
-                            });
+                            appendToLastAIMessage(data);
                         } else if (event === 'done') {
-                            // Some backends send final JSON in data with event:done
                             try {
-                                const resp = JSON.parse(data);
-                                if (!chatId && resp?.id) {
-                                    setChatId(resp.id);
-                                }
-                                setChatHistory((prev) => {
-                                    const newHistory = [...prev];
-                                    const lastIndex = newHistory.length - 1;
-                                    if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                                        newHistory[lastIndex] = {
-                                            ...newHistory[lastIndex],
-                                            text: resp?.message?.message ?? newHistory[lastIndex].text,
-                                            model: resp?.message?.model ?? newHistory[lastIndex].model,
-                                            isStreaming: false,
-                                        };
-                                    }
-                                    return newHistory;
-                                });
+                                const parsed = JSON.parse(data);
+                                ensureChatIdFromResponse(parsed);
+                                finalizeLastAIMessage(parsed);
                             } catch {
-                                // If it's not JSON, ignore here; onDone will reconcile
+                                // Non-JSON done payloads are ignored here; onDone will handle
                             }
                         }
                     }
                 },
-                onDone: (resp) => {
-                    // resp.id is the new chatId, resp.message is your final ChatMessage
-                    if (resp && typeof resp === 'string') {
-                        // Support case where onDone receives raw JSON string
+                onDone: (response) => {
+                    
+                    if (response && typeof response === 'string') {
                         try {
-                            resp = JSON.parse(resp);
+                            response = JSON.parse(response);
                         } catch {
                         }
                     }
 
-                    if (!chatId && resp?.id) {
-                        setChatId(resp.id);
-                    }
-                    // Ensure the last AI message reflects final content or metadata
-                    setChatHistory((prev) => {
-                        const newHistory = [...prev];
-                        const lastIndex = newHistory.length - 1;
-                        if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                            newHistory[lastIndex] = {
-                                ...newHistory[lastIndex],
-                                text: resp?.message?.message ?? newHistory[lastIndex].text,
-                                model: resp?.message?.model ?? newHistory[lastIndex].model,
-                                isStreaming: false,
-                            };
-                        }
-                        return newHistory;
-                    });
+                    ensureChatIdFromResponse(response);
+                    finalizeLastAIMessage(response);
                 },
             });
 
