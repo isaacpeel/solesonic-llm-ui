@@ -3,7 +3,7 @@ import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 import './ChatScreen.css';
 import chatService from "../service/ChatService.js";
-import { parseSSELines } from "../service/SeeService.js";
+import {parseSSELines} from "../service/SeeService.js";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {USER, AI} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
@@ -147,27 +147,11 @@ function ChatScreen() {
                         if (event === 'chunk') {
                             appendToLastAIMessage(data);
                         } else if (event === 'done') {
-                            try {
-                                const parsed = JSON.parse(data);
-                                ensureChatIdFromResponse(parsed);
-                                finalizeLastAIMessage(parsed);
-                            } catch {
-                                // Non-JSON done payloads are ignored here; onDone will handle
-                            }
+                            const parsed = JSON.parse(data);
+                            ensureChatIdFromResponse(parsed);
+                            finalizeLastAIMessage(parsed);
                         }
                     }
-                },
-                onDone: (response) => {
-                    
-                    if (response && typeof response === 'string') {
-                        try {
-                            response = JSON.parse(response);
-                        } catch {
-                        }
-                    }
-
-                    ensureChatIdFromResponse(response);
-                    finalizeLastAIMessage(response);
                 },
             });
 
