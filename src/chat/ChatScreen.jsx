@@ -36,16 +36,19 @@ function ChatScreen() {
     }, [chatHistory, setChatHistory]);
 
     useEffect(() => {
-        if (!chatId) return; // Do not fetch if chatId is null
+        if (!chatId) {
+            return;
+        }
 
         async function fetchChatDetails() {
             const response = await chatService.findChatDetails(chatId);
 
-            return response.chatMessages.map((message) => {
+            return response.chatMessages.map((message, idx) => {
                 return {
                     type: message.messageType,
                     text: message.message,
                     model: message.model,
+                    _key: message.id ?? `${chatId || 'new'}-${idx}`,
                 };
             });
         }
@@ -60,9 +63,12 @@ function ChatScreen() {
 
         // Remove the ephemeral message before appending new user input
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
-        const userMessage = {type: USER, text: inputValue};
+        const ts = Date.now() + Math.random().toString(36).slice(2);
+        const userMessage = { type: USER, text: inputValue, _key: `user-${ts}` };
 
-        setChatHistory([...updatedHistory, userMessage]);
+        // Append user message and a placeholder AI message for streaming
+        const aiPlaceholder = { type: AI, text: '', _key: `ai-${ts}` };
+        setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
         setInputValue('');
 
@@ -73,29 +79,62 @@ function ChatScreen() {
         setError(null);
 
         try {
-            const response = await chatService.chat(inputValue, chatId);
+            // Stream the response and update the last AI message incrementally
+            let accumulated = '';
+            await chatService.chatStream(inputValue, chatId, {
+                onChunk: (chunk) => {
+                    accumulated += chunk;
+                    setChatHistory((prev) => {
+                        // Update the last message (AI placeholder)
+                        const newHistory = [...prev];
+                        const lastIndex = newHistory.length - 1;
 
-            const aiMessage = {
-                type: response.message.messageType,
-                text: response.message.message,
-                model: response.message.model
-            };
-            setChatHistory(prevHistory => [...prevHistory, aiMessage]);
+                        if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                            newHistory[lastIndex] = { ...newHistory[lastIndex], text: accumulated };
+                        }
+
+                        return newHistory;
+                    });
+                },
+            });
+
+            // After streaming completes, reload history (to get model info and ensure sync)
             setReloadHistoryTrigger(prev => prev + 1);
 
-            if (!chatId && response.id) {
-                setChatId(response.id);
+            // If we don't yet have a chatId, try to derive it from the user's latest history
+            if (!chatId) {
+                try {
+                    const history = await chatService.findChatHistory();
+
+                    if (Array.isArray(history) && history.length > 0 && history[0].id) {
+                        setChatId(history[0].id);
+                    }
+
+                } catch (error) {
+                    // Non-fatal: inability to set chatId shouldn't break UI
+                    console.debug('Could not infer chatId from history:', e);
+                }
             }
         } catch (error) {
+            console.error('[ChatScreen] Streaming error:', error);
             setError(error);
+            
+            // Remove the empty AI placeholder on error
+            setChatHistory((prev) => {
+                const newHistory = [...prev];
+                const lastIndex = newHistory.length - 1;
+                // Remove last message if it's an empty AI message (the placeholder)
+                if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
+                    newHistory.pop();
+                }
+                return newHistory;
+            });
         } finally {
+            setLoading(false);
             setTimeout(() => {
-                sharedRef.chatInputRef.current.focus();
-            }, 1000);
+                sharedRef.chatInputRef.current?.focus();
+            }, 300);
         }
-
-        // Set loading to false after all operations are complete
-        setLoading(false);
 
         // Return true to indicate completion
         return true;
@@ -107,7 +146,7 @@ function ChatScreen() {
 
             <div className="chat-content">
                 {chatHistory.map((entry, index) => (
-                    <ChatMessage key={index} message={entry}/>
+                    <ChatMessage key={entry._key ?? index} message={entry}/>
                 ))}
                 <ChatInput
                     loading={loading}
