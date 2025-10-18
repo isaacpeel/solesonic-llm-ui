@@ -1,8 +1,8 @@
 import PropTypes from "prop-types";
+import {useMemo} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import {formatMessage} from "../util/formatMessage.jsx";
-
 
 export const USER = "USER";
 export const AI = "ASSISTANT";
@@ -12,6 +12,13 @@ function ChatMessage({message}) {
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const hasText = message.text && message.text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText;
+
+    const formattedContent = useMemo(() => {
+        if (!showPlaceholder) {
+            return message.text || '';
+        }
+        return null;
+    }, [message.text, showPlaceholder]);
 
     return (
         <div className={`chat-message-container ${message.type}`}>
@@ -28,7 +35,7 @@ function ChatMessage({message}) {
                     {showPlaceholder ? (
                         <span className="message-placeholder">Thinking...</span>
                     ) : (
-                        formatMessage(message.text)
+                        message.text
                     )}
                 </div>
             </div>

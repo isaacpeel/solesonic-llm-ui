@@ -7,6 +7,29 @@ import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {USER, AI} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
 
+// Helper to parse Server-Sent Events lines into {event, data}
+function parseSSELines(raw) {
+    // raw can contain multiple events like:
+    // event:chunk\ndata:hello\n\nevent:chunk\n...
+    const events = [];
+    const blocks = String(raw).split(/\n\n+/); // separate SSE messages
+    for (const block of blocks) {
+        if (!block.trim()) continue;
+        let evt = null;
+        let data = '';
+        for (const line of block.split('\n')) {
+            if (line.startsWith('event:')) {
+                evt = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+                data += (data ? '\n' : '') + line.slice(5); // preserve multi-line data
+            }
+        }
+        if (evt || data) {
+            events.push({event: evt ?? 'message', data: data});
+        }
+    }
+    return events;
+}
 
 function ChatScreen() {
     const {chatId, setChatId} = useSharedData(null);
@@ -22,14 +45,14 @@ function ChatScreen() {
         setInputValue(event.target.value);
     };
 
-
-    // Add ephemeral message when chatHistory is empty
+    // ... existing code ...
     useEffect(() => {
         if (chatHistory.length === 0) {
             const welcomeMessage = {
                 type: AI,
                 text: "Hi! How can I assist you today?",
                 ephemeral: true,
+                _key: `welcome-${Date.now()}`,
             };
             setChatHistory([welcomeMessage]);
         }
@@ -57,17 +80,21 @@ function ChatScreen() {
             setChatHistory(formattedMessages)
         });
     }, [chatId, setChatHistory]);
+    // ... existing code ...
 
     const handleSubmit = async () => {
-        if (!inputValue.trim()) return;
+
+        if (!inputValue.trim()) {
+            return;
+        }
 
         // Remove the ephemeral message before appending new user input
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
         const ts = Date.now() + Math.random().toString(36).slice(2);
-        const userMessage = { type: USER, text: inputValue, _key: `user-${ts}` };
+        const userMessage = {type: USER, text: inputValue, _key: `user-${ts}`};
 
         // Append user message and a placeholder AI message for streaming
-        const aiPlaceholder = { type: AI, text: '', _key: `ai-${ts}` };
+        const aiPlaceholder = {type: AI, text: '', _key: `ai-${ts}`, isStreaming: true};
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
         setInputValue('');
@@ -79,53 +106,113 @@ function ChatScreen() {
         setError(null);
 
         try {
-            // Stream the response and update the last AI message incrementally
-            let accumulated = '';
+            // Ensure we handle raw SSE properly, supporting both:
+            // - onChunk receiving raw "event:.../data:..." strings
+            // - onChunk receiving plain text tokens
             await chatService.chatStream(inputValue, chatId, {
-                onChunk: (chunk) => {
-                    accumulated += chunk;
+                onChunk: (raw) => {
+                    // Try to parse SSE frames; if none, treat as plain text token
+                    const frames = parseSSELines(raw);
+                    if (frames.length === 0) {
+                        // Plain token append
+                        setChatHistory((prev) => {
+                            const lastIndex = prev.length - 1;
+                            if (lastIndex < 0) return prev;
+                            const newHistory = [...prev];
+                            const lastMsg = newHistory[lastIndex];
+                            if (lastMsg.type === AI) {
+                                newHistory[lastIndex] = {
+                                    ...lastMsg,
+                                    text: (lastMsg.text || '') + String(raw),
+                                };
+                            }
+                            return newHistory;
+                        });
+                        return;
+                    }
+
+                    for (const {event, data} of frames) {
+                        if (event === 'chunk') {
+                            // Append the chunk's data to the last AI message
+                            setChatHistory((prev) => {
+                                const lastIndex = prev.length - 1;
+                                if (lastIndex < 0) return prev;
+                                const newHistory = [...prev];
+                                const lastMsg = newHistory[lastIndex];
+                                if (lastMsg.type === AI) {
+                                    newHistory[lastIndex] = {
+                                        ...lastMsg,
+                                        text: (lastMsg.text || '') + data,
+                                    };
+                                }
+                                return newHistory;
+                            });
+                        } else if (event === 'done') {
+                            // Some backends send final JSON in data with event:done
+                            try {
+                                const resp = JSON.parse(data);
+                                if (!chatId && resp?.id) {
+                                    setChatId(resp.id);
+                                }
+                                setChatHistory((prev) => {
+                                    const newHistory = [...prev];
+                                    const lastIndex = newHistory.length - 1;
+                                    if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                                        newHistory[lastIndex] = {
+                                            ...newHistory[lastIndex],
+                                            text: resp?.message?.message ?? newHistory[lastIndex].text,
+                                            model: resp?.message?.model ?? newHistory[lastIndex].model,
+                                            isStreaming: false,
+                                        };
+                                    }
+                                    return newHistory;
+                                });
+                            } catch {
+                                // If it's not JSON, ignore here; onDone will reconcile
+                            }
+                        }
+                    }
+                },
+                onDone: (resp) => {
+                    // resp.id is the new chatId, resp.message is your final ChatMessage
+                    if (resp && typeof resp === 'string') {
+                        // Support case where onDone receives raw JSON string
+                        try {
+                            resp = JSON.parse(resp);
+                        } catch {
+                        }
+                    }
+
+                    if (!chatId && resp?.id) {
+                        setChatId(resp.id);
+                    }
+                    // Ensure the last AI message reflects final content or metadata
                     setChatHistory((prev) => {
-                        // Update the last message (AI placeholder)
                         const newHistory = [...prev];
                         const lastIndex = newHistory.length - 1;
-
                         if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                            newHistory[lastIndex] = { ...newHistory[lastIndex], text: accumulated };
+                            newHistory[lastIndex] = {
+                                ...newHistory[lastIndex],
+                                text: resp?.message?.message ?? newHistory[lastIndex].text,
+                                model: resp?.message?.model ?? newHistory[lastIndex].model,
+                                isStreaming: false,
+                            };
                         }
-
                         return newHistory;
                     });
                 },
             });
 
-            // After streaming completes, reload history (to get model info and ensure sync)
-            setReloadHistoryTrigger(prev => prev + 1);
-
-            // If we don't yet have a chatId, try to derive it from the user's latest history
-            if (!chatId) {
-                try {
-                    const history = await chatService.findChatHistory();
-
-                    if (Array.isArray(history) && history.length > 0 && history[0].id) {
-                        setChatId(history[0].id);
-                    }
-
-                } catch (error) {
-                    // Non-fatal: inability to set chatId shouldn't break UI
-                    console.debug('Could not infer chatId from history:', e);
-                }
-            }
         } catch (error) {
             console.error('[ChatScreen] Streaming error:', error);
             setError(error);
-            
-            // Remove the empty AI placeholder on error
             setChatHistory((prev) => {
                 const newHistory = [...prev];
                 const lastIndex = newHistory.length - 1;
-                // Remove last message if it's an empty AI message (the placeholder)
                 if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
                     newHistory.pop();
+                } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                    newHistory[lastIndex] = {...newHistory[lastIndex], isStreaming: false};
                 }
                 return newHistory;
             });
@@ -136,17 +223,16 @@ function ChatScreen() {
             }, 300);
         }
 
-        // Return true to indicate completion
         return true;
-    };
+    }
 
     return (
         <div className="chat-app">
             {error && <ConsoleErrors error={error}/>}
 
             <div className="chat-content">
-                {chatHistory.map((entry, index) => (
-                    <ChatMessage key={entry._key ?? index} message={entry}/>
+                {chatHistory.map((entry) => (
+                    <ChatMessage key={entry._key} message={entry}/>
                 ))}
                 <ChatInput
                     loading={loading}

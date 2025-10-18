@@ -5,6 +5,17 @@ const linkifyOptions = {
     className: "jira-issue-link"
 };
 
+// Simple hash function for stable keys
+const hashString = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+};
+
 const parseMarkdown = (text) => {
     if (!text) {
         return [];
@@ -15,9 +26,11 @@ const parseMarkdown = (text) => {
     let inCodeBlock = false;
     let codeBlockContent = [];
     let codeBlockLanguage = '';
+    let charPosition = 0; // Track character position for stable keys
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
         const line = lines[lineIndex];
+        const lineStartPos = charPosition;
 
         // Handle code blocks
         if (line.trim().startsWith('```')) {
@@ -27,20 +40,23 @@ const parseMarkdown = (text) => {
                 codeBlockContent = [];
             } else {
                 inCodeBlock = false;
+                const content = codeBlockContent.join('\n');
                 elements.push({
                     type: 'codeBlock',
-                    content: codeBlockContent.join('\n'),
+                    content: content,
                     language: codeBlockLanguage,
-                    key: `code-${lineIndex}`
+                    key: `code-${hashString(content)}-${lineStartPos}`
                 });
                 codeBlockContent = [];
                 codeBlockLanguage = '';
             }
+            charPosition += line.length + 1;
             continue;
         }
 
         if (inCodeBlock) {
             codeBlockContent.push(line);
+            charPosition += line.length + 1;
             continue;
         }
 
@@ -51,8 +67,9 @@ const parseMarkdown = (text) => {
                 type: 'heading',
                 level: headingMatch[1].length,
                 content: headingMatch[2],
-                key: `h-${lineIndex}`
+                key: `h-${hashString(line)}-${lineStartPos}`
             });
+            charPosition += line.length + 1;
             continue;
         }
 
@@ -63,8 +80,9 @@ const parseMarkdown = (text) => {
                 type: 'listItem',
                 ordered: false,
                 content: ulMatch[1],
-                key: `li-${lineIndex}`
+                key: `li-${hashString(line)}-${lineStartPos}`
             });
+            charPosition += line.length + 1;
             continue;
         }
 
@@ -75,8 +93,9 @@ const parseMarkdown = (text) => {
                 type: 'listItem',
                 ordered: true,
                 content: olMatch[2],
-                key: `li-${lineIndex}`
+                key: `li-${hashString(line)}-${lineStartPos}`
             });
+            charPosition += line.length + 1;
             continue;
         }
 
@@ -84,24 +103,27 @@ const parseMarkdown = (text) => {
         if (line.trim() === '') {
             elements.push({
                 type: 'break',
-                key: `br-${lineIndex}`
+                key: `br-${lineStartPos}`
             });
         } else {
             elements.push({
                 type: 'paragraph',
                 content: line,
-                key: `p-${lineIndex}`
+                key: `p-${hashString(line)}-${lineStartPos}`
             });
         }
+        
+        charPosition += line.length + 1;
     }
 
     // Handle unclosed code block
     if (inCodeBlock && codeBlockContent.length > 0) {
+        const content = codeBlockContent.join('\n');
         elements.push({
             type: 'codeBlock',
-            content: codeBlockContent.join('\n'),
+            content: content,
             language: codeBlockLanguage,
-            key: `code-end`
+            key: `code-${hashString(content)}-end`
         });
     }
 
@@ -186,7 +208,7 @@ const formatInlineText = (text) => {
     return parts.length > 0 ? parts : text;
 };
 
-const renderInlineContent = (content) => {
+const renderInlineContent = (content, { enableLinkify }) => {
     const parts = parseInlineFormatting(content);
 
     return parts.map((part) => {
@@ -200,30 +222,87 @@ const renderInlineContent = (content) => {
 
         // Apply bold/italic formatting to regular text
         const formatted = formatInlineText(part.content);
+
+        if (enableLinkify) {
+            return (
+                <Linkify key={part.key} as="span" options={linkifyOptions}>
+                    {formatted}
+                </Linkify>
+            );
+        }
+
         return (
-            <Linkify key={part.key} as="span" options={linkifyOptions}>
+            <span key={part.key}>
                 {formatted}
-            </Linkify>
+            </span>
         );
     });
 };
 
-export const formatMessage = (text) => {
+// Group consecutive list items into proper list structures
+const groupListItems = (elements) => {
+    const grouped = [];
+    let currentList = null;
+    let currentListType = null;
+
+    for (let i = 0; i < elements.length; i++) {
+        const element = elements[i];
+
+        if (element.type === 'listItem') {
+            const listType = element.ordered ? 'ordered' : 'unordered';
+
+            if (currentList && currentListType === listType) {
+                // Add to existing list
+                currentList.items.push(element);
+            } else {
+                // Start new list
+                if (currentList) {
+                    grouped.push(currentList);
+                }
+                currentList = {
+                    type: 'list',
+                    ordered: element.ordered,
+                    items: [element],
+                    key: `list-${element.key}`
+                };
+                currentListType = listType;
+            }
+        } else {
+            // Non-list item, push any current list and the element
+            if (currentList) {
+                grouped.push(currentList);
+                currentList = null;
+                currentListType = null;
+            }
+            grouped.push(element);
+        }
+    }
+
+    // Push final list if exists
+    if (currentList) {
+        grouped.push(currentList);
+    }
+
+    return grouped;
+};
+
+export const formatMessage = (text, { enableLinkify = true } = {}) => {
     if (!text || text.trim() === '') {
         return null;
     }
 
     const elements = parseMarkdown(text);
+    const groupedElements = groupListItems(elements);
 
     return (
         <div className="formatted-message">
-            {elements.map((element) => {
+            {groupedElements.map((element) => {
                 switch (element.type) {
                     case 'heading':
                         const HeadingTag = `h${element.level}`;
                         return (
                             <HeadingTag key={element.key} className="message-heading">
-                                {renderInlineContent(element.content)}
+                                {renderInlineContent(element.content, { enableLinkify })}
                             </HeadingTag>
                         );
 
@@ -236,11 +315,13 @@ export const formatMessage = (text) => {
                             </pre>
                         );
 
-                    case 'listItem':
+                    case 'list':
                         const ListTag = element.ordered ? 'ol' : 'ul';
                         return (
                             <ListTag key={element.key} className="message-list">
-                                <li>{renderInlineContent(element.content)}</li>
+                                {element.items.map((item) => (
+                                    <li key={item.key}>{renderInlineContent(item.content, { enableLinkify })}</li>
+                                ))}
                             </ListTag>
                         );
 
@@ -251,7 +332,7 @@ export const formatMessage = (text) => {
                     default:
                         return (
                             <div key={element.key} className="message-paragraph">
-                                {renderInlineContent(element.content)}
+                                {renderInlineContent(element.content, { enableLinkify })}
                             </div>
                         );
                 }

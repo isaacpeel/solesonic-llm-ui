@@ -83,42 +83,23 @@ const chatService = {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
+
                 buffer += decoder.decode(value, { stream: true });
 
-                // Process SSE messages split by double newline
                 let boundaryIndex;
                 while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
-                    const rawEvent = buffer.slice(0, boundaryIndex);
+                    const event = buffer.slice(0, boundaryIndex);
                     buffer = buffer.slice(boundaryIndex + 2);
 
-                    // Extract data lines (supports multi-line data:)
-                    const dataLines = rawEvent
-                        .split(/\r?\n/)
-                        .filter(line => line.startsWith('data:'))
-                        .map(line => line.replace(/^data:\s?/, ''));
-
-                    if (dataLines.length && onChunk) {
-                        // The backend spec says array of strings; emit each as it comes
-                        for (const chunk of dataLines) {
-                            onChunk(chunk);
-                        }
-                    }
-                }
-            }
-
-            // Flush any remaining data (in case stream didn't end with \n\n)
-            if (buffer.trim().length) {
-                const trailing = buffer
-                    .split(/\r?\n/)
-                    .filter(line => line.startsWith('data:'))
-                    .map(line => line.replace(/^data:\s?/, ''));
-                if (trailing.length && onChunk) {
-                    for (const chunk of trailing) onChunk(chunk);
+                    // Strip `data:` prefix
+                    const line = event.replace(/^data:\s?/, '').trim();
+                    if (line && onChunk) onChunk(line);
                 }
             }
         } finally {
             reader.releaseLock();
         }
+
 
         // Return raw response in case caller wants headers (e.g., new chat id via header)
         return response;
