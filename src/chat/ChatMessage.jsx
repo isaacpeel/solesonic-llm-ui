@@ -35,7 +35,7 @@ function ChatMessage({message}) {
                     {showPlaceholder ? (
                         <span className="message-placeholder">Thinking...</span>
                     ) : (
-                        message.text
+                        message.formattedText || message.text
                     )}
                 </div>
             </div>

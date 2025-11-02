@@ -7,6 +7,7 @@ import {parseSSELines} from "../service/SeeService.js";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {USER, AI} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
+import {toJsx} from "../util/htmlFunctions.jsx";
 
 
 function ChatScreen() {
@@ -59,9 +60,11 @@ function ChatScreen() {
             const lastIndex = newHistory.length - 1;
 
             if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                const finalText = response?.message?.message ?? newHistory[lastIndex].text;
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
-                    text: response?.message?.message ?? newHistory[lastIndex].text,
+                    text: finalText,
+                    formattedText: toJsx(finalText),
                     model: response?.message?.model ?? newHistory[lastIndex].model,
                     isStreaming: false,
                 };
@@ -71,7 +74,6 @@ function ChatScreen() {
         });
     };
 
-    // ... existing code ...
     useEffect(() => {
         if (chatHistory.length === 0) {
             const welcomeMessage = {
