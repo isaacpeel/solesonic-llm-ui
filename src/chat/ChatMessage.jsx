@@ -3,6 +3,7 @@ import {useMemo} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import {formatMessage} from "../util/formatMessage.jsx";
+import ReactMarkdown from "react-markdown";
 
 export const USER = "USER";
 export const AI = "ASSISTANT";
@@ -35,7 +36,7 @@ function ChatMessage({message}) {
                     {showPlaceholder ? (
                         <span className="message-placeholder">Thinking...</span>
                     ) : (
-                        message.formattedText || message.text
+                        <ReactMarkdown>{message.text}</ReactMarkdown>
                     )}
                 </div>
             </div>
