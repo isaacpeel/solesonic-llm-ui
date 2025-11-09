@@ -25,7 +25,12 @@ const chatService = {
     chatStream: async (userMessage, chatId, { onChunk } = {}) => {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
-        const body = JSON.stringify({ chatMessage: userMessage });
+
+        // Accept either a plain string (wrapped as { chatMessage }) or a structured object (sent as-is)
+        const payload = (typeof userMessage === 'string')
+            ? { chatMessage: userMessage }
+            : userMessage;
+        const body = JSON.stringify(payload);
 
         const uri = chatId
             ? `${config.streamingChatsUri}/${chatId}`
@@ -88,12 +93,15 @@ const chatService = {
 
                 let boundaryIndex;
                 while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
-                    const event = buffer.slice(0, boundaryIndex);
+                    const eventBlock = buffer.slice(0, boundaryIndex);
                     buffer = buffer.slice(boundaryIndex + 2);
 
-                    // Strip `data:` prefix
-                    const line = event.replace(/^data:\s?/, '').trim();
-                    if (line && onChunk) onChunk(line);
+                    if (onChunk) {
+                        const payload = eventBlock.trim();
+                        if (payload) {
+                            onChunk(payload);
+                        }
+                    }
                 }
             }
         } finally {
@@ -120,6 +128,95 @@ const chatService = {
         const options = axiosClient.setAuthHeader(accessToken);
 
         return await axiosClient.get(uri, options);
+    },
+
+    // Streaming POST specifically for elicitation responses: /{chatId}/elicitation-response
+    chatStreamElicitationResponse: async (elicitationPayload, chatId, elicitationId, { onChunk } = {}) => {
+        const token = await authService.getAccessToken();
+
+        const payload = (typeof elicitationPayload === 'string')
+            ? { chatMessage: elicitationPayload }
+            : elicitationPayload;
+        const body = JSON.stringify(payload);
+
+        const uri = `${config.streamingChatsUri}/${chatId}/${elicitationId}/elicitation-response`;
+        const method = 'POST';
+
+        let response;
+        try {
+            response = await fetch(uri, {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'text/event-stream'
+                },
+                body,
+                mode: 'cors',
+                credentials: 'same-origin'
+            });
+        } catch (fetchError) {
+            console.error('[ChatService] Fetch failed (elicitation):', {
+                uri,
+                method,
+                error: fetchError.message,
+                stack: fetchError.stack
+            });
+            throw new Error(`Failed to connect to elicitation streaming endpoint: ${fetchError.message}`);
+        }
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unable to read error response');
+            console.error('[ChatService] Elicitation streaming request failed:', {
+                status: response.status,
+                statusText: response.statusText,
+                uri,
+                method,
+                errorBody: errorText
+            });
+            throw new Error(`Elicitation streaming request failed: ${response.status} ${response.statusText}. ${errorText}`);
+        }
+
+        if (!response.body) {
+            console.error('[ChatService] Elicitation response body is null or undefined');
+            throw new Error('Elicitation streaming response has no body - server may not support streaming');
+        }
+
+        console.debug('[ChatService] Elicitation streaming connection established:', { uri, method });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+
+                let boundaryIndex;
+                while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
+                    const eventBlock = buffer.slice(0, boundaryIndex);
+                    buffer = buffer.slice(boundaryIndex + 2);
+
+                    if (onChunk) {
+                        const payloadChunk = eventBlock.trim();
+
+                        if (payloadChunk) {
+                            onChunk(payloadChunk);
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
+
+        return response;
     }
 }
 
