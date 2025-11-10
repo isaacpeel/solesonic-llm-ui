@@ -28,3 +28,4 @@ yarn-error.log*
 /apache/*
 /prompt/
 /.junie/
+/src/preview/
