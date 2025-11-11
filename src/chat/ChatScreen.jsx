@@ -129,6 +129,31 @@ function ChatScreen() {
         });
     }, [chatId, setChatHistory]);
 
+    // When an elicitation prompt becomes active, remove any trailing empty AI placeholder
+    useEffect(() => {
+        if (!activeElicitation) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            const lastMessage = newHistory[lastIndex];
+            const lastMessageIsEmptyAI = lastMessage.type === AI && (!lastMessage.text || lastMessage.text.trim() === '');
+
+            if (lastMessageIsEmptyAI) {
+                newHistory.pop();
+            }
+
+            return newHistory;
+        });
+    }, [activeElicitation, setChatHistory]);
+
     const handleElicitationChange = (name, value) => {
         setElicitationValues((previous) => ({
             ...previous,
