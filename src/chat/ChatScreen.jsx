@@ -179,7 +179,7 @@ function ChatScreen() {
 
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
         const systemElicitationMessage = { type: SYSTEM, text: activeElicitation.message, _key: `user-${ts}` };
-        const userElicitationResponse = {type: USER, text: summaryParts.join(', ')};
+        const userElicitationResponse = { type: USER, text: summaryParts.join(', '), _key: `user-${ts}-resp` };
         const aiPlaceholder = { type: AI, text: '', _key: `ai-${ts}`, isStreaming: true };
 
         setChatHistory([...updatedHistory, systemElicitationMessage, userElicitationResponse, aiPlaceholder]);
