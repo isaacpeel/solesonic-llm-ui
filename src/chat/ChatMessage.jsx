@@ -13,14 +13,12 @@ function ChatMessage({message}) {
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const hasText = message.text && message.text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText;
-
-    const formattedContent = useMemo(() => {
+    useMemo(() => {
         if (!showPlaceholder) {
             return message.text || '';
         }
         return null;
     }, [message.text, showPlaceholder]);
-
     return (
         <div className={`chat-message-container ${message.type}`}>
             {isAIorSystem && (

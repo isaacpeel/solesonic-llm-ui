@@ -8,8 +8,8 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
     const schema = elicitation.requestedSchema || {};
     const properties = schema.properties || {};
     const requiredList = Array.isArray(schema.required) ? schema.required : [];
-    const requiredSet = new Set(requiredList);
 
+    new Set(requiredList);
     const nonMetaPropertyEntries = Object.entries(properties).filter(([fieldName]) => fieldName !== 'chatId');
     const isBooleanOnlyPrompt = nonMetaPropertyEntries.length === 1 && (nonMetaPropertyEntries[0][1]?.type === 'boolean');
 
