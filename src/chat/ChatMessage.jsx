@@ -2,7 +2,6 @@ import PropTypes from "prop-types";
 import {useMemo} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
-import {formatMessage} from "../util/formatMessage.jsx";
 import ReactMarkdown from "react-markdown";
 
 export const USER = "USER";

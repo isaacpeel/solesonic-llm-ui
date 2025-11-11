@@ -175,7 +175,7 @@ function ChatScreen() {
 
         const summaryParts = Object.entries(fieldsToSend)
             .filter(([key]) => key !== 'chatId')
-            .map(([key, value]) => `${value}`);
+            .map(([, value]) => `${value}`);
 
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
         const systemElicitationMessage = { type: SYSTEM, text: activeElicitation.message, _key: `user-${ts}` };
