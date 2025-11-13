@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+.elicitation-container {
+    @apply mx-10 mb-4 rounded-lg border border-slate-700 bg-[#3b4d61] p-4 text-slate-100;
+}
+
+.elicitation-container-title {
+    @apply mb-2 text-sm font-medium text-slate-100;
+}
+
+.elicitation-boolean-container {
+    @apply mt-1 flex items-center gap-3;
+}
+
+.elicitation-button-primary {
+   @apply border-slate-500 border-1;
+   @apply bg-slate-900;
+    @apply px-3;
+    @apply py-1;
+    @apply rounded-lg;
+    @apply hover:bg-slate-400;
+}
+
+.elicitation-button-secondary {
+    @apply border-slate-400 border-1;
+    @apply bg-slate-500;
+    @apply px-3;
+    @apply py-1;
+    @apply rounded-lg;
+    @apply hover:bg-slate-600;
+}

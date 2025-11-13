@@ -13,14 +13,12 @@ class AxiosClientError extends Error {
     }
 }
 
-// Create axios instance with default configuration
 const axiosInstance = axios.create({
     headers: {
         'Content-Type': 'application/json',
     }
 });
 
-// Request interceptor to add Authorization header with Keycloak token
 axiosInstance.interceptors.request.use(
     async (config) => {
         try {
@@ -38,38 +36,29 @@ axiosInstance.interceptors.request.use(
     }
 );
 
-// Response interceptor to handle 401 errors and token refresh
 axiosInstance.interceptors.response.use(
     (response) => {
-        // Return successful response as-is
         return response;
     },
     async (error) => {
         const originalRequest = error.config;
 
-        // Check if error is 401 and we haven't retried yet
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
 
             try {
-                // Attempt to refresh token
                 const token = await authService.getAccessToken();
                 
                 if (token) {
-                    // Update the authorization header with new token
                     originalRequest.headers.Authorization = `Bearer ${token}`;
-                    // Retry the original request
                     return axiosInstance(originalRequest);
                 }
             } catch (refreshError) {
                 console.error('Token refresh failed:', refreshError);
-                // Token refresh failed, redirect to login
-                // The Keycloak instance will handle re-authentication
                 return Promise.reject(refreshError);
             }
         }
 
-        // Return error for other status codes or if retry failed
         return Promise.reject(error);
     }
 );
@@ -120,7 +109,6 @@ export default {
         }
     },
     
-    // Helper function to set auth token
     setAuthHeader: (token) => {
         return {
             headers: {
@@ -129,7 +117,6 @@ export default {
         };
     },
     
-    // Helper function to build URL with query parameters
     buildUrl: (baseUri, queryParams) => {
         if (!queryParams) return baseUri;
         
@@ -142,13 +129,10 @@ export default {
     }
 };
 
-// Helper function to handle errors consistently
 function handleError(error, method, uri, noOp) {
     if (noOp) return;
     
     if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         const errorData = error.response.data || {};
         
         return {
@@ -156,7 +140,6 @@ function handleError(error, method, uri, noOp) {
             message: `${error.response.status}: ${method} - ${uri} ${errorData.message || error.response.statusText}`,
         };
     } else if (error.request) {
-        // The request was made but no response was received
         throw new AxiosClientError({
             errorMessage: 'Network error or DNS issue',
             requestMethod: method,
@@ -164,7 +147,6 @@ function handleError(error, method, uri, noOp) {
             stack: error.stack
         });
     } else {
-        // Something happened in setting up the request that triggered an Error
         throw new AxiosClientError({
             errorMessage: 'Request failed',
             requestMethod: method,

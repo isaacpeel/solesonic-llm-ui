@@ -1,13 +1,14 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 import './ChatScreen.css';
 import chatService from "../service/ChatService.js";
-import {parseSSELines} from "../service/SeeService.js";
+import streamService from "../service/StreamService.js";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
-import ChatMessage, {USER, AI} from "./ChatMessage.jsx";
+import ChatMessage, {AI, SYSTEM, USER} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
 import {toJsx} from "../util/htmlFunctions.jsx";
+import ElicitationPrompt from "./ElicitationPrompt.jsx";
 
 
 function ChatScreen() {
@@ -18,6 +19,11 @@ function ChatScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [inputValue, setInputValue] = useState('');
+
+    // MCP elicitation state
+    const [activeElicitation, setActiveElicitation] = useState(null);
+    const [elicitationValues, setElicitationValues] = useState({});
+    const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
 
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
@@ -74,6 +80,20 @@ function ChatScreen() {
         });
     };
 
+    // Handle streaming chunks including SSE frames for chunk/done/elicitation
+    const handleStreamChunk = useCallback((raw) => {
+        chatService.handleStreamChunk(raw, {
+            activeElicitation,
+            chatId,
+            appendToLastAIMessage,
+            ensureChatIdFromResponse,
+            finalizeLastAIMessage,
+            setActiveElicitation,
+            setElicitationSubmitting,
+            setElicitationValues,
+        });
+    }, [activeElicitation, chatId, appendToLastAIMessage, ensureChatIdFromResponse, finalizeLastAIMessage, setActiveElicitation, setElicitationSubmitting, setElicitationValues]);
+
     useEffect(() => {
         if (chatHistory.length === 0) {
             const welcomeMessage = {
@@ -109,6 +129,100 @@ function ChatScreen() {
         });
     }, [chatId, setChatHistory]);
 
+    // When an elicitation prompt becomes active, remove any trailing empty AI placeholder
+    useEffect(() => {
+        if (!activeElicitation) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            const lastMessage = newHistory[lastIndex];
+            const lastMessageIsEmptyAI = lastMessage.type === AI && (!lastMessage.text || lastMessage.text.trim() === '');
+
+            if (lastMessageIsEmptyAI) {
+                newHistory.pop();
+            }
+
+            return newHistory;
+        });
+    }, [activeElicitation, setChatHistory]);
+
+    const handleElicitationChange = (name, value) => {
+        setElicitationValues((previous) => ({
+            ...previous,
+            [name]: value,
+        }));
+    };
+
+    const handleElicitationSubmit = async (overrideFields) => {
+        if (!activeElicitation) {
+            return;
+        }
+
+        const fieldsToSend = {
+            ...elicitationValues,
+            ...(overrideFields || {}),
+        };
+
+        const ts = Date.now() + Math.random().toString(36).slice(2);
+
+        const summaryParts = Object.entries(fieldsToSend)
+            .filter(([key]) => key !== 'chatId')
+            .map(([, value]) => `${value}`);
+
+        const updatedHistory = chatHistory.filter(message => !message.ephemeral);
+        const systemElicitationMessage = { type: SYSTEM, text: activeElicitation.message, _key: `user-${ts}` };
+        const userElicitationResponse = { type: USER, text: summaryParts.join(', '), _key: `user-${ts}-resp` };
+        const aiPlaceholder = { type: AI, text: '', _key: `ai-${ts}`, isStreaming: true };
+
+        setChatHistory([...updatedHistory, systemElicitationMessage, userElicitationResponse, aiPlaceholder]);
+
+        setElicitationSubmitting(true);
+        
+        const elicitationId = activeElicitation.elicitationId;
+        const chatId = activeElicitation.chatId;
+
+        const responsePayload = {
+            elicitationResponse: {
+                name: activeElicitation.name,
+                fields: { ...fieldsToSend },
+            },
+        };
+
+        setError(null);
+
+        try {
+            await streamService.chatStreamElicitationResponse(responsePayload, chatId, elicitationId,{
+                onChunk: handleStreamChunk,
+            });
+        } catch (error) {
+            console.error('[ChatScreen] Elicitation streaming error:', error);
+            setError(error);
+            setChatHistory((previous) => {
+                const newHistory = [...previous];
+                const lastIndex = newHistory.length - 1;
+
+                if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
+                    newHistory.pop();
+                } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                    newHistory[lastIndex] = { ...newHistory[lastIndex], isStreaming: false };
+                }
+
+                return newHistory;
+            });
+        }
+
+        setActiveElicitation(null);
+        setElicitationSubmitting(false);
+    };
+
     const handleSubmit = async () => {
 
         if (!inputValue.trim()) {
@@ -117,11 +231,10 @@ function ChatScreen() {
 
         // Remove the ephemeral message before appending new user input
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
-        const ts = Date.now() + Math.random().toString(36).slice(2);
-        const userMessage = {type: USER, text: inputValue, _key: `user-${ts}`};
+        const timestamp = Date.now() + Math.random().toString(36).slice(2);
+        const userMessage = {type: USER, text: inputValue, _key: `user-${timestamp}`};
 
-        // Append user message and a placeholder AI message for streaming
-        const aiPlaceholder = {type: AI, text: '', _key: `ai-${ts}`, isStreaming: true};
+        const aiPlaceholder = {type: AI, text: '', _key: `ai-${timestamp}`, isStreaming: true};
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
         setInputValue('');
@@ -133,28 +246,8 @@ function ChatScreen() {
         setError(null);
 
         try {
-            // Ensure we handle raw SSE properly, supporting both:
-            // - onChunk receiving raw "event:.../data:..." strings
-            // - onChunk receiving plain text tokens
             await chatService.chatStream(inputValue, chatId, {
-                onChunk: (raw) => {
-                    const frames = parseSSELines(raw);
-
-                    if (frames.length === 0) {
-                        appendToLastAIMessage(String(raw));
-                        return;
-                    }
-
-                    for (const {event, data} of frames) {
-                        if (event === 'chunk') {
-                            appendToLastAIMessage(data);
-                        } else if (event === 'done') {
-                            const parsed = JSON.parse(data);
-                            ensureChatIdFromResponse(parsed);
-                            finalizeLastAIMessage(parsed);
-                        }
-                    }
-                },
+                onChunk: handleStreamChunk,
             });
 
         } catch (error) {
@@ -163,6 +256,7 @@ function ChatScreen() {
             setChatHistory((prev) => {
                 const newHistory = [...prev];
                 const lastIndex = newHistory.length - 1;
+
                 if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
                     newHistory.pop();
                 } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
@@ -188,6 +282,17 @@ function ChatScreen() {
                 {chatHistory.map((entry) => (
                     <ChatMessage key={entry._key} message={entry}/>
                 ))}
+
+                {activeElicitation && (
+                    <ElicitationPrompt
+                        elicitation={activeElicitation}
+                        values={elicitationValues}
+                        onChange={handleElicitationChange}
+                        onSubmit={handleElicitationSubmit}
+                        submitting={elicitationSubmitting}
+                    />
+                )}
+
                 <ChatInput
                     loading={loading}
                     inputValue={inputValue}

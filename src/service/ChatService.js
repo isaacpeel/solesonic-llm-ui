@@ -1,6 +1,7 @@
 import axiosClient from "../client/AxiosClient.js"
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
+import { parseSSELines } from "./SeeService.js";
 
 const chatService = {
     // Non-streaming chat (kept for backward compatibility)
@@ -21,11 +22,87 @@ const chatService = {
         return await axiosClient.post(uri, chatBody, options);
     },
 
+    // Handle streaming chunks including SSE frames for chunk/done/elicitation
+    handleStreamChunk: (raw, {
+        activeElicitation,
+        chatId,
+        appendToLastAIMessage,
+        ensureChatIdFromResponse,
+        finalizeLastAIMessage,
+        setActiveElicitation,
+        setElicitationSubmitting,
+        setElicitationValues,
+    }) => {
+        const frames = parseSSELines(raw);
+
+        if (frames.length === 0) {
+
+            if (activeElicitation) {
+                setActiveElicitation(null);
+                setElicitationSubmitting(false);
+            }
+
+            appendToLastAIMessage(String(raw));
+            return;
+        }
+
+        for (const { event, data } of frames) {
+            if (event === 'chunk' || event === 'message') {
+
+                if (activeElicitation) {
+                    setActiveElicitation(null);
+                    setElicitationSubmitting(false);
+                }
+
+                appendToLastAIMessage(data);
+            } else if (event === 'done') {
+                try {
+                    const parsed = JSON.parse(data);
+                    ensureChatIdFromResponse(parsed);
+                    finalizeLastAIMessage(parsed);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse done payload:', parseError);
+                }
+
+                setActiveElicitation(null);
+                setElicitationSubmitting(false);
+            } else if (event === 'elicitation') {
+                try {
+                    const elicitation = JSON.parse(data);
+
+                    setElicitationSubmitting(false);
+                    setActiveElicitation(elicitation);
+
+                    const schema = elicitation.requestedSchema || {};
+                    const properties = schema.properties || {};
+                    const initialValues = {};
+
+                    for (const propertyName of Object.keys(properties)) {
+                        if (propertyName === 'chatId') {
+                            initialValues[propertyName] = elicitation?._meta?.chatId || elicitation?.chatId || chatId || '';
+                        } else {
+                            initialValues[propertyName] = '';
+                        }
+                    }
+
+                    setElicitationValues(initialValues);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse elicitation payload:', parseError);
+                }
+            }
+        }
+    },
+
     // Streaming chat using text/event-stream per OpenAPI spec
     chatStream: async (userMessage, chatId, { onChunk } = {}) => {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
-        const body = JSON.stringify({ chatMessage: userMessage });
+
+        // Accept either a plain string (wrapped as { chatMessage }) or a structured object (sent as-is)
+        const payload = (typeof userMessage === 'string')
+            ? { chatMessage: userMessage }
+            : userMessage;
+        const body = JSON.stringify(payload);
 
         const uri = chatId
             ? `${config.streamingChatsUri}/${chatId}`
@@ -88,12 +165,15 @@ const chatService = {
 
                 let boundaryIndex;
                 while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
-                    const event = buffer.slice(0, boundaryIndex);
+                    const eventBlock = buffer.slice(0, boundaryIndex);
                     buffer = buffer.slice(boundaryIndex + 2);
 
-                    // Strip `data:` prefix
-                    const line = event.replace(/^data:\s?/, '').trim();
-                    if (line && onChunk) onChunk(line);
+                    if (onChunk) {
+                        const payload = eventBlock.trim();
+                        if (payload) {
+                            onChunk(payload);
+                        }
+                    }
                 }
             }
         } finally {
@@ -120,7 +200,9 @@ const chatService = {
         const options = axiosClient.setAuthHeader(accessToken);
 
         return await axiosClient.get(uri, options);
-    }
+    },
+
+
 }
 
 export default chatService;
