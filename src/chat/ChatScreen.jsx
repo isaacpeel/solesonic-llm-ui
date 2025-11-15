@@ -5,14 +5,14 @@ import {useSharedData} from "../context/useSharedData.jsx";
 import './ChatScreen.css';
 
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
-import ChatMessage, {AI, SYSTEM, USER} from "./ChatMessage.jsx";
+import ChatMessage, {AI, USER} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
 import {toJsx} from "../util/htmlFunctions.jsx";
 import ElicitationPrompt from "./ElicitationPrompt.jsx";
 
 import chatService from "../service/ChatService.js";
-import streamService from "../service/StreamService.js";
-import elicitationService from "../service/elicitationService.js";
+import streamService from "../service/StreamService.js"
+import elicitationService from "../service/ElicitationService.js";
 
 
 function ChatScreen() {
@@ -23,6 +23,9 @@ function ChatScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [inputValue, setInputValue] = useState('');
+    const [activeElicitation, setActiveElicitation] = useState(null);
+    const [elicitationValues, setElicitationValues] = useState({});
+    const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
 
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
@@ -95,11 +98,29 @@ function ChatScreen() {
         activeElicitation,
         chatId,
         appendToLastAIMessage,
-        nsureChatIdFromResponse,
+        ensureChatIdFromResponse,
         finalizeLastAIMessage,
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues]);
+
+    const handleElicitationChange = (fieldName, fieldValue) => {
+        elicitationService.handleElicitationChange(fieldName, fieldValue, setElicitationValues);
+    };
+
+    const handleElicitationSubmit = async (overrideFields) => {
+        await elicitationService.handleElicitationSubmit({
+            overrideFields,
+            activeElicitation,
+            elicitationValues,
+            chatHistory,
+            setChatHistory,
+            setActiveElicitation,
+            setElicitationSubmitting,
+            setError,
+            handleStreamChunk,
+        });
+    };
 
     useEffect(() => {
         if (chatHistory.length === 0) {
@@ -189,27 +210,8 @@ function ChatScreen() {
             });
 
         } catch (error) {
-            console.error('[ChatScreen] Streaming error:', error);
-            setError(error);
-            setChatHistory((prev) => {
-                const newHistory = [...prev];
-                const lastIndex = newHistory.length - 1;
-
-                if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
-                    newHistory.pop();
-                } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                    newHistory[lastIndex] = {...newHistory[lastIndex], isStreaming: false};
-                }
-                return newHistory;
-            });
-        } finally {
-            setLoading(false);
-            setTimeout(() => {
-                sharedRef.chatInputRef.current?.focus();
-            }, 300);
+            streamService.handleStreamError(error, setError, setChatHistory, AI);
         }
-
-        return true;
     }
 
     return (
