@@ -1,14 +1,18 @@
 import {useCallback, useEffect, useState} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
+
 import './ChatScreen.css';
-import chatService from "../service/ChatService.js";
-import streamService from "../service/StreamService.js";
+
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {AI, SYSTEM, USER} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
 import {toJsx} from "../util/htmlFunctions.jsx";
 import ElicitationPrompt from "./ElicitationPrompt.jsx";
+
+import chatService from "../service/ChatService.js";
+import streamService from "../service/StreamService.js";
+import elicitationService from "../service/elicitationService.js";
 
 
 function ChatScreen() {
@@ -19,11 +23,6 @@ function ChatScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [inputValue, setInputValue] = useState('');
-
-    // MCP elicitation state
-    const [activeElicitation, setActiveElicitation] = useState(null);
-    const [elicitationValues, setElicitationValues] = useState({});
-    const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
 
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
@@ -92,7 +91,15 @@ function ChatScreen() {
             setElicitationSubmitting,
             setElicitationValues,
         });
-    }, [activeElicitation, chatId, appendToLastAIMessage, ensureChatIdFromResponse, finalizeLastAIMessage, setActiveElicitation, setElicitationSubmitting, setElicitationValues]);
+    }, [
+        activeElicitation,
+        chatId,
+        appendToLastAIMessage,
+        nsureChatIdFromResponse,
+        finalizeLastAIMessage,
+        setActiveElicitation,
+        setElicitationSubmitting,
+        setElicitationValues]);
 
     useEffect(() => {
         if (chatHistory.length === 0) {
@@ -153,75 +160,6 @@ function ChatScreen() {
             return newHistory;
         });
     }, [activeElicitation, setChatHistory]);
-
-    const handleElicitationChange = (name, value) => {
-        setElicitationValues((previous) => ({
-            ...previous,
-            [name]: value,
-        }));
-    };
-
-    const handleElicitationSubmit = async (overrideFields) => {
-        if (!activeElicitation) {
-            return;
-        }
-
-        const fieldsToSend = {
-            ...elicitationValues,
-            ...(overrideFields || {}),
-        };
-
-        const ts = Date.now() + Math.random().toString(36).slice(2);
-
-        const summaryParts = Object.entries(fieldsToSend)
-            .filter(([key]) => key !== 'chatId')
-            .map(([, value]) => `${value}`);
-
-        const updatedHistory = chatHistory.filter(message => !message.ephemeral);
-        const systemElicitationMessage = { type: SYSTEM, text: activeElicitation.message, _key: `user-${ts}` };
-        const userElicitationResponse = { type: USER, text: summaryParts.join(', '), _key: `user-${ts}-resp` };
-        const aiPlaceholder = { type: AI, text: '', _key: `ai-${ts}`, isStreaming: true };
-
-        setChatHistory([...updatedHistory, systemElicitationMessage, userElicitationResponse, aiPlaceholder]);
-
-        setElicitationSubmitting(true);
-        
-        const elicitationId = activeElicitation.elicitationId;
-        const chatId = activeElicitation.chatId;
-
-        const responsePayload = {
-            elicitationResponse: {
-                name: activeElicitation.name,
-                fields: { ...fieldsToSend },
-            },
-        };
-
-        setError(null);
-
-        try {
-            await streamService.chatStreamElicitationResponse(responsePayload, chatId, elicitationId,{
-                onChunk: handleStreamChunk,
-            });
-        } catch (error) {
-            console.error('[ChatScreen] Elicitation streaming error:', error);
-            setError(error);
-            setChatHistory((previous) => {
-                const newHistory = [...previous];
-                const lastIndex = newHistory.length - 1;
-
-                if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
-                    newHistory.pop();
-                } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                    newHistory[lastIndex] = { ...newHistory[lastIndex], isStreaming: false };
-                }
-
-                return newHistory;
-            });
-        }
-
-        setActiveElicitation(null);
-        setElicitationSubmitting(false);
-    };
 
     const handleSubmit = async () => {
 
