@@ -119,7 +119,25 @@ const streamService = {
 
         return response;
     },
-};
+    handleStreamError(error, setError, setChatHistory, AI) {
+        console.error('[StreamService] Streaming error:', error);
+        setError(error);
 
+        setChatHistory((previousHistory) => {
+            const newHistory = [...previousHistory];
+            const lastIndex = newHistory.length - 1;
+
+            if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
+                // If the AI placeholder was never filled, remove it
+                newHistory.pop();
+            } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                // Otherwise, stop the streaming spinner
+                newHistory[lastIndex] = { ...newHistory[lastIndex], isStreaming: false };
+            }
+
+            return newHistory;
+        });
+    }
+};
 
 export default streamService;
