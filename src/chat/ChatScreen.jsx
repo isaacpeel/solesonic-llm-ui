@@ -1,17 +1,18 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
 
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
-import ChatMessage, {AI, USER} from "./ChatMessage.jsx";
+import ChatMessage, {AI, SYSTEM, USER} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
-import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
+import {toJsx} from "../util/htmlFunctions.jsx";
+import ElicitationPrompt from "./ElicitationPrompt.jsx";
 
 import chatService from "../service/ChatService.js";
-import streamService from "../service/StreamService.js"
-import elicitationService from "../service/ElicitationService.js";
+import streamService from "../service/StreamService.js";
+import elicitationService from "../service/elicitationService.js";
 
 
 function ChatScreen() {
@@ -22,15 +23,12 @@ function ChatScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [inputValue, setInputValue] = useState('');
-    const [activeElicitation, setActiveElicitation] = useState(null);
-    const [elicitationValues, setElicitationValues] = useState({});
-    const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
-    const controller = useRef(null);
 
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
     };
 
+    // Helper to append streaming text to the last AI message
     const appendToLastAIMessage = (textToAppend) => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -40,16 +38,12 @@ function ChatScreen() {
             }
 
             const newHistory = [...previousHistory];
-            const lastChatMessage = newHistory[lastIndex];
+            const lastMessage = newHistory[lastIndex];
 
-            if (lastChatMessage.type === AI) {
-                const lastMessage = lastChatMessage.text;
-
-                const joinedMessage = lastMessage+textToAppend;
-
+            if (lastMessage.type === AI) {
                 newHistory[lastIndex] = {
-                    ...lastChatMessage,
-                    text: joinedMessage,
+                    ...lastMessage,
+                    text: (lastMessage.text || '') + String(textToAppend),
                 };
             }
 
@@ -64,23 +58,18 @@ function ChatScreen() {
         }
     };
 
+    // Helper to finalize the last AI message with final content and metadata
     const finalizeLastAIMessage = (response) => {
         setChatHistory((previousHistory) => {
             const newHistory = [...previousHistory];
             const lastIndex = newHistory.length - 1;
 
             if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                let finalText = response?.message?.message ?? newHistory[lastIndex].text;
-
-                if (typeof finalText === 'string') {
-                    finalText = finalText
-                        .replace(/\r\n/g, '\n')
-                        .replace(/\n{3,}/g, '\n\n');
-                }
-
+                const finalText = response?.message?.message ?? newHistory[lastIndex].text;
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
                     text: finalText,
+                    formattedText: toJsx(finalText),
                     model: response?.message?.model ?? newHistory[lastIndex].model,
                     isStreaming: false,
                 };
@@ -106,50 +95,11 @@ function ChatScreen() {
         activeElicitation,
         chatId,
         appendToLastAIMessage,
-        ensureChatIdFromResponse,
+        nsureChatIdFromResponse,
         finalizeLastAIMessage,
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues]);
-
-    const handleStreamClose = useCallback((raw) => {
-        chatService.handleFinalChunk(raw, {
-            activeElicitation,
-            chatId,
-            appendToLastAIMessage,
-            ensureChatIdFromResponse,
-            finalizeLastAIMessage,
-            setActiveElicitation,
-            setElicitationSubmitting,
-            setElicitationValues,
-        });
-    }, [
-        activeElicitation,
-        chatId,
-        appendToLastAIMessage,
-        ensureChatIdFromResponse,
-        finalizeLastAIMessage,
-        setActiveElicitation,
-        setElicitationSubmitting,
-        setElicitationValues]);
-
-    const handleElicitationChange = (fieldName, fieldValue) => {
-        elicitationService.handleElicitationChange(fieldName, fieldValue, setElicitationValues);
-    };
-
-    const handleElicitationSubmit = async (overrideFields) => {
-        await elicitationService.handleElicitationSubmit({
-            overrideFields,
-            activeElicitation,
-            elicitationValues,
-            chatHistory,
-            setChatHistory,
-            setActiveElicitation,
-            setElicitationSubmitting,
-            setError,
-            handleStreamChunk,
-        });
-    };
 
     useEffect(() => {
         if (chatHistory.length === 0) {
@@ -171,12 +121,12 @@ function ChatScreen() {
         async function fetchChatDetails() {
             const response = await chatService.findChatDetails(chatId);
 
-            return response.chatMessages.map((message, index) => {
+            return response.chatMessages.map((message, idx) => {
                 return {
                     type: message.messageType,
                     text: message.message,
                     model: message.model,
-                    _key: message.id ?? `${chatId || 'new'}-${index}`,
+                    _key: message.id ?? `${chatId || 'new'}-${idx}`,
                 };
             });
         }
@@ -212,6 +162,7 @@ function ChatScreen() {
     }, [activeElicitation, setChatHistory]);
 
     const handleSubmit = async () => {
+
         if (!inputValue.trim()) {
             return;
         }
@@ -220,8 +171,8 @@ function ChatScreen() {
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
         const timestamp = Date.now() + Math.random().toString(36).slice(2);
         const userMessage = {type: USER, text: inputValue, _key: `user-${timestamp}`};
-        const aiPlaceholder = {type: AI, text: '', _key: `ai-${timestamp}`, isStreaming: true};
 
+        const aiPlaceholder = {type: AI, text: '', _key: `ai-${timestamp}`, isStreaming: true};
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
         setInputValue('');
@@ -233,22 +184,24 @@ function ChatScreen() {
         setError(null);
 
         try {
-            controller.current?.abort();
-            controller.current = new AbortController();
-
             await chatService.chatStream(inputValue, chatId, {
-                signal: controller.current.signal,
                 onChunk: handleStreamChunk,
-                onDone: handleStreamClose,
             });
 
         } catch (error) {
-            if (error.name === 'AbortError') {
-                console.log('[ChatScreen] Stream aborted.');
-                return;
-            }
+            console.error('[ChatScreen] Streaming error:', error);
+            setError(error);
+            setChatHistory((prev) => {
+                const newHistory = [...prev];
+                const lastIndex = newHistory.length - 1;
 
-            streamService.handleStreamError(error, setError, setChatHistory);
+                if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
+                    newHistory.pop();
+                } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                    newHistory[lastIndex] = {...newHistory[lastIndex], isStreaming: false};
+                }
+                return newHistory;
+            });
         } finally {
             setLoading(false);
             setTimeout(() => {
@@ -256,6 +209,7 @@ function ChatScreen() {
             }, 300);
         }
 
+        return true;
     }
 
     return (
