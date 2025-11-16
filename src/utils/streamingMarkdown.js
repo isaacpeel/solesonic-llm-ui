@@ -89,7 +89,7 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
 
             // For runLength == 2 (``), do nothing special — uncommon in our UX and most parsers handle it.
             charIndex = lookahead - 1;
-            continue;
+
         }
     }
 
@@ -249,7 +249,6 @@ function normalizeSpacesOutsideInlineCode(line) {
         } else {
             result += ' ';
         }
-        pendingSpaceCount = 0;
     }
 
     return result;
