@@ -60,13 +60,13 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
     let inlineBacktickOpen = false;
 
     // We only toggle inlineBacktickOpen when NOT inside a code fence and when backtick count is exactly 1.
-    for (let charIndex = 0; charIndex < text.length; charIndex += 1) {
-        const currentChar = text[charIndex];
+    for (let index = 0; index < text.length; index += 1) {
+        const currentChar = text[index];
 
         if (currentChar === '`') {
             // Count how many consecutive backticks start here
             let runLength = 1;
-            let lookahead = charIndex + 1;
+            let lookahead = index + 1;
 
             while (lookahead < text.length && text[lookahead] === '`') {
                 runLength += 1;
@@ -76,20 +76,20 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
             if (runLength >= 3) {
                 // Treat 3+ backticks as a fence marker
                 inCodeFence = !inCodeFence;
-                charIndex = lookahead - 1;
+                index = lookahead - 1;
                 continue;
             }
 
             if (!inCodeFence && runLength === 1) {
                 // Toggle inline code state outside fences
                 inlineBacktickOpen = !inlineBacktickOpen;
-                charIndex = lookahead - 1;
+                index = lookahead - 1;
                 continue;
             }
 
             // For runLength == 2 (``), do nothing special — uncommon in our UX and most parsers handle it.
-            charIndex = lookahead - 1;
-
+            index = lookahead - 1;
+            continue;
         }
     }
 
@@ -101,23 +101,15 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
     // Pass 3: unfinished list markers. Ensure lines ending with just a marker render as list items.
     // We add a NBSP to the end of such lines to give the parser a minimal content to latch onto.
     const lines = text.split('\n');
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-        const line = lines[lineIndex];
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
 
         if (/^\s*(?:[-*]|\d+\.)\s*$/.test(line)) {
             // Convert bare marker to marker + NBSP (non-breaking space)
-            lines[lineIndex] = line.replace(/\s*$/, ' \u00A0');
+            lines[i] = line.replace(/\s*$/, ' \u00A0');
         }
     }
     text = lines.join('\n');
-
-    // Pass 4: display-only space normalization outside code fences and inline code.
-    // Goal: avoid visual "extra spaces" caused by chunk boundaries (e.g., both chunks include a boundary space).
-    // Rules (streaming only):
-    // - Outside fenced or inline code: collapse runs of interior spaces to a single space.
-    // - Preserve up to two trailing spaces at the end of a line (Markdown hard line break).
-    // - Do not alter any characters inside fenced or inline code.
-    text = normalizeSpacesForStreaming(text);
 
     // Finally, apply closers in a safe order. We prefer closing fences first so that other repairs
     // are not accidentally interpreted inside an open fence.
@@ -142,114 +134,3 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
 }
 
 export default buildStreamingMarkdownDisplay;
-
-/**
- * Streaming-only space normalization.
- *
- * IMPORTANT: We must avoid changing spacing in code (fenced or inline). For non-code text, collapse interior
- * runs of multiple spaces to a single space, but preserve Markdown's hard line break (two trailing spaces).
- * This helps mitigate temporary double-spaces that appear when two adjacent chunks each include a boundary space.
- */
-function normalizeSpacesForStreaming(fullText) {
-    const lines = fullText.split('\n');
-
-    let insideFence = false;
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-        const currentLine = lines[lineIndex];
-
-        const hasFenceMarker = currentLine.includes('```');
-
-        if (insideFence) {
-            // Keep code fence content exactly as-is
-            lines[lineIndex] = currentLine;
-
-        } else {
-            // If the line starts with 4+ spaces or a tab, it is an indented code block in Markdown. Preserve as-is.
-            if (/^(?: {4,}|\t)/.test(currentLine)) {
-                lines[lineIndex] = currentLine;
-            } else {
-                // Normalize spaces outside fences while respecting inline code (`...`).
-                lines[lineIndex] = normalizeSpacesOutsideInlineCode(currentLine);
-            }
-        }
-
-        if (hasFenceMarker) {
-            insideFence = !insideFence;
-        }
-    }
-
-    return lines.join('\n');
-}
-
-function normalizeSpacesOutsideInlineCode(line) {
-    // Process a single line, collapsing interior spaces outside inline code segments delimited by single backticks.
-    // Inline code in Markdown does not span newlines, so per-line processing is safe.
-    let insideInline = false;
-    let result = '';
-    let pendingSpaceCount = 0;
-    let hasSeenNonSpace = false;
-
-    for (let charIndex = 0; charIndex < line.length; charIndex += 1) {
-        const character = line[charIndex];
-
-        if (character === '`') {
-
-            if (pendingSpaceCount > 0) {
-                // Flush pending spaces before toggling into/out of inline code.
-                // Preserve leading spaces exactly until first non-space appears; otherwise collapse to one.
-                if (!hasSeenNonSpace) {
-                    result += ' '.repeat(pendingSpaceCount);
-                } else {
-                    result += ' ';
-                }
-                pendingSpaceCount = 0;
-            }
-
-            insideInline = !insideInline;
-            result += '`';
-            continue;
-        }
-
-        if (insideInline) {
-            // Preserve characters exactly inside inline code
-            if (pendingSpaceCount > 0) {
-                result += ' '.repeat(pendingSpaceCount);
-                pendingSpaceCount = 0;
-            }
-            result += character;
-            continue;
-        }
-
-        if (character === ' ') {
-            pendingSpaceCount += 1;
-            continue;
-        }
-
-        if (pendingSpaceCount > 0) {
-            // For leading spaces (before first non-space), preserve as-is. After first non-space, collapse to one.
-            if (!hasSeenNonSpace) {
-                result += ' '.repeat(pendingSpaceCount);
-            } else {
-                result += ' ';
-            }
-            pendingSpaceCount = 0;
-        }
-
-        if (!hasSeenNonSpace && character !== ' ') {
-            hasSeenNonSpace = true;
-        }
-        result += character;
-    }
-
-    // Handle trailing spaces: preserve up to two for Markdown hard break
-    if (!insideInline && pendingSpaceCount > 0) {
-        if (pendingSpaceCount >= 2) {
-            result += '  ';
-
-        } else {
-            result += ' ';
-        }
-    }
-
-    return result;
-}

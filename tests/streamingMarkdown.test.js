@@ -42,22 +42,4 @@ describe('buildStreamingMarkdownDisplay - normalization', () => {
         const display = buildStreamingMarkdownDisplay(raw, { isFinal: true });
         expect(display).toBe('a\n\n\nb');
     });
-
-    it('collapses interior multi-space runs outside code/inline code during streaming', () => {
-        const raw = 'Hello   world   here';
-        const display = buildStreamingMarkdownDisplay(raw, { isFinal: false });
-        expect(display).toBe('Hello world here');
-    });
-
-    it('preserves up to two trailing spaces for markdown hard line break during streaming', () => {
-        const raw = 'Line with hard break  ';
-        const display = buildStreamingMarkdownDisplay(raw, { isFinal: false });
-        expect(display.endsWith('  ')).toBe(true);
-    });
-
-    it('does not alter spaces inside inline code during streaming', () => {
-        const raw = 'Use `inline   code` here';
-        const display = buildStreamingMarkdownDisplay(raw, { isFinal: false });
-        expect(display).toBe('Use `inline   code` here');
-    });
 });
