@@ -9,7 +9,6 @@ const elicitationService = {
             [fieldName]: fieldValue,
         }));
     },
-
     handleElicitationSubmit: async ({
         overrideFields,
         activeElicitation,
