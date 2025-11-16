@@ -20,7 +20,7 @@ const elicitationService = {
         setError,
         handleStreamChunk,
     }) => {
-        activeElicitation.elicitationId = undefined;
+        
         if (!activeElicitation) {
             return;
         }
