@@ -33,6 +33,12 @@ function ChatScreen() {
     };
 
     // Helper to append streaming text to the last AI message
+    // Formatting rules:
+    // - Maintain a single canonical text buffer (no trimming, no manual spaces between chunks)
+    // - Normalize line endings to \n
+    // - Collapse absurd blank lines (3+ newlines -> 2)
+    // - Strip leading newlines only at the very beginning of a new AI message
+    // - Derive formattedText using the same pipeline as final rendering (toJsx)
     const appendToLastAIMessage = (textToAppend) => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -45,9 +51,24 @@ function ChatScreen() {
             const lastMessage = newHistory[lastIndex];
 
             if (lastMessage.type === AI) {
+                const incoming = String(textToAppend);
+
+                // If this is the very beginning of an AI message, strip redundant leading newlines only once
+                const isBeginningOfMessage = !lastMessage.text || lastMessage.text.length === 0;
+                const incomingAdjusted = isBeginningOfMessage ? incoming.replace(/^\n+/, '') : incoming;
+
+                // Build updated text without trimming (to keep model-intended spaces)
+                const updatedRawText = (lastMessage.text || '') + incomingAdjusted;
+
+                // Light-touch normalization for rendering stability during streaming
+                let normalizedText = updatedRawText.replace(/\r\n/g, '\n');
+                // Collapse 3+ consecutive newlines into exactly 2 (keep paragraph separation)
+                normalizedText = normalizedText.replace(/\n{3,}/g, '\n\n');
+
                 newHistory[lastIndex] = {
                     ...lastMessage,
-                    text: (lastMessage.text || '') + String(textToAppend),
+                    text: normalizedText,
+                    formattedText: toJsx(normalizedText),
                 };
             }
 
