@@ -48,7 +48,6 @@ const chatService = {
         }
 
         for (const {event, data} of frames) {
-            console.log("Event: ", event);
             if (event === 'chunk' || event === 'message') {
 
                 if (activeElicitation) {
