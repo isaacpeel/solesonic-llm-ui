@@ -1,7 +1,8 @@
 import axiosClient from "../client/AxiosClient.js"
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
-import { parseSSELines } from "./SeeService.js";
+import {parseSSELines} from "./SeeService.js";
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 const chatService = {
     // Non-streaming chat (kept for backward compatibility)
@@ -46,7 +47,8 @@ const chatService = {
             return;
         }
 
-        for (const { event, data } of frames) {
+        for (const {event, data} of frames) {
+            console.log("Event: ", event);
             if (event === 'chunk' || event === 'message') {
 
                 if (activeElicitation) {
@@ -93,96 +95,65 @@ const chatService = {
         }
     },
 
-    // Streaming chat using text/event-stream per OpenAPI spec
-    chatStream: async (userMessage, chatId, { onChunk } = {}) => {
+    // Streaming chat using fetchEventSource (SSE). This replaces manual ReadableStream parsing.
+    async chatStream(userMessage, chatId, {onChunk, onDone, signal} = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
 
-        // Accept either a plain string (wrapped as { chatMessage }) or a structured object (sent as-is)
-        const payload = (typeof userMessage === 'string')
-            ? { chatMessage: userMessage }
-            : userMessage;
-        const body = JSON.stringify(payload);
+        const {uri, method} = buildStreamingRequest(chatId, userId, config.streamingChatsUri);
+        const body = JSON.stringify(normalizePayload(userMessage));
 
-        const uri = chatId
-            ? `${config.streamingChatsUri}/${chatId}`
-            : `${config.streamingChatsUri}/users/${userId}`;
-
-        const method = chatId ? 'PUT' : 'POST';
-
-        let response;
+        // Note: fetchEventSource handles SSE framing. We adapt each message back into an
+        // "event: <type>\ndata: <payload>\n\n" string so existing handleStreamChunk + parseSSELines keep working.
         try {
-            response = await fetch(uri, {
+            await fetchEventSource(uri, {
                 method,
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'text/event-stream'
-                },
                 body,
+                signal,
                 mode: 'cors',
-                credentials: 'same-origin'
-            });
-        } catch (fetchError) {
-            console.error('[ChatService] Fetch failed:', {
-                uri,
-                method,
-                error: fetchError.message,
-                stack: fetchError.stack
-            });
-            throw new Error(`Failed to connect to streaming endpoint: ${fetchError.message}`);
-        }
-
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unable to read error response');
-            console.error('[ChatService] Streaming request failed:', {
-                status: response.status,
-                statusText: response.statusText,
-                uri,
-                method,
-                errorBody: errorText
-            });
-            throw new Error(`Streaming request failed: ${response.status} ${response.statusText}. ${errorText}`);
-        }
-
-        if (!response.body) {
-            console.error('[ChatService] Response body is null or undefined');
-            throw new Error('Streaming response has no body - server may not support streaming');
-        }
-
-        console.debug('[ChatService] Streaming connection established:', { uri, method });
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-
-                let boundaryIndex;
-                while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
-                    const eventBlock = buffer.slice(0, boundaryIndex);
-                    buffer = buffer.slice(boundaryIndex + 2);
+                credentials: 'same-origin',
+                openWhenHidden: true,
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'text/event-stream'
+                },
+                onopen(response) {
+                    if (!response.ok) {
+                        throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
+                    }
+                },
+                onmessage(ev) {
+                    const eventType = ev?.event && ev.event.length > 0 ? ev.event : 'message';
+                    const dataString = ev?.data ?? '';
+                    const frameString = `event: ${eventType}\n` + `data: ${dataString}\n\n`;
 
                     if (onChunk) {
-                        const payload = eventBlock.trim();
-                        if (payload) {
-                            onChunk(payload);
-                        }
+                        onChunk(frameString);
+                    }
+                },
+                onerror(err) {
+                    // Allow AbortError to bubble so UI does not treat it as error
+                    if (err?.name === 'AbortError') {
+                        throw err;
+                    }
+                    console.error('[ChatService] SSE onerror:', err);
+                    throw err instanceof Error ? err : new Error(String(err));
+                },
+                onclose() {
+                    if (onDone) {
+                        onDone();
                     }
                 }
+            });
+        } catch (err) {
+            // Preserve abort semantics
+            if (err?.name === 'AbortError') {
+                throw err;
             }
-        } finally {
-            reader.releaseLock();
+            console.error('[ChatService] Streaming connection failed:', err);
+            throw new Error(`Streaming connection failed: ${err.message || String(err)}`);
         }
-
-
-        // Return raw response in case caller wants headers (e.g., new chat id via header)
-        return response;
     },
 
     findChatDetails: async (chatId) => {
@@ -204,5 +175,23 @@ const chatService = {
 
 
 }
+
+// Removed manual ReadableStream parsing utilities. fetchEventSource now provides
+// message callbacks, and we adapt them into SSE-like frames for existing logic.
+
+function buildStreamingRequest(chatId, userId, baseUri) {
+    return chatId
+        ? {uri: `${baseUri}/${chatId}`, method: 'PUT'}
+        : {uri: `${baseUri}/users/${userId}`, method: 'POST'};
+}
+
+function normalizePayload(input) {
+    return typeof input === 'string'
+        ? {chatMessage: input}
+        : input;
+}
+
+// (Intentionally left blank after refactor)
+
 
 export default chatService;

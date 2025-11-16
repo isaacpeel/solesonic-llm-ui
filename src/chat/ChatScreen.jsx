@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -26,6 +26,7 @@ function ChatScreen() {
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
+    const controller = useRef(null);
 
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
@@ -183,7 +184,6 @@ function ChatScreen() {
     }, [activeElicitation, setChatHistory]);
 
     const handleSubmit = async () => {
-
         if (!inputValue.trim()) {
             return;
         }
@@ -205,13 +205,28 @@ function ChatScreen() {
         setError(null);
 
         try {
+            controller.current?.abort();
+            controller.current = new AbortController();
+
             await chatService.chatStream(inputValue, chatId, {
+                signal: controller.current.signal,
                 onChunk: handleStreamChunk,
             });
 
         } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('[ChatScreen] Stream aborted.');
+                return;
+            }
+
             streamService.handleStreamError(error, setError, setChatHistory, AI);
+        } finally {
+            setLoading(false);
+            setTimeout(() => {
+                sharedRef.chatInputRef.current?.focus();
+            }, 300);
         }
+
     }
 
     return (
