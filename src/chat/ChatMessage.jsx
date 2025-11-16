@@ -4,6 +4,7 @@ import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ReactMarkdown from "react-markdown";
 import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
+import remarkGfm from "remark-gfm";
 
 export const USER = "USER";
 export const AI = "ASSISTANT";
@@ -43,7 +44,7 @@ function ChatMessage({message}) {
                     ) : (
                         // Wrap markdown so we can scope CSS (lists, spacing) without affecting other text
                         <div className="markdown-body">
-                            <ReactMarkdown>{displayText || ''}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText || ''}</ReactMarkdown>
                         </div>
                     )}
                 </div>
