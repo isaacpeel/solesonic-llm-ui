@@ -7,7 +7,7 @@ import './ChatScreen.css';
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {AI, USER} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
-import ElicitationPrompt from "./ElicitationPrompt.jsx";
+import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 
 import chatService from "../service/ChatService.js";
 import streamService from "../service/StreamService.js"
@@ -31,12 +31,6 @@ function ChatScreen() {
         setInputValue(event.target.value);
     };
 
-    // Helper to append streaming text to the last AI message
-    // Formatting rules:
-    // - Maintain a single canonical text buffer (no trimming, no manual spaces between chunks)
-    // - Normalize line endings to \n
-    // - Collapse absurd blank lines (3+ newlines -> 2)
-    // - Strip leading newlines only at the very beginning of a new AI message
     const appendToLastAIMessage = (textToAppend) => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -46,26 +40,16 @@ function ChatScreen() {
             }
 
             const newHistory = [...previousHistory];
-            const lastMessage = newHistory[lastIndex];
+            const lastChatMessage = newHistory[lastIndex];
 
-            if (lastMessage.type === AI) {
-                const incoming = String(textToAppend);
+            if (lastChatMessage.type === AI) {
+                const lastMessage = lastChatMessage.text;
 
-                // If this is the very beginning of an AI message, strip redundant leading newlines only once
-                const isBeginningOfMessage = !lastMessage.text || lastMessage.text.length === 0;
-                const incomingAdjusted = isBeginningOfMessage ? incoming.replace(/^\n+/, '') : incoming;
-
-                // Build updated text without trimming (to keep model-intended spaces)
-                const updatedRawText = (lastMessage.text || '') + incomingAdjusted;
-
-                // Light-touch normalization for rendering stability during streaming
-                let normalizedText = updatedRawText.replace(/\r\n/g, '\n');
-                // Collapse 3+ consecutive newlines into exactly 2 (keep paragraph separation)
-                normalizedText = normalizedText.replace(/\n{3,}/g, '\n\n');
+                const joinedMessage = lastMessage+textToAppend;
 
                 newHistory[lastIndex] = {
-                    ...lastMessage,
-                    text: normalizedText,
+                    ...lastChatMessage,
+                    text: joinedMessage,
                 };
             }
 
@@ -80,19 +64,20 @@ function ChatScreen() {
         }
     };
 
-    // Helper to finalize the last AI message with final content and metadata
     const finalizeLastAIMessage = (response) => {
         setChatHistory((previousHistory) => {
             const newHistory = [...previousHistory];
             const lastIndex = newHistory.length - 1;
 
             if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                // Prefer server-provided final message if present
                 let finalText = response?.message?.message ?? newHistory[lastIndex].text;
-                // Normalize final text similarly to streaming normalization
+
                 if (typeof finalText === 'string') {
-                    finalText = finalText.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+                    finalText = finalText
+                        .replace(/\r\n/g, '\n')
+                        .replace(/\n{3,}/g, '\n\n');
                 }
+
                 console.log('[ChatScreen] Final AI message text:', finalText);
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
@@ -109,6 +94,27 @@ function ChatScreen() {
     // Handle streaming chunks including SSE frames for chunk/done/elicitation
     const handleStreamChunk = useCallback((raw) => {
         chatService.handleStreamChunk(raw, {
+            activeElicitation,
+            chatId,
+            appendToLastAIMessage,
+            ensureChatIdFromResponse,
+            finalizeLastAIMessage,
+            setActiveElicitation,
+            setElicitationSubmitting,
+            setElicitationValues,
+        });
+    }, [
+        activeElicitation,
+        chatId,
+        appendToLastAIMessage,
+        ensureChatIdFromResponse,
+        finalizeLastAIMessage,
+        setActiveElicitation,
+        setElicitationSubmitting,
+        setElicitationValues]);
+
+    const handleStreamClose = useCallback((raw) => {
+        chatService.handleFinalChunk(raw, {
             activeElicitation,
             chatId,
             appendToLastAIMessage,
@@ -166,12 +172,12 @@ function ChatScreen() {
         async function fetchChatDetails() {
             const response = await chatService.findChatDetails(chatId);
 
-            return response.chatMessages.map((message, idx) => {
+            return response.chatMessages.map((message, index) => {
                 return {
                     type: message.messageType,
                     text: message.message,
                     model: message.model,
-                    _key: message.id ?? `${chatId || 'new'}-${idx}`,
+                    _key: message.id ?? `${chatId || 'new'}-${index}`,
                 };
             });
         }
@@ -215,8 +221,8 @@ function ChatScreen() {
         const updatedHistory = chatHistory.filter(message => !message.ephemeral);
         const timestamp = Date.now() + Math.random().toString(36).slice(2);
         const userMessage = {type: USER, text: inputValue, _key: `user-${timestamp}`};
-
         const aiPlaceholder = {type: AI, text: '', _key: `ai-${timestamp}`, isStreaming: true};
+
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
         setInputValue('');
@@ -234,6 +240,7 @@ function ChatScreen() {
             await chatService.chatStream(inputValue, chatId, {
                 signal: controller.current.signal,
                 onChunk: handleStreamChunk,
+                onDone: handleStreamClose,
             });
 
         } catch (error) {

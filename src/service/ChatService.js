@@ -1,8 +1,7 @@
 import axiosClient from "../client/AxiosClient.js"
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
-import {parseSSELines} from "./SeeService.js";
-import { fetchEventSource } from '@microsoft/fetch-event-source';
+import {fetchEventSource} from '@microsoft/fetch-event-source';
 
 const chatService = {
     // Non-streaming chat (kept for backward compatibility)
@@ -23,8 +22,12 @@ const chatService = {
         return await axiosClient.post(uri, chatBody, options);
     },
 
+    handleFinalChunk: () => {
+        console.log("Stream closed")
+    },
+
     // Handle streaming chunks including SSE frames for chunk/done/elicitation
-    handleStreamChunk: (raw, {
+    handleStreamChunk: (eventPayload, {
         activeElicitation,
         chatId,
         appendToLastAIMessage,
@@ -34,68 +37,55 @@ const chatService = {
         setElicitationSubmitting,
         setElicitationValues,
     }) => {
-        const frames = parseSSELines(raw);
+        const {content} = JSON.parse(eventPayload.data);
+        const event = eventPayload.event;
 
-        if (frames.length === 0) {
-
+        if (event === 'chunk' || event === 'message') {
             if (activeElicitation) {
                 setActiveElicitation(null);
                 setElicitationSubmitting(false);
             }
 
-            appendToLastAIMessage(String(raw));
-            return;
-        }
+            appendToLastAIMessage(content);
+        } else if (event === 'done') {
+            try {
+                const payloadData = JSON.parse(eventPayload.data);
+                ensureChatIdFromResponse(payloadData);
+                finalizeLastAIMessage(payloadData);
+            } catch (parseError) {
+                console.error('[ChatService] Failed to parse done payload:', parseError);
+            }
 
-        for (const {event, data} of frames) {
-            if (event === 'chunk' || event === 'message') {
+            setActiveElicitation(null);
+            setElicitationSubmitting(false);
+        } else if (event === 'elicitation') {
+            try {
+                const elicitation = JSON.parse(data);
 
-                if (activeElicitation) {
-                    setActiveElicitation(null);
-                    setElicitationSubmitting(false);
-                }
-
-                appendToLastAIMessage(data);
-            } else if (event === 'done') {
-                try {
-                    const parsed = JSON.parse(data);
-                    ensureChatIdFromResponse(parsed);
-                    finalizeLastAIMessage(parsed);
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse done payload:', parseError);
-                }
-
-                setActiveElicitation(null);
                 setElicitationSubmitting(false);
-            } else if (event === 'elicitation') {
-                try {
-                    const elicitation = JSON.parse(data);
+                setActiveElicitation(elicitation);
 
-                    setElicitationSubmitting(false);
-                    setActiveElicitation(elicitation);
+                const schema = elicitation.requestedSchema || {};
+                const properties = schema.properties || {};
+                const initialValues = {};
 
-                    const schema = elicitation.requestedSchema || {};
-                    const properties = schema.properties || {};
-                    const initialValues = {};
-
-                    for (const propertyName of Object.keys(properties)) {
-                        if (propertyName === 'chatId') {
-                            initialValues[propertyName] = elicitation?._meta?.chatId || elicitation?.chatId || chatId || '';
-                        } else {
-                            initialValues[propertyName] = '';
-                        }
+                for (const propertyName of Object.keys(properties)) {
+                    if (propertyName === 'chatId') {
+                        initialValues[propertyName] = elicitation?._meta?.chatId || elicitation?.chatId || chatId || '';
+                    } else {
+                        initialValues[propertyName] = '';
                     }
-
-                    setElicitationValues(initialValues);
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse elicitation payload:', parseError);
                 }
+
+                setElicitationValues(initialValues);
+            } catch (parseError) {
+                console.error('[ChatService] Failed to parse elicitation payload:', parseError);
             }
         }
     },
 
     // Streaming chat using fetchEventSource (SSE). This replaces manual ReadableStream parsing.
-    async chatStream(userMessage, chatId, {onChunk, onDone, signal} = {}) {
+    async chatStream(userMessage, chatId, {onChunk, signal} = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
 
@@ -122,13 +112,9 @@ const chatService = {
                         throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
                     }
                 },
-                onmessage(ev) {
-                    const eventType = ev?.event && ev.event.length > 0 ? ev.event : 'message';
-                    const dataString = ev?.data ?? '';
-                    const frameString = `event: ${eventType}\n` + `data: ${dataString}\n\n`;
-
+                onmessage(eventPayload) {
                     if (onChunk) {
-                        onChunk(frameString);
+                        onChunk(eventPayload);
                     }
                 },
                 onerror(err) {
@@ -138,11 +124,6 @@ const chatService = {
                     }
                     console.error('[ChatService] SSE onerror:', err);
                     throw err instanceof Error ? err : new Error(String(err));
-                },
-                onclose() {
-                    if (onDone) {
-                        onDone();
-                    }
                 }
             });
         } catch (err) {
@@ -175,9 +156,6 @@ const chatService = {
 
 }
 
-// Removed manual ReadableStream parsing utilities. fetchEventSource now provides
-// message callbacks, and we adapt them into SSE-like frames for existing logic.
-
 function buildStreamingRequest(chatId, userId, baseUri) {
     return chatId
         ? {uri: `${baseUri}/${chatId}`, method: 'PUT'}
@@ -189,8 +167,5 @@ function normalizePayload(input) {
         ? {chatMessage: input}
         : input;
 }
-
-// (Intentionally left blank after refactor)
-
 
 export default chatService;
