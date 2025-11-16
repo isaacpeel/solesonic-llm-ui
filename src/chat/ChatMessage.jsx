@@ -3,6 +3,7 @@ import {useMemo} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ReactMarkdown from "react-markdown";
+import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
 
 export const USER = "USER";
 export const AI = "ASSISTANT";
@@ -13,12 +14,17 @@ function ChatMessage({message}) {
     const hasText = message.text && message.text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText;
 
-    useMemo(() => {
-        if (!showPlaceholder) {
-            return message.text || '';
+    // During streaming, render a "repaired" markdown string so formatting appears earlier.
+    // We never mutate the final stored text; this only affects what is displayed while streaming.
+    const displayText = useMemo(() => {
+        if (showPlaceholder) {
+            return null;
         }
-        return null;
-    }, [message.text, showPlaceholder]);
+
+        const rawText = message.text || '';
+        const isFinal = !message.isStreaming;
+        return buildStreamingMarkdownDisplay(rawText, { isFinal });
+    }, [message.text, message.isStreaming, showPlaceholder]);
 
     return (
         <div className={`chat-message-container ${message.type}`}>
@@ -37,7 +43,7 @@ function ChatMessage({message}) {
                     ) : (
                         // Wrap markdown so we can scope CSS (lists, spacing) without affecting other text
                         <div className="markdown-body">
-                            <ReactMarkdown>{message.text || ''}</ReactMarkdown>
+                            <ReactMarkdown>{displayText || ''}</ReactMarkdown>
                         </div>
                     )}
                 </div>
