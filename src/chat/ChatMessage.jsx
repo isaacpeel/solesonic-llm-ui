@@ -35,16 +35,10 @@ function ChatMessage({message}) {
                     {showPlaceholder ? (
                         <span className="message-placeholder">Thinking...</span>
                     ) : (
-                        // Prefer the pre-formatted JSX computed from the canonical text buffer
-                        // to keep streaming and final render paths consistent. Fallback to
-                        // ReactMarkdown on raw text if formattedText is not provided.
-                        <>
-                            {message.formattedText ? (
-                                message.formattedText
-                            ) : (
-                                <ReactMarkdown>{message.text}</ReactMarkdown>
-                            )}
-                        </>
+                        // Wrap markdown so we can scope CSS (lists, spacing) without affecting other text
+                        <div className="markdown-body">
+                            <ReactMarkdown>{message.text || ''}</ReactMarkdown>
+                        </div>
                     )}
                 </div>
             </div>

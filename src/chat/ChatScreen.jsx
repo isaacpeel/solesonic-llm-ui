@@ -7,7 +7,6 @@ import './ChatScreen.css';
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import ChatMessage, {AI, USER} from "./ChatMessage.jsx";
 import ChatInput from "./ChatInput.jsx";
-import {toJsx} from "../util/htmlFunctions.jsx";
 import ElicitationPrompt from "./ElicitationPrompt.jsx";
 
 import chatService from "../service/ChatService.js";
@@ -38,7 +37,6 @@ function ChatScreen() {
     // - Normalize line endings to \n
     // - Collapse absurd blank lines (3+ newlines -> 2)
     // - Strip leading newlines only at the very beginning of a new AI message
-    // - Derive formattedText using the same pipeline as final rendering (toJsx)
     const appendToLastAIMessage = (textToAppend) => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -68,7 +66,6 @@ function ChatScreen() {
                 newHistory[lastIndex] = {
                     ...lastMessage,
                     text: normalizedText,
-                    formattedText: toJsx(normalizedText),
                 };
             }
 
@@ -90,11 +87,16 @@ function ChatScreen() {
             const lastIndex = newHistory.length - 1;
 
             if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                const finalText = response?.message?.message ?? newHistory[lastIndex].text;
+                // Prefer server-provided final message if present
+                let finalText = response?.message?.message ?? newHistory[lastIndex].text;
+                // Normalize final text similarly to streaming normalization
+                if (typeof finalText === 'string') {
+                    finalText = finalText.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+                }
+                console.log('[ChatScreen] Final AI message text:', finalText);
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
                     text: finalText,
-                    formattedText: toJsx(finalText),
                     model: response?.message?.model ?? newHistory[lastIndex].model,
                     isStreaming: false,
                 };

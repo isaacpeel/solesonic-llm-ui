@@ -66,10 +66,36 @@
     flex-grow: 1; /* Allow it to take up available space */
     word-wrap: break-word; /* Ensure long words wrap */
     overflow-wrap: anywhere; /* Break long strings at any point */
-    white-space: pre-wrap; /* Preserve whitespace and wrap text */
+    /* Do not force pre-wrap globally because it breaks markdown list layout */
+    white-space: normal;
     max-width: 100%; /* Constrain to container width */
     overflow: hidden; /* Prevent overflow */
     text-overflow: ellipsis;
+}
+
+/* Markdown rendering tweaks: keep markers visible and spacing pleasant */
+.message-text .markdown-body {
+    white-space: normal; /* Allow markdown to control its own wrapping */
+}
+
+.message-text .markdown-body p {
+    margin: 0.5rem 0; /* Paragraph spacing */
+}
+
+.message-text .markdown-body ol {
+    list-style: decimal;
+    padding-left: 1.75rem;
+    margin: 0.5rem 0;
+}
+
+.message-text .markdown-body ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+    margin: 0.5rem 0;
+}
+
+.message-text .markdown-body li {
+    margin: 0.25rem 0;
 }
 
 .info-icon {
