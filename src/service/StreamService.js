@@ -1,6 +1,7 @@
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import { fetchEventSource } from '@microsoft/fetch-event-source';
+import {AI} from "../chat/ChatMessage.jsx"
 
 const streamService = {
     chatStreamElicitationResponse: async (
@@ -45,9 +46,9 @@ const streamService = {
                         throw new Error(`Streaming request failed: ${response.status} ${response.statusText}`);
                     }
                 },
-                onmessage(ev) {
-                    const eventType = ev?.event && ev.event.length > 0 ? ev.event : 'message';
-                    const dataString = ev?.data ?? '';
+                onmessage(eventSourceMessage) {
+                    const eventType = eventSourceMessage?.event && eventSourceMessage.event.length > 0 ? eventSourceMessage.event : 'message';
+                    const dataString = eventSourceMessage?.data ?? '';
                     const frameString = `event: ${eventType}\n` + `data: ${dataString}\n\n`;
 
                     if (onChunk) {
@@ -58,12 +59,12 @@ const streamService = {
                         }
                     }
                 },
-                onerror(err) {
-                    if (err?.name === 'AbortError') {
-                        throw err;
+                onerror(error) {
+                    if (error?.name === 'AbortError') {
+                        throw error;
                     }
-                    console.error('[ChatService] SSE onerror (elicitation):', err);
-                    throw err instanceof Error ? err : new Error(String(err));
+                    console.error('[ChatService] SSE onerror (elicitation):', error);
+                    throw error instanceof Error ? error : new Error(String(error));
                 },
                 onclose() {
                     if (timeoutId) {
@@ -89,7 +90,7 @@ const streamService = {
             }
         }
     },
-    handleStreamError(error, setError, setChatHistory, AI) {
+    handleStreamError(error, setError, setChatHistory) {
         console.error('[StreamService] Streaming error:', error);
         setError(error);
 
@@ -98,10 +99,8 @@ const streamService = {
             const lastIndex = newHistory.length - 1;
 
             if (lastIndex >= 0 && newHistory[lastIndex].type === AI && !newHistory[lastIndex].text) {
-                // If the AI placeholder was never filled, remove it
                 newHistory.pop();
             } else if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                // Otherwise, stop the streaming spinner
                 newHistory[lastIndex] = { ...newHistory[lastIndex], isStreaming: false };
             }
 
