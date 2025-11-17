@@ -62,7 +62,7 @@ const elicitationService = {
                 onChunk: handleStreamChunk,
             });
         } catch (error) {
-            streamService.handleStreamError(error, setError, setChatHistory, AI);
+            streamService.handleStreamError(error, setError, setChatHistory);
         }
 
         setActiveElicitation(null);

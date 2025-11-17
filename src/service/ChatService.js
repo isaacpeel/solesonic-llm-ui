@@ -3,6 +3,11 @@ import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import {fetchEventSource} from '@microsoft/fetch-event-source';
 
+export const CHUNK = "chunk";
+export const MESSAGE = "message";
+export const DONE = "done";
+export const ELICITATION = "elicitation";
+
 const chatService = {
     // Non-streaming chat (kept for backward compatibility)
     chat: async (userMessage, chatId) => {
@@ -40,47 +45,52 @@ const chatService = {
         const {content} = JSON.parse(eventPayload.data);
         const event = eventPayload.event;
 
-        if (event === 'chunk' || event === 'message') {
-            if (activeElicitation) {
-                setActiveElicitation(null);
-                setElicitationSubmitting(false);
-            }
-
-            appendToLastAIMessage(content);
-        } else if (event === 'done') {
-            try {
-                const payloadData = JSON.parse(eventPayload.data);
-                ensureChatIdFromResponse(payloadData);
-                finalizeLastAIMessage(payloadData);
-            } catch (parseError) {
-                console.error('[ChatService] Failed to parse done payload:', parseError);
-            }
-
-            setActiveElicitation(null);
-            setElicitationSubmitting(false);
-        } else if (event === 'elicitation') {
-            try {
-                const elicitation = JSON.parse(data);
-
-                setElicitationSubmitting(false);
-                setActiveElicitation(elicitation);
-
-                const schema = elicitation.requestedSchema || {};
-                const properties = schema.properties || {};
-                const initialValues = {};
-
-                for (const propertyName of Object.keys(properties)) {
-                    if (propertyName === 'chatId') {
-                        initialValues[propertyName] = elicitation?._meta?.chatId || elicitation?.chatId || chatId || '';
-                    } else {
-                        initialValues[propertyName] = '';
-                    }
+        switch (event) {
+            case CHUNK:
+            case MESSAGE:
+                if (activeElicitation) {
+                    setActiveElicitation(null);
+                    setElicitationSubmitting(false);
                 }
 
-                setElicitationValues(initialValues);
-            } catch (parseError) {
-                console.error('[ChatService] Failed to parse elicitation payload:', parseError);
-            }
+                appendToLastAIMessage(content);
+            break;
+            case DONE:
+                try {
+                    const payloadData = JSON.parse(eventPayload.data);
+                    ensureChatIdFromResponse(payloadData);
+                    finalizeLastAIMessage(payloadData);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse done payload:', parseError);
+                }
+
+                setActiveElicitation(null);
+                setElicitationSubmitting(false);
+            break;
+            case ELICITATION:
+                try {
+                    const elicitation = JSON.parse(eventPayload.data);
+
+                    setElicitationSubmitting(false);
+                    setActiveElicitation(elicitation);
+
+                    const schema = elicitation.requestedSchema || {};
+                    const properties = schema.properties || {};
+                    const initialValues = {};
+
+                    for (const propertyName of Object.keys(properties)) {
+                        if (propertyName === 'chatId') {
+                            initialValues[propertyName] = elicitation?._meta?.chatId || elicitation?.chatId || chatId || '';
+                        } else {
+                            initialValues[propertyName] = '';
+                        }
+                    }
+
+                    setElicitationValues(initialValues);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse elicitation payload:', parseError);
+                }
+            break;
         }
     },
 
@@ -92,8 +102,6 @@ const chatService = {
         const {uri, method} = buildStreamingRequest(chatId, userId, config.streamingChatsUri);
         const body = JSON.stringify(normalizePayload(userMessage));
 
-        // Note: fetchEventSource handles SSE framing. We adapt each message back into an
-        // "event: <type>\ndata: <payload>\n\n" string so existing handleStreamChunk + parseSSELines keep working.
         try {
             await fetchEventSource(uri, {
                 method,
@@ -117,22 +125,21 @@ const chatService = {
                         onChunk(eventPayload);
                     }
                 },
-                onerror(err) {
-                    // Allow AbortError to bubble so UI does not treat it as error
-                    if (err?.name === 'AbortError') {
-                        throw err;
+                onerror(error) {
+                    if (error?.name === 'AbortError') {
+                        throw error;
                     }
-                    console.error('[ChatService] SSE onerror:', err);
-                    throw err instanceof Error ? err : new Error(String(err));
+
+                    console.error('[ChatService] SSE onerror:', error);
+                    throw error instanceof Error ? error : new Error(String(error));
                 }
             });
-        } catch (err) {
-            // Preserve abort semantics
-            if (err?.name === 'AbortError') {
-                throw err;
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw error;
             }
-            console.error('[ChatService] Streaming connection failed:', err);
-            throw new Error(`Streaming connection failed: ${err.message || String(err)}`);
+            console.error('[ChatService] Streaming connection failed:', error);
+            throw new Error(`Streaming connection failed: ${error.message || String(error)}`);
         }
     },
 
