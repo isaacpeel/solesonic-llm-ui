@@ -98,6 +98,25 @@
     margin: 0.25rem 0;
 }
 
+/* Add styles for markdown tables */
+.message-text .markdown-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.5rem 0;
+}
+
+.message-text .markdown-body th,
+.message-text .markdown-body td {
+    border: 1px solid currentColor;
+    padding: 8px;
+    text-align: left;
+}
+
+.message-text .markdown-body th {
+    font-weight: bold;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
 .info-icon {
     margin-right: 5px;
     font-size: 16px;
