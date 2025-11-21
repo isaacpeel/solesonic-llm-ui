@@ -43,9 +43,16 @@ function ChatMessage({message}) {
                         <span className="message-placeholder">Thinking...</span>
                     ) : (
                         // Wrap markdown so we can scope CSS (lists, spacing) without affecting other text
-                        <div className="markdown-body">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText || ''}</ReactMarkdown>
-                        </div>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                a: ({ node, ...props }) => (
+                                    <a {...props} target="_blank" rel="noopener noreferrer" />
+                                ),
+                            }}
+                        >
+                            {displayText || ''}
+                        </ReactMarkdown>
                     )}
                 </div>
             </div>
