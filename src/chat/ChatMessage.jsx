@@ -10,6 +10,14 @@ export const USER = "USER";
 export const AI = "ASSISTANT";
 export const SYSTEM = "SYSTEM";
 
+const REMARK_PLUGINS = [remarkGfm];
+const MARKDOWN_COMPONENTS = {
+    a: ({ node, ...props }) => (
+        <a {...props} target="_blank" rel="noopener noreferrer" />
+    ),
+};
+
+
 function ChatMessage({message}) {
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const hasText = message.text && message.text.trim() !== '';
@@ -44,12 +52,8 @@ function ChatMessage({message}) {
                     ) : (
                         // Wrap markdown so we can scope CSS (lists, spacing) without affecting other text
                         <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                                a: ({ node, ...props }) => (
-                                    <a {...props} target="_blank" rel="noopener noreferrer" />
-                                ),
-                            }}
+                            remarkPlugins={REMARK_PLUGINS}
+                            components={MARKDOWN_COMPONENTS}
                         >
                             {displayText || ''}
                         </ReactMarkdown>
