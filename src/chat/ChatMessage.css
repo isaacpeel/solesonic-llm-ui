@@ -59,23 +59,20 @@
 
 .message:hover .message-info,
 .message:focus .message-info {
-    visibility: visible; /* Show on hover or focus */
+    visibility: visible;
 }
 
 .message-text {
-    flex-grow: 1; /* Allow it to take up available space */
-    word-wrap: break-word; /* Ensure long words wrap */
-    overflow-wrap: anywhere; /* Break long strings at any point */
-    /* Do not force pre-wrap globally because it breaks markdown list layout */
+    flex-grow: 1;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
     white-space: normal;
-    max-width: 100%; /* Constrain to container width */
-    overflow: hidden; /* Prevent overflow */
-    text-overflow: ellipsis;
+    max-width: 100%;
+    overflow-x: auto;
 }
 
-/* Markdown rendering tweaks: keep markers visible and spacing pleasant */
 .message-text .markdown-body {
-    white-space: normal; /* Allow markdown to control its own wrapping */
+    white-space: normal;
 }
 
 .message-text .markdown-body p {
