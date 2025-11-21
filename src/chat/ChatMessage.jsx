@@ -21,15 +21,13 @@ function ChatMessage({message}) {
         a: ({ node, ...props }) => (
             <a {...props} target="_blank" rel="noopener noreferrer" />
         ),
-        code: ({node, inline, className, children, ...props}) => {
-            if (inline) {
-                return <code className="inline-code" {...props}>{children}</code>;
-            }
-            return (
-                <div className="code-block">
-                    <code {...props}>{children}</code>
-                </div>
-            );
+        // Override 'pre' to serve as the container for code blocks
+        pre: ({node, ...props}) => (
+            <div className="code-block" {...props} />
+        ),
+        // Simplify 'code': let CSS handle the difference between inline and block
+        code: ({node, className, children, ...props}) => {
+            return <code className={className} {...props}>{children}</code>;
         },
         table: ({node, ...props}) => <table {...props} />,
         thead: ({node, ...props}) => <thead {...props} />,
