@@ -54,7 +54,7 @@ const chatService = {
                 }
 
                 appendToLastAIMessage(content);
-            break;
+                break;
             case DONE:
                 try {
                     const payloadData = JSON.parse(eventPayload.data);
@@ -66,7 +66,7 @@ const chatService = {
 
                 setActiveElicitation(null);
                 setElicitationSubmitting(false);
-            break;
+                break;
             case ELICITATION:
                 try {
                     const elicitation = JSON.parse(eventPayload.data);
@@ -90,7 +90,7 @@ const chatService = {
                 } catch (parseError) {
                     console.error('[ChatService] Failed to parse elicitation payload:', parseError);
                 }
-            break;
+                break;
         }
     },
 
@@ -142,11 +142,16 @@ const chatService = {
                     if (error?.name === 'AbortError') {
                         throw error;
                     }
-                    console.error('[ChatService] SSE onerror:', error);
-                    throw error instanceof Error ? error : new Error(String(error));
+
+                    if (error instanceof Error && error.message.startsWith('Streaming failed:')) {
+                        throw error;
+                    }
+
+                    console.warn('[ChatService] Stream connection interrupted, attempting to reconnect...', error);
                 }
             });
         } catch (error) {
+            // This catch block is only reached if onerror throws.
             if (error?.name === 'AbortError') {
                 throw error;
             }
