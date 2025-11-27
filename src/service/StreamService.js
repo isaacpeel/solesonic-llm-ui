@@ -35,7 +35,7 @@ const streamService = {
                 signal,
                 mode: 'cors',
                 credentials: 'same-origin',
-                openWhenHidden: true,
+                openWhenHidden: false,
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
