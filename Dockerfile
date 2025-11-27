@@ -8,8 +8,7 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package.json ./
-# Use npm install instead of npm ci to avoid requiring package-lock.json
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm npm install
 
 # Copy application source
 COPY . .
