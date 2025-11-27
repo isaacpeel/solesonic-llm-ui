@@ -95,7 +95,7 @@ const chatService = {
     },
 
     // Streaming chat using fetchEventSource (SSE). This replaces manual ReadableStream parsing.
-    async chatStream(userMessage, chatId, {onChunk, signal} = {}) {
+    async chatStream(userMessage, chatId, {onChunk, onDone, signal} = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
 
@@ -120,16 +120,28 @@ const chatService = {
                         throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
                     }
                 },
-                onmessage(eventPayload) {
+                onmessage(eventSourceMessage) {
+                    const eventType = eventSourceMessage?.event && eventSourceMessage.event.length > 0 ? eventSourceMessage.event : 'message';
+                    const dataString = eventSourceMessage?.data ?? '';
+                    const frameString = `event: ${eventType}\n` + `data: ${dataString}\n\n`;
+
                     if (onChunk) {
-                        onChunk(eventPayload);
+                        try {
+                            onChunk(frameString);
+                        } catch (callbackError) {
+                            console.warn('[ChatService] onChunk callback error:', callbackError);
+                        }
+                    }
+                },
+                onclose() {
+                    if (onDone) {
+                        onDone();
                     }
                 },
                 onerror(error) {
                     if (error?.name === 'AbortError') {
                         throw error;
                     }
-
                     console.error('[ChatService] SSE onerror:', error);
                     throw error instanceof Error ? error : new Error(String(error));
                 }
