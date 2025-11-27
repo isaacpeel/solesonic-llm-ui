@@ -120,24 +120,16 @@ const chatService = {
                         throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
                     }
                 },
-                onmessage(eventSourceMessage) {
-                    const eventType = eventSourceMessage?.event && eventSourceMessage.event.length > 0 ? eventSourceMessage.event : 'message';
-                    const dataString = eventSourceMessage?.data ?? '';
-                    const frameString = `event: ${eventType}\n` + `data: ${dataString}\n\n`;
-
+                onmessage(eventPayload) {
                     if (onChunk) {
-                        try {
-                            onChunk(frameString);
-                        } catch (callbackError) {
-                            console.warn('[ChatService] onChunk callback error:', callbackError);
-                        }
+                        onChunk(eventPayload);
                     }
                 },
                 onclose() {
-                    if (onDone) {
-                        onDone();
-                    }
-                },
+                if (onDone) {
+                    onDone();
+                }
+            },
                 onerror(error) {
                     if (error?.name === 'AbortError') {
                         throw error;
