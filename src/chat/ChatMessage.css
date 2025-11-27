@@ -107,11 +107,18 @@
     border: 1px solid currentColor;
     padding: 8px;
     text-align: left;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 .message-text .markdown-body th {
     font-weight: bold;
     background-color: rgba(0, 0, 0, 0.1);
+    white-space: nowrap;
+}
+
+.message-text .markdown-body td:first-child {
+    white-space: nowrap;
 }
 
 .info-icon {
