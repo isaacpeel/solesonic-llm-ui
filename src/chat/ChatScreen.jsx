@@ -78,7 +78,6 @@ function ChatScreen() {
                         .replace(/\n{3,}/g, '\n\n');
                 }
 
-                console.log('[ChatScreen] Final AI message text:', finalText);
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
                     text: finalText,
