@@ -18,8 +18,7 @@ const chatService = {
         const chatBody = {chatMessage: userMessage};
 
         if (chatId) {
-            // Continue an existing chat
-            const uri = `${config.chatsUri}/${chatId}`;
+            const uri = `${config.chatsUri}/${chatId}/users/${userId}`;
             return await axiosClient.put(uri, chatBody, options);
         }
 
@@ -188,7 +187,7 @@ const chatService = {
 
 function buildStreamingRequest(chatId, userId, baseUri) {
     return chatId
-        ? {uri: `${baseUri}/${chatId}`, method: 'PUT'}
+        ? {uri: `${baseUri}/${chatId}/users/${userId}`, method: 'PUT'}
         : {uri: `${baseUri}/users/${userId}`, method: 'POST'};
 }
 
