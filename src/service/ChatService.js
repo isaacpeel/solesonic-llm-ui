@@ -6,6 +6,7 @@ import {fetchEventSource} from '@microsoft/fetch-event-source';
 export const CHUNK = "chunk";
 export const MESSAGE = "message";
 export const DONE = "done";
+export const INIT = "init";
 export const ELICITATION = "elicitation";
 
 const chatService = {
@@ -42,18 +43,31 @@ const chatService = {
         setElicitationSubmitting,
         setElicitationValues,
     }) => {
-        const {content} = JSON.parse(eventPayload.data);
         const event = eventPayload.event;
 
         switch (event) {
+            case INIT:
+                try {
+                    const initData = JSON.parse(eventPayload.data);
+                    ensureChatIdFromResponse(initData);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse init payload:', parseError);
+                }
+                break;
             case CHUNK:
             case MESSAGE:
-                if (activeElicitation) {
-                    setActiveElicitation(null);
-                    setElicitationSubmitting(false);
-                }
+                try {
+                    const {content} = JSON.parse(eventPayload.data);
 
-                appendToLastAIMessage(content);
+                    if (activeElicitation) {
+                        setActiveElicitation(null);
+                        setElicitationSubmitting(false);
+                    }
+
+                    appendToLastAIMessage(content);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse chunk payload:', parseError);
+                }
                 break;
             case DONE:
                 try {
