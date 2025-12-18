@@ -13,11 +13,10 @@ class AxiosClientError extends Error {
     }
 }
 
-const axiosInstance = axios.create({
-    headers: {
-        'Content-Type': 'application/json',
-    }
-});
+// Do not set a global Content-Type header.
+// Let axios/browser determine it automatically so that FormData uploads
+// use multipart/form-data with the proper boundary.
+const axiosInstance = axios.create();
 
 axiosInstance.interceptors.request.use(
     async (config) => {

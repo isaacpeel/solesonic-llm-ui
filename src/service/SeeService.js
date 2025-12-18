@@ -1,6 +1,3 @@
-// Service utilities for handling Server-Sent Events (SSE)
-// Only comment complicated code paths to keep code clean and pragmatic.
-
 /**
  * Parses raw Server-Sent Events payload into an array of frames.
  * Each frame is an object: { event: string, data: string }
