@@ -37,9 +37,9 @@ function ChatInput({
                     onChange={handleInputChange}
                     placeholder={loading ? "" : "Type a message..."}
                     className="chat-text-input"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            e.preventDefault();
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
                             handleSubmit().then(() => {
                                 chatInputRef.current.style.height = "1rem";
                             });

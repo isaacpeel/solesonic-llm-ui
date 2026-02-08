@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
+import log from 'loglevel';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -236,7 +237,9 @@ function ChatScreen() {
             controller.current?.abort();
             controller.current = new AbortController();
 
-            await chatService.chatStream(inputValue, chatId, {
+            await chatService.chatStream(
+                inputValue,
+                chatId, {
                 signal: controller.current.signal,
                 onChunk: handleStreamChunk,
                 onDone: handleStreamClose,
@@ -244,7 +247,7 @@ function ChatScreen() {
 
         } catch (error) {
             if (error.name === 'AbortError') {
-                console.log('[ChatScreen] Stream aborted.');
+                log.info('[ChatScreen] Stream aborted.');
                 return;
             }
 
