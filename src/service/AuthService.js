@@ -1,4 +1,5 @@
 import axiosClient from "../client/AxiosClient.js";
+import log from "loglevel";
 import config from "../properties/ApplicationProperties.jsx";
 
 const BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -22,7 +23,7 @@ const authService = {
      */
     getAccessToken: async () => {
         if (!keycloakInstance) {
-            console.error('Keycloak instance not initialized');
+            log.error('Keycloak instance not initialized');
             return null;
         }
         
@@ -31,14 +32,14 @@ const authService = {
             await keycloakInstance.updateToken(5);
             return keycloakInstance.token;
         } catch (error) {
-            console.error('Failed to refresh token:', error);
+            log.error('Failed to refresh token:', error);
             return null;
         }
     },
 
     getUserId: async () => {
         if (!keycloakInstance) {
-            console.error('Keycloak instance not initialized');
+            log.error('Keycloak instance not initialized');
             return null;
         }
         
@@ -48,12 +49,12 @@ const authService = {
 
     getUsername: async () => {
         if (!keycloakInstance) {
-            console.error('Keycloak instance not initialized');
+            log.error('Keycloak instance not initialized');
             return null;
         }
         
         const userProfile = keycloakInstance.tokenParsed;
-        return userProfile?.preferred_username || userProfile?.username || null;
+        return userProfile?.["given_name"] || userProfile?.username || null;
     },
 
     /**
@@ -61,14 +62,14 @@ const authService = {
      */
     getUserProfile: async () => {
         if (!keycloakInstance) {
-            console.error('Keycloak instance not initialized');
+            log.error('Keycloak instance not initialized');
             return null;
         }
         
         try {
             return await keycloakInstance.loadUserProfile();
         } catch (error) {
-            console.error('Failed to load user profile:', error);
+            log.error('Failed to load user profile:', error);
             return null;
         }
     },
