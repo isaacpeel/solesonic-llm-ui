@@ -168,10 +168,12 @@ const chatService = {
                     if (onDone) {
                         onDone();
                     }
-                    // CRITICAL: throw to prevent fetchEventSource from looping back
-                    // and re-sending the HTTP request. A clean close means the
-                    // response is finished — there is nothing to reconnect to.
-                    throw new Error('Stream closed');
+
+                    if (streamDone) {
+                        // Stream finished normally. Throw to stop fetchEventSource retry loop
+                        // so the original request body is not sent again.
+                        throw new Error('Stream closed');
+                    }
                 },
                 onerror(error) {
                     if (error?.name === 'AbortError') {
