@@ -124,7 +124,7 @@ const chatService = {
                 signal,
                 mode: 'cors',
                 credentials: 'same-origin',
-                openWhenHidden: false,
+                openWhenHidden: true,
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
