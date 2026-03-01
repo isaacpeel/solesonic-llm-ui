@@ -34,6 +34,7 @@ function ChatInput({
                     onChange={handleInputChange}
                     placeholder={loading ? "" : "Type a message..."}
                     className="chat-text-input"
+                    rows={1}
                     onKeyDown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {
                             event.preventDefault();
