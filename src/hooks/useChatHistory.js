@@ -93,10 +93,16 @@ function useChatHistory() {
     }, [setChatHistory]);
 
     const ensureChatIdFromResponse = useCallback((response) => {
-        if (!chatId && response?.id) {
-            setChatId(response.id);
+        if (response?.id) {
+            setChatId((currentChatId) => {
+                if (!currentChatId) {
+                    return response.id;
+                }
+
+                return currentChatId;
+            });
         }
-    }, [chatId, setChatId]);
+    }, [setChatId]);
 
     return {
         chatId,
