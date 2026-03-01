@@ -5,6 +5,7 @@ import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ReactMarkdown from "react-markdown";
 import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 
 export const USER = "USER";
 export const AI = "ASSISTANT";
@@ -15,7 +16,7 @@ function ChatMessage({message}) {
     const hasText = message.text && message.text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText;
 
-    const remarkPlugins = useMemo(() => [remarkGfm], []);
+    const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
         a: ({ node, ...props }) => (
