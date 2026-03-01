@@ -111,8 +111,9 @@ const chatService = {
     async chatStream(userMessage, chatId, {onChunk, onDone, signal} = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
+        let activeChatId = chatId;
 
-        const {uri, method} = buildStreamingRequest(chatId, userId, config.streamingChatsUri);
+        const {uri, method} = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
         const body = JSON.stringify(normalizePayload(userMessage));
 
         try {
@@ -128,12 +129,32 @@ const chatService = {
                     'Content-Type': 'application/json',
                     Accept: 'text/event-stream'
                 },
+                fetch: (_requestInput, init = {}) => {
+                    const {uri: rebuiltUri, method: rebuiltMethod} = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
+                    return globalThis.fetch(rebuiltUri, {
+                        ...init,
+                        method: rebuiltMethod,
+                    });
+                },
                 onopen(response) {
                     if (!response.ok) {
                         throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
                     }
                 },
                 onmessage(eventPayload) {
+
+                    if (eventPayload.event === INIT || eventPayload.event === DONE) {
+                        try {
+                            const parsedPayload = JSON.parse(eventPayload.data);
+
+                            if (parsedPayload?.id) {
+                                activeChatId = parsedPayload.id;
+                            }
+                        } catch (parseError) {
+                            console.warn('[ChatService] Failed to parse stream payload for chat id sync:', parseError);
+                        }
+                    }
+
                     if (onChunk) {
                         onChunk(eventPayload);
                     }
@@ -152,7 +173,13 @@ const chatService = {
                         throw error;
                     }
 
+                    if (activeChatId) {
+                        console.warn('[ChatService] Stream connection interrupted, attempting to reconnect...', error);
+                        return;
+                    }
+
                     console.warn('[ChatService] Stream connection interrupted, attempting to reconnect...', error);
+                    throw error;
                 }
             });
         } catch (error) {

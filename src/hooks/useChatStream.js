@@ -74,7 +74,7 @@ function useChatStream({
     ]);
 
     const handleSubmit = async () => {
-        if (!inputValue.trim()) {
+        if (!inputValue.trim() || loading) {
             return;
         }
 
