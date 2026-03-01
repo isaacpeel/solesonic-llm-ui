@@ -13,10 +13,7 @@ function ChatInput({
         const adjustInputHeight = () => {
             if (chatInputRef.current) {
                 chatInputRef.current.style.height = "auto";
-                const scrollHeight = inputValue.length <= 54
-                    ? chatInputRef.current.scrollHeight - 36
-                    : chatInputRef.current.scrollHeight - 16;
-                chatInputRef.current.style.height = `${scrollHeight}px`;
+                chatInputRef.current.style.height = `${chatInputRef.current.scrollHeight}px`;
             }
         };
 
@@ -41,7 +38,7 @@ function ChatInput({
                         if (event.key === 'Enter' && !event.shiftKey) {
                             event.preventDefault();
                             handleSubmit().then(() => {
-                                chatInputRef.current.style.height = "1rem";
+                                chatInputRef.current.style.height = "auto";
                             });
                         }
                     }}

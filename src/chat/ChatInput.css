@@ -1,22 +1,24 @@
 .chat-input-container {
     display: flex;
     align-items: center;
+    justify-content: center;
     padding: 10px;
-    /*background-color: var(--background-color);*/
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
 }
 
 .chat-text-input {
-    position: fixed;
-    right: 27%;
-    bottom: 20px;
+    width: 100%;
     padding: 10px 15px;
-    width: 45%;
     max-height: 15rem;
-    overflow: hidden;
+    min-height: 2.5rem;
+    overflow-y: auto;
     resize: none;
     border-radius: 4px;
     font: revert;
-    box-sizing: revert;
+    box-sizing: border-box;
 
     background-color: var(--primary-color);
     color: var(--text-color);
@@ -30,15 +32,16 @@
 
 .textarea-parent {
     position: relative;
-    display: inline-block;
+    width: 45%;
 }
 
 .dots-loader {
     display: flex;
     gap: 5px;
-    position: fixed;
-    right: 49%;
-    bottom: 26px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     padding: 10px 0;
     background-color: var(--primary-color);
 }
