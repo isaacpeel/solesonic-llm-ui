@@ -49,6 +49,7 @@ describe('useChatStream', () => {
             setActiveElicitation: vi.fn(),
             setElicitationSubmitting: vi.fn(),
             setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
         };
     });
 
@@ -103,6 +104,15 @@ describe('useChatStream', () => {
         expect(nextHistory[0]).toMatchObject({type: 'USER', text: 'user question'});
         expect(nextHistory[1]).toMatchObject({type: 'ASSISTANT', text: '', isStreaming: true});
         expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+        expect(chatService.chatStream).toHaveBeenCalledWith(
+            {chatMessage: 'user question'},
+            options.chatId,
+            expect.objectContaining({
+                onChunk: expect.any(Function),
+                onDone: expect.any(Function),
+                signal: expect.any(AbortSignal),
+            })
+        );
 
         act(() => {
             vi.runAllTimers();
@@ -144,6 +154,46 @@ describe('useChatStream', () => {
         });
 
         expect(streamService.handleStreamError).toHaveBeenCalledTimes(1);
+    });
+
+    it('handleSubmit with command', async () => {
+        options.getSelectedCommandRef = {current: vi.fn(() => 'agile')};
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: '/agile show board'}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(chatService.chatStream).toHaveBeenCalledWith(
+            {chatMessage: '/agile show board', command: 'agile'},
+            options.chatId,
+            expect.objectContaining({
+                onChunk: expect.any(Function),
+                onDone: expect.any(Function),
+                signal: expect.any(AbortSignal),
+            })
+        );
+    });
+
+    it('handleSubmit without command', async () => {
+        options.getSelectedCommandRef = {current: vi.fn(() => null)};
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'hello'}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        const payload = chatService.chatStream.mock.calls[0][0];
+        expect(payload).toEqual({chatMessage: 'hello'});
+        expect(payload.command).toBeUndefined();
     });
 
     it('handleStreamChunk', () => {

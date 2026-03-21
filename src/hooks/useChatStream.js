@@ -17,6 +17,8 @@ function useChatStream({
     setActiveElicitation,
     setElicitationSubmitting,
     setElicitationValues,
+    getSelectedCommandRef,
+    getMessageTextRef,
 }) {
     const {chatInputRef} = useSharedData();
 
@@ -74,12 +76,20 @@ function useChatStream({
     ]);
 
     const handleSubmit = async () => {
-        if (!inputValue.trim() || loading) {
+        if (loading) {
+            return;
+        }
+
+        const submittedInputValue = inputValue;
+        const selectedCommand = getSelectedCommandRef?.current?.() || null;
+        const submittedMessageText = getMessageTextRef?.current?.() || submittedInputValue.trim();
+
+        if (!submittedMessageText) {
             return;
         }
 
         const updatedHistory = chatHistory.filter((message) => !message.ephemeral);
-        const userMessage = {type: USER, text: inputValue, _key: generateMessageKey('user')};
+        const userMessage = {type: USER, text: submittedMessageText, _key: generateMessageKey('user')};
         const aiPlaceholder = {type: AI, text: '', _key: generateMessageKey('ai'), isStreaming: true};
 
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
@@ -96,7 +106,13 @@ function useChatStream({
             controller.current?.abort();
             controller.current = new AbortController();
 
-            await chatService.chatStream(inputValue, chatId, {
+            const payload = {chatMessage: submittedMessageText};
+
+            if (selectedCommand) {
+                payload.command = selectedCommand;
+            }
+
+            await chatService.chatStream(payload, chatId, {
                 signal: controller.current.signal,
                 onChunk: handleStreamChunk,
                 onDone: handleStreamClose,
@@ -121,6 +137,7 @@ function useChatStream({
         error,
         setError,
         inputValue,
+        setInputValue,
         handleInputChange,
         handleSubmit,
         handleStreamChunk,

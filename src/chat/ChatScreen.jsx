@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -10,6 +10,7 @@ import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 import useChatHistory from '../hooks/useChatHistory.js';
 import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';
+import useSlashCommands from '../hooks/useSlashCommands.js';
 
 
 function ChatScreen() {
@@ -18,8 +19,10 @@ function ChatScreen() {
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
+    const getSelectedCommandRef = useRef(null);
+    const getMessageTextRef = useRef(null);
 
-    const {loading, error, setError, inputValue, handleInputChange, handleSubmit, handleStreamChunk} = useChatStream({
+    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
@@ -30,7 +33,13 @@ function ChatScreen() {
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
+        getSelectedCommandRef,
+        getMessageTextRef,
     });
+
+    const slashCommands = useSlashCommands({inputValue, setInputValue});
+    getSelectedCommandRef.current = slashCommands.getSelectedCommand;
+    getMessageTextRef.current = slashCommands.getMessageText;
 
     const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
         chatHistory,
@@ -70,6 +79,8 @@ function ChatScreen() {
                     handleInputChange={handleInputChange}
                     handleSubmit={handleSubmit}
                     chatInputRef={chatInputRef}
+                    ghostText={slashCommands.ghostText}
+                    onTabAccept={slashCommands.handleTabAccept}
                 />
             </div>
         </div>

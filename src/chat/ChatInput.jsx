@@ -1,13 +1,16 @@
 import { useEffect } from 'react';
 import PropTypes from 'prop-types';
 import './ChatInput.css';
+import McpTool from "./McpTool.jsx";
 
 function ChatInput({
-    loading, 
-    inputValue, 
-    handleInputChange, 
-    handleSubmit, 
-    chatInputRef 
+    loading,
+    inputValue,
+    handleInputChange,
+    handleSubmit,
+    chatInputRef,
+    ghostText,
+    onTabAccept,
 }) {
     useEffect(() => {
         const adjustInputHeight = () => {
@@ -27,6 +30,10 @@ function ChatInput({
     return (
         <div className="chat-input-container">
             <div className="textarea-parent">
+                {ghostText && !loading && (
+                    <McpTool inputValue={inputValue}
+                             ghostText={ghostText} />
+                )}
                 <textarea
                     disabled={loading}
                     ref={chatInputRef}
@@ -36,6 +43,13 @@ function ChatInput({
                     className="chat-text-input"
                     rows={1}
                     onKeyDown={(event) => {
+
+                        if (event.key === 'Tab' && ghostText) {
+                            event.preventDefault();
+                            onTabAccept();
+                            return;
+                        }
+
                         if (event.key === 'Enter' && !event.shiftKey) {
                             event.preventDefault();
                             handleSubmit().then(() => {
@@ -61,6 +75,8 @@ ChatInput.propTypes = {
     inputValue: PropTypes.string.isRequired,
     handleInputChange: PropTypes.func.isRequired,
     handleSubmit: PropTypes.func.isRequired,
+    ghostText: PropTypes.string.isRequired,
+    onTabAccept: PropTypes.func.isRequired,
     chatInputRef: PropTypes.shape({
         current: PropTypes.any
     }).isRequired
