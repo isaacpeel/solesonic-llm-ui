@@ -24,7 +24,7 @@
 .message {
     margin-top: 16px;
     max-width: 70%;
-    padding: 8px 16px;
+    padding: 1px 16px;
     border-radius: 8px;
     word-wrap: break-word;
     display: flex;
@@ -180,13 +180,6 @@
     transform: translateX(0); /* Align tooltip to the right edge */
 }
 
-/*@media (hover: none) {*/
-/*    .info-icon-wrapper[data-dialog]::after {*/
-/*        visibility: hidden !important;*/
-/*        opacity: 0 !important;*/
-/*    }*/
-/*}*/
-
 /* Formatting styles for formatted messages */
 .formatted-message {
     width: 100%;
@@ -252,6 +245,12 @@
     }
     50% {
         opacity: 0.8;
+    }
+}
+
+@media (max-width: 768px) {
+    .message {
+        max-width: 100%;
     }
 }
 

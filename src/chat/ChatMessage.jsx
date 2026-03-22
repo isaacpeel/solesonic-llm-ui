@@ -5,6 +5,7 @@ import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ReactMarkdown from "react-markdown";
 import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 
 export const USER = "USER";
 export const AI = "ASSISTANT";
@@ -15,7 +16,7 @@ function ChatMessage({message}) {
     const hasText = message.text && message.text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText;
 
-    const remarkPlugins = useMemo(() => [remarkGfm], []);
+    const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
         a: ({ node, ...props }) => (
@@ -64,7 +65,7 @@ function ChatMessage({message}) {
                     {showPlaceholder ? (
                         <span className="message-placeholder">Thinking...</span>
                     ) : (
-                        // Wrap markdown so we can scope CSS (lists, spacing) without affecting other text
+                        // Wrap Markdown so we can scope CSS (lists, spacing) without affecting other text
                         <div className="markdown-body">
                             <ReactMarkdown
                                 remarkPlugins={remarkPlugins}

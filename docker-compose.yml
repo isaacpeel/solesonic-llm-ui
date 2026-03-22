@@ -6,16 +6,20 @@ services:
     image: solesonic-llm-ui:latest
     container_name: solesonic-llm-ui
     restart: unless-stopped
+
+    # Host Nginx owns :80/:443. Publish the container only on localhost.
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:3000:80"
+
+    # Optional: persist container Nginx logs somewhere that won't collide with host Nginx logs
     volumes:
-      - /var/log/nginx:/var/log/nginx
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/log/solesonic-llm-ui-nginx:/var/log/nginx
+
     env_file:
       - ./.env
     environment:
-      - TZ=${TZ}
+      TZ: ${TZ:-UTC}
+
     networks:
       - solesonic-llm-network
 

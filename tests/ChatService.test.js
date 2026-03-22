@@ -43,7 +43,7 @@ describe('chatClient', () => {
         // Assertions
         expect(axiosClient.setAuthHeader).toHaveBeenCalledWith('mock-access-token');
         expect(axiosClient.put).toHaveBeenCalledWith(
-            'https://api.example.com/chat/12345', 
+            'https://api.example.com/chat/12345/users/mock-user-id', 
             {chatMessage: userMessage}, 
             { headers: { 'Authorization': 'Bearer mock-access-token' } }
         );

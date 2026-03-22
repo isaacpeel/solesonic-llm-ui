@@ -1,26 +1,31 @@
 .chat-input-container {
     display: flex;
     align-items: center;
+    justify-content: center;
     padding: 10px;
-    /*background-color: var(--background-color);*/
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
 }
 
 .chat-text-input {
-    position: fixed;
-    right: 27%;
-    bottom: 20px;
-    padding: 10px 15px;
-    width: 45%;
+    width: 100%;
+    padding: 2px 15px;
     max-height: 15rem;
     overflow: hidden;
     resize: none;
     border-radius: 4px;
-    font: revert;
-    box-sizing: revert;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    box-sizing: border-box;
 
     background-color: var(--primary-color);
     color: var(--text-color);
     border: 1px solid var(--border-color);
+    position: relative;
+    z-index: 1;
 }
 
 .chat-text-input:focus {
@@ -30,15 +35,16 @@
 
 .textarea-parent {
     position: relative;
-    display: inline-block;
+    width: 45%;
 }
 
 .dots-loader {
     display: flex;
     gap: 5px;
-    position: fixed;
-    right: 49%;
-    bottom: 26px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     padding: 10px 0;
     background-color: var(--primary-color);
 }
@@ -69,5 +75,11 @@
     }
     25%, 75% {
         opacity: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .textarea-parent {
+        width: 85%;
     }
 }

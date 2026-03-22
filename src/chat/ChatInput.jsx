@@ -1,22 +1,22 @@
 import { useEffect } from 'react';
 import PropTypes from 'prop-types';
 import './ChatInput.css';
+import McpTool from "./McpTool.jsx";
 
 function ChatInput({
-    loading, 
-    inputValue, 
-    handleInputChange, 
-    handleSubmit, 
-    chatInputRef 
+    loading,
+    inputValue,
+    handleInputChange,
+    handleSubmit,
+    chatInputRef,
+    ghostText,
+    onTabAccept,
 }) {
     useEffect(() => {
         const adjustInputHeight = () => {
             if (chatInputRef.current) {
                 chatInputRef.current.style.height = "auto";
-                const scrollHeight = inputValue.length <= 54
-                    ? chatInputRef.current.scrollHeight - 36
-                    : chatInputRef.current.scrollHeight - 16;
-                chatInputRef.current.style.height = `${scrollHeight}px`;
+                chatInputRef.current.style.height = `${chatInputRef.current.scrollHeight}px`;
             }
         };
 
@@ -30,6 +30,10 @@ function ChatInput({
     return (
         <div className="chat-input-container">
             <div className="textarea-parent">
+                {ghostText && !loading && (
+                    <McpTool inputValue={inputValue}
+                             ghostText={ghostText} />
+                )}
                 <textarea
                     disabled={loading}
                     ref={chatInputRef}
@@ -37,11 +41,19 @@ function ChatInput({
                     onChange={handleInputChange}
                     placeholder={loading ? "" : "Type a message..."}
                     className="chat-text-input"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            e.preventDefault();
+                    rows={1}
+                    onKeyDown={(event) => {
+
+                        if (event.key === 'Tab' && ghostText) {
+                            event.preventDefault();
+                            onTabAccept();
+                            return;
+                        }
+
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault();
                             handleSubmit().then(() => {
-                                chatInputRef.current.style.height = "1rem";
+                                chatInputRef.current.style.height = "auto";
                             });
                         }
                     }}
@@ -63,6 +75,8 @@ ChatInput.propTypes = {
     inputValue: PropTypes.string.isRequired,
     handleInputChange: PropTypes.func.isRequired,
     handleSubmit: PropTypes.func.isRequired,
+    ghostText: PropTypes.string.isRequired,
+    onTabAccept: PropTypes.func.isRequired,
     chatInputRef: PropTypes.shape({
         current: PropTypes.any
     }).isRequired

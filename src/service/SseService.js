@@ -32,5 +32,5 @@ export function parseSSELines(rawInput) {
     return parsedEvents;
 }
 
-const SeeService = { parseSSELines };
-export default SeeService;
+const SseService = { parseSSELines };
+export default SseService;

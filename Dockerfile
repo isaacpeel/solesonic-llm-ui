@@ -1,52 +1,37 @@
-# Multi-stage build for React/Vite application with Nginx
+# Multi-stage build for React/Vite application served by Nginx (HTTP only).
+# TLS is terminated by the host Nginx; this container serves static files on port 80.
 
 # Build stage
 FROM node:lts-slim AS build
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY package.json ./
-RUN --mount=type=cache,target=/root/.npm npm install
+# Install dependencies (prefer npm ci when package-lock.json exists)
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
 
-# Copy application source
+# Copy source and build
 COPY . .
-COPY .env .env
-
-# Build the application
 RUN npm run build
 
-# Production stage with Nginx
+# Runtime stage
 FROM nginx:alpine
 
-# Install SSL dependencies
-RUN apk add --no-cache openssl gettext
+# Needed for envsubst templating of /etc/nginx/templates/*.template in official nginx image
+RUN apk add --no-cache gettext
 
-# Create necessary directories
+# Logs directory (optional, but matches your compose volume mount)
 RUN mkdir -p /var/log/nginx
-RUN mkdir -p /etc/letsencrypt
 
-# Add VOLUME instructions
-VOLUME /etc/letsencrypt
-VOLUME /var/log/nginx
-
-# Copy built files from build stage
+# Copy built assets
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy Nginx configuration
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Set proper permissions
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chmod -R 755 /usr/share/nginx/html && \
-    chown -R nginx:nginx /etc/nginx/conf.d && \
-    chown -R nginx:nginx /var/log/nginx && \
-    chmod 755 /etc/letsencrypt
+# Basic permissions
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/log/nginx && \
+    chmod -R 755 /usr/share/nginx/html
 
-# Expose ports
 EXPOSE 80
-EXPOSE 443
 
-# Command to run
 CMD ["nginx", "-g", "daemon off;"]

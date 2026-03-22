@@ -111,8 +111,10 @@ const chatService = {
     async chatStream(userMessage, chatId, {onChunk, onDone, signal} = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
+        let activeChatId = chatId;
+        let streamDone = false;
 
-        const {uri, method} = buildStreamingRequest(chatId, userId, config.streamingChatsUri);
+        const {uri, method} = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
         const body = JSON.stringify(normalizePayload(userMessage));
 
         try {
@@ -122,11 +124,18 @@ const chatService = {
                 signal,
                 mode: 'cors',
                 credentials: 'same-origin',
-                openWhenHidden: false,
+                openWhenHidden: true,
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
                     Accept: 'text/event-stream'
+                },
+                fetch: (_requestInput, init = {}) => {
+                    const {uri: rebuiltUri, method: rebuiltMethod} = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
+                    return globalThis.fetch(rebuiltUri, {
+                        ...init,
+                        method: rebuiltMethod,
+                    });
                 },
                 onopen(response) {
                     if (!response.ok) {
@@ -134,15 +143,38 @@ const chatService = {
                     }
                 },
                 onmessage(eventPayload) {
+
+                    if (eventPayload.event === INIT || eventPayload.event === DONE) {
+                        try {
+                            const parsedPayload = JSON.parse(eventPayload.data);
+
+                            if (parsedPayload?.id) {
+                                activeChatId = parsedPayload.id;
+                            }
+
+                            if (eventPayload.event === DONE) {
+                                streamDone = true;
+                            }
+                        } catch (parseError) {
+                            console.warn('[ChatService] Failed to parse stream payload for chat id sync:', parseError);
+                        }
+                    }
+
                     if (onChunk) {
                         onChunk(eventPayload);
                     }
                 },
                 onclose() {
-                if (onDone) {
-                    onDone();
-                }
-            },
+                    if (onDone) {
+                        onDone();
+                    }
+
+                    if (streamDone) {
+                        // Stream finished normally. Throw to stop fetchEventSource retry loop
+                        // so the original request body is not sent again.
+                        throw new Error('Stream closed');
+                    }
+                },
                 onerror(error) {
                     if (error?.name === 'AbortError') {
                         throw error;
@@ -152,13 +184,33 @@ const chatService = {
                         throw error;
                     }
 
-                    console.warn('[ChatService] Stream connection interrupted, attempting to reconnect...', error);
+                    // If the stream already completed, do not retry.
+                    if (streamDone) {
+                        throw error instanceof Error ? error : new Error(String(error));
+                    }
+
+                    if (activeChatId) {
+                        console.warn('[ChatService] Stream interrupted, will reconnect to chat:', activeChatId);
+                        return;
+                    }
+
+                    // No chatId yet — retry would POST and create a duplicate.
+                    console.error('[ChatService] Stream failed before chat was created, not retrying.');
+                    throw error instanceof Error ? error : new Error(String(error));
                 }
             });
         } catch (error) {
-            // This catch block is only reached if onerror throws.
             if (error?.name === 'AbortError') {
                 throw error;
+            }
+            // 'Stream closed' is thrown intentionally from onclose to stop the retry loop.
+            if (error?.message === 'Stream closed') {
+                return;
+            }
+            // If stream completed successfully but errored during teardown, swallow it.
+            if (streamDone) {
+                console.debug('[ChatService] Post-completion error (ignored):', error?.message);
+                return;
             }
             console.error('[ChatService] Streaming connection failed:', error);
             throw new Error(`Streaming connection failed: ${error.message || String(error)}`);
