@@ -3,7 +3,6 @@ import ollamaService from '../service/OllamaService.js';
 import userPreferencesService from '../service/UserPreferencesService.js';
 import './ModelSettings.css';
 import ModelDropdown from "./ModelDropdown.jsx";
-import modelProps from "./UserPropTypes.js";
 import ModelDetails from "./ModelDetails.jsx";
 
 const ModelSettings = () => {
@@ -48,7 +47,5 @@ const ModelSettings = () => {
         </div>
     );
 }
-
-ModelSettings.propTypes = modelProps;
 
 export default ModelSettings;

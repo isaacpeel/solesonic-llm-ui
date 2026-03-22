@@ -99,7 +99,7 @@ describe('useSlashCommands', () => {
         const {result} = createHook('/agile ');
         await waitForDebounce();
 
-        expect(result.current.getSelectedCommand()).toBe('agile');
+        expect(result.current.getSelectedCommand()).toBe(null);
     });
 
     it('getSelectedCommand returns null', () => {

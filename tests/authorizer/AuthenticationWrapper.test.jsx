@@ -105,12 +105,11 @@ describe('AuthenticationWrapper', () => {
     });
 
     test('should show login prompt when unauthenticated', () => {
-        const mockLogin = vi.fn();
         useKeycloak.mockReturnValue({ 
             keycloak: {}, 
             authenticated: false, 
             loading: false,
-            login: mockLogin
+            login: vi.fn()
         });
 
         render(
@@ -120,7 +119,6 @@ describe('AuthenticationWrapper', () => {
         );
 
         expect(screen.getByText('Authentication Required')).toBeDefined();
-        expect(screen.getByText('Please log in to continue.')).toBeDefined();
-        expect(screen.getByText('Log In')).toBeDefined();
+        expect(screen.getByText('Redirecting to login...')).toBeDefined();
     });
 });

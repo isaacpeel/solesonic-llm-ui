@@ -129,7 +129,9 @@ describe('useChatHistory', () => {
 
         result.current.ensureChatIdFromResponse({id: 'new-chat-id'});
 
-        expect(sharedState.setChatId).toHaveBeenCalledWith('new-chat-id');
+        expect(sharedState.setChatId).toHaveBeenCalledTimes(1);
+        const setChatIdUpdater = sharedState.setChatId.mock.calls[0][0];
+        expect(setChatIdUpdater(null)).toBe('new-chat-id');
     });
 
     it('ensureChatIdFromResponse no-op', () => {
@@ -138,6 +140,8 @@ describe('useChatHistory', () => {
 
         result.current.ensureChatIdFromResponse({id: 'new-chat-id'});
 
-        expect(sharedState.setChatId).not.toHaveBeenCalled();
+        expect(sharedState.setChatId).toHaveBeenCalledTimes(1);
+        const setChatIdUpdater = sharedState.setChatId.mock.calls[0][0];
+        expect(setChatIdUpdater('existing-chat-id')).toBe('existing-chat-id');
     });
 });

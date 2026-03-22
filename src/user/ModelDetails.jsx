@@ -1,5 +1,4 @@
 import {CheckIcon, XCircleIcon} from "@heroicons/react/16/solid/index.js";
-import modelProps from "./UserPropTypes.js";
 
 const ModelDetails = ({selectedModel}) => {
     return (
@@ -70,7 +69,5 @@ const ModelDetails = ({selectedModel}) => {
         </div>
     )
 }
-
-ModelDetails.propTypes = modelProps;
 
 export default ModelDetails;

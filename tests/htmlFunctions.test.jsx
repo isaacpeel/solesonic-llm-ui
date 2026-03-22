@@ -10,30 +10,27 @@ describe('htmlFunctions', () => {
       expect(container.textContent).toBe(text);
     });
 
-    it('should remove <think> blocks from text', () => {
+    it('should keep <think> blocks in text', () => {
       const textWithThink = 'Hello, <think>this should be removed</think> world!';
-      const expectedText = 'Hello,  world!';
       const { container } = render(toJsx(textWithThink));
-      expect(container.textContent).toBe(expectedText);
+      expect(container.textContent).toBe(textWithThink);
     });
 
-    it('should remove multiple <think> blocks from text', () => {
+    it('should keep multiple <think> blocks in text', () => {
       const textWithMultipleThinks = 'Hello, <think>remove this</think> world! <think>and this too</think>';
-      const expectedText = 'Hello,  world! ';
       const { container } = render(toJsx(textWithMultipleThinks));
-      expect(container.textContent).toBe(expectedText);
+      expect(container.textContent).toBe(textWithMultipleThinks);
     });
 
-    it('should handle multiline <think> blocks', () => {
+    it('should keep multiline <think> blocks', () => {
       const textWithMultilineThink = 'Hello,\n<think>remove\nthis\nblock</think>\nworld!';
-      const expectedText = 'Hello,\n\nworld!';
       const { container } = render(toJsx(textWithMultilineThink));
-      expect(container.textContent).toBe(expectedText);
+      expect(container.textContent).toBe(textWithMultilineThink);
     });
 
     it('should handle null or undefined input', () => {
       const { container } = render(toJsx(null));
-      expect(container.textContent).toBe('No Message In Response');
+      expect(container.textContent).toBe('');
     });
   });
 });

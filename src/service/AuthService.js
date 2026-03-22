@@ -7,7 +7,7 @@ const MAX_ATTEMPTS = 3;
 const AUTH_BLOCKED_UNTIL = 'authBlockedUntil';
 const AUTH_FAILURES_KEY = 'authFailuresKey';
 
-// Keycloak instance will be set by the provider
+// The provider will set a keycloak instance
 let keycloakInstance = null;
 
 const authService = {
@@ -27,7 +27,7 @@ const authService = {
             return null;
         }
         
-        // Ensure token is fresh
+        // Ensure the token is fresh
         try {
             await keycloakInstance.updateToken(5);
             return keycloakInstance.token;

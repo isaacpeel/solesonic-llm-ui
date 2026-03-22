@@ -40,7 +40,7 @@ describe('buildStreamingMarkdownDisplay - normalization', () => {
     it('normalizes CRLF to LF and collapses 3+ newlines to 2', () => {
         const raw = 'a\r\n\r\n\r\n\r\nb';
         const display = buildStreamingMarkdownDisplay(raw, { isFinal: true });
-        expect(display).toBe('a\n\n\nb');
+        expect(display).toBe('a\n\nb');
     });
 
     it('collapses interior multi-space runs outside code/inline code during streaming', () => {

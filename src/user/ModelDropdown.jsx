@@ -1,4 +1,3 @@
-import modelProps from "./UserPropTypes.js";
 import userPreferencesService from "../service/UserPreferencesService.js";
 
 import {ToastContainer, toast, Bounce} from 'react-toastify';
@@ -49,7 +48,5 @@ const ModelDropdown = ({selectedModel, setSelectedModel, models}) => {
         </div>
     )
 }
-
-ModelDropdown.propTypes = modelProps;
 
 export default ModelDropdown;

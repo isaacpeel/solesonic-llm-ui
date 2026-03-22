@@ -10,7 +10,11 @@ vi.mock('axios', () => ({
             post: vi.fn(),
             put: vi.fn(),
             delete: vi.fn(),
-            patch: vi.fn()
+            patch: vi.fn(),
+            interceptors: {
+                request: { use: vi.fn() },
+                response: { use: vi.fn() }
+            }
         })
     }
 }));
@@ -42,7 +46,7 @@ describe('AxiosClient', () => {
         });
         
         const result = axiosClient.buildUrl(baseUri, queryParams);
-        expect(result).toContain('https://example.com/api');
+        expect(result).toContain('/api?param1=value1&param2=value2');
         expect(result).toContain('param1=value1');
         expect(result).toContain('param2=value2');
     });
