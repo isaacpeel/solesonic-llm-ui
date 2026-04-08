@@ -70,16 +70,4 @@ function ChatInput({
     );
 }
 
-ChatInput.propTypes = {
-    loading: PropTypes.bool.isRequired,
-    inputValue: PropTypes.string.isRequired,
-    handleInputChange: PropTypes.func.isRequired,
-    handleSubmit: PropTypes.func.isRequired,
-    ghostText: PropTypes.string.isRequired,
-    onTabAccept: PropTypes.func.isRequired,
-    chatInputRef: PropTypes.shape({
-        current: PropTypes.any
-    }).isRequired
-};
-
 export default ChatInput;

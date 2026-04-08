@@ -109,7 +109,7 @@ function useChatStream({
             const payload = {chatMessage: submittedMessageText};
 
             if (selectedCommand) {
-                payload.command = selectedCommand;
+                payload.commands = [selectedCommand];
             }
 
             await chatService.chatStream(payload, chatId, {

@@ -57,7 +57,7 @@ describe('useSlashCommands', () => {
     });
 
     it('Fetches commands when input starts with /', async () => {
-        const commandResults = [{command: 'agile', name: 'agile', description: 'desc'}];
+        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
         slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
 
         createHook('/ag');
@@ -67,7 +67,7 @@ describe('useSlashCommands', () => {
     });
 
     it('Ghost text computation', async () => {
-        const commandResults = [{command: 'agile', name: 'agile', description: 'desc'}];
+        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
         slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
 
         const {result} = createHook('/ag');
@@ -77,7 +77,7 @@ describe('useSlashCommands', () => {
     });
 
     it('Tab accept', async () => {
-        const commandResults = [{command: 'agile', name: 'agile', description: 'desc'}];
+        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
         const setInputValue = vi.fn();
         slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
 
@@ -92,8 +92,8 @@ describe('useSlashCommands', () => {
         expect(result.current.suggestion).toBe(null);
     });
 
-    it('getSelectedCommand returns command', async () => {
-        const commandResults = [{command: 'agile', name: 'agile', description: 'desc'}];
+    it('getSelectedCommand returns commands', async () => {
+        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
         slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
 
         const {result} = createHook('/agile ');
@@ -109,7 +109,7 @@ describe('useSlashCommands', () => {
     });
 
     it('Exact match', async () => {
-        const commandResults = [{command: 'agile', name: 'agile', description: 'desc'}];
+        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
         slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
 
         const {result} = createHook('/agile');
@@ -120,7 +120,7 @@ describe('useSlashCommands', () => {
     });
 
     it('Debounce', async () => {
-        const commandResults = [{command: 'agile', name: 'agile', description: 'desc'}];
+        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
         slashCommandService.fetchCommands.mockResolvedValue(commandResults);
 
         const {setInputAndRerender} = createHook('/a');
