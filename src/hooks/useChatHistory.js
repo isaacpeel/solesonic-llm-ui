@@ -38,7 +38,9 @@ function useChatHistory() {
         }
 
         fetchChatDetails().then((formattedMessages) => {
-            setChatHistory(formattedMessages);
+            setChatHistory((previousHistory) => {
+                return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
+            });
         });
     }, [chatId, setChatHistory]);
 
@@ -104,15 +106,96 @@ function useChatHistory() {
         }
     }, [setChatId]);
 
+    const appendNotificationToLastAIMessage = useCallback((notificationMessageText) => {
+        if (!notificationMessageText || typeof notificationMessageText !== 'string') {
+            return;
+        }
+
+        const trimmedNotificationMessageText = notificationMessageText.trim();
+
+        if (!trimmedNotificationMessageText) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            const newHistory = [...previousHistory];
+            const lastMessageIndex = newHistory.length - 1;
+
+            if (lastMessageIndex < 0) {
+                return previousHistory;
+            }
+
+            const lastMessage = newHistory[lastMessageIndex];
+
+            if (lastMessage.type !== AI) {
+                return previousHistory;
+            }
+
+            const existingNotifications = Array.isArray(lastMessage.notifications)
+                ? lastMessage.notifications
+                : [];
+
+            newHistory[lastMessageIndex] = {
+                ...lastMessage,
+                notifications: [...existingNotifications, trimmedNotificationMessageText],
+            };
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
     return {
         chatId,
         chatHistory,
         setChatHistory,
         setChatId,
         appendToLastAIMessage,
+        appendNotificationToLastAIMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
     };
 }
 
 export default useChatHistory;
+
+function mergeFetchedChatHistoryWithLocalNotifications(fetchedHistory, previousHistory) {
+    if (!Array.isArray(fetchedHistory)) {
+        return previousHistory;
+    }
+
+    if (fetchedHistory.length === 0) {
+        const lastLocalMessage = previousHistory[previousHistory.length - 1];
+        const localNotifications = Array.isArray(lastLocalMessage?.notifications) ? lastLocalMessage.notifications : [];
+
+        if (lastLocalMessage?.type === AI && localNotifications.length > 0) {
+            return previousHistory;
+        }
+
+        return fetchedHistory;
+    }
+
+    const lastLocalMessage = previousHistory[previousHistory.length - 1];
+    const localNotifications = Array.isArray(lastLocalMessage?.notifications) ? lastLocalMessage.notifications : [];
+
+    if (lastLocalMessage?.type !== AI || localNotifications.length === 0) {
+        return fetchedHistory;
+    }
+
+    const mergedHistory = [...fetchedHistory];
+    const lastFetchedMessageIndex = mergedHistory.length - 1;
+    const lastFetchedMessage = mergedHistory[lastFetchedMessageIndex];
+
+    if (lastFetchedMessage?.type !== AI) {
+        return [...mergedHistory, {
+            ...lastLocalMessage,
+            notifications: localNotifications,
+        }];
+    }
+
+    mergedHistory[lastFetchedMessageIndex] = {
+        ...lastFetchedMessage,
+        notifications: localNotifications,
+    };
+
+    return mergedHistory;
+}

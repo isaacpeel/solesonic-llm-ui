@@ -8,6 +8,7 @@ export const MESSAGE = "message";
 export const DONE = "done";
 export const INIT = "init";
 export const ELICITATION = "elicitation";
+export const PROGRESS_NOTIFICATION_METHOD = 'notifications/progress';
 
 const chatService = {
     // Non-streaming chat (kept for backward compatibility)
@@ -36,12 +37,20 @@ const chatService = {
         activeElicitation,
         chatId,
         appendToLastAIMessage,
+        appendNotificationMessage,
         ensureChatIdFromResponse,
         finalizeLastAIMessage,
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
     }) => {
+        const progressNotificationText = getProgressNotificationTextFromRawData(eventPayload?.data);
+
+        if (progressNotificationText) {
+            appendNotificationMessage(progressNotificationText);
+            return;
+        }
+
         const event = eventPayload.event;
 
         switch (event) {
@@ -56,7 +65,12 @@ const chatService = {
             case CHUNK:
             case MESSAGE:
                 try {
-                    const {content} = JSON.parse(eventPayload.data);
+                    const parsedPayload = JSON.parse(eventPayload.data);
+                    const content = parsedPayload?.content;
+
+                    if (typeof content !== 'string' || content.length === 0) {
+                        break;
+                    }
 
                     if (activeElicitation) {
                         setActiveElicitation(null);
@@ -131,7 +145,10 @@ const chatService = {
                     Accept: 'text/event-stream'
                 },
                 fetch: (_requestInput, init = {}) => {
-                    const {uri: rebuiltUri, method: rebuiltMethod} = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
+                    const {
+                        uri: rebuiltUri,
+                        method: rebuiltMethod
+                    } = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
                     return globalThis.fetch(rebuiltUri, {
                         ...init,
                         method: rebuiltMethod,
@@ -247,6 +264,53 @@ function normalizePayload(input) {
     return typeof input === 'string'
         ? {chatMessage: input}
         : input;
+}
+
+function getProgressNotificationText(parsedPayload) {
+    const progressParams = extractProgressParams(parsedPayload);
+
+    if (!progressParams) {
+        return null;
+    }
+
+    const progressMessage = typeof progressParams.message === 'string' ? progressParams.message.trim() : '';
+
+    if (progressMessage) {
+        return progressMessage;
+    }
+}
+
+function getProgressNotificationTextFromRawData(rawData) {
+    if (typeof rawData !== 'string' || rawData.length === 0) {
+        return null;
+    }
+
+    try {
+        const parsedPayload = JSON.parse(rawData);
+        return getProgressNotificationText(parsedPayload);
+    } catch {
+        return null;
+    }
+}
+
+function extractProgressParams(parsedPayload) {
+    if (!parsedPayload || typeof parsedPayload !== 'object') {
+        return null;
+    }
+
+    if (parsedPayload.progressToken && (
+        typeof parsedPayload.message === 'string'
+        || Number.isFinite(Number(parsedPayload.progress))
+        || Number.isFinite(Number(parsedPayload.total))
+    )) {
+        return parsedPayload;
+    }
+
+    if (parsedPayload.method === PROGRESS_NOTIFICATION_METHOD && parsedPayload.params && typeof parsedPayload.params === 'object') {
+        return parsedPayload.params;
+    }
+
+    return null;
 }
 
 export default chatService;

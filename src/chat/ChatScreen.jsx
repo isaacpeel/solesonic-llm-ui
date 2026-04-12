@@ -15,7 +15,7 @@ import useSlashCommands from '../hooks/useSlashCommands.js';
 
 function ChatScreen() {
     const {chatInputRef} = useSharedData();
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse} = useChatHistory();
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse} = useChatHistory();
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
@@ -27,6 +27,7 @@ function ChatScreen() {
         chatHistory,
         setChatHistory,
         appendToLastAIMessage,
+        appendNotificationToLastAIMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         activeElicitation,

@@ -43,6 +43,7 @@ describe('useChatStream', () => {
             chatHistory: [{type: 'ASSISTANT', text: 'welcome', _key: '1', ephemeral: true}],
             setChatHistory,
             appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             activeElicitation: null,
@@ -169,7 +170,7 @@ describe('useChatStream', () => {
         });
 
         expect(chatService.chatStream).toHaveBeenCalledWith(
-            {chatMessage: '/agile show board', commands: 'agile'},
+            {chatMessage: '/agile show board', commands: ['agile']},
             options.chatId,
             expect.objectContaining({
                 onChunk: expect.any(Function),
@@ -208,6 +209,7 @@ describe('useChatStream', () => {
             activeElicitation: options.activeElicitation,
             chatId: options.chatId,
             appendToLastAIMessage: options.appendToLastAIMessage,
+            appendNotificationMessage: options.appendNotificationToLastAIMessage,
             ensureChatIdFromResponse: options.ensureChatIdFromResponse,
             finalizeLastAIMessage: options.finalizeLastAIMessage,
             setActiveElicitation: options.setActiveElicitation,

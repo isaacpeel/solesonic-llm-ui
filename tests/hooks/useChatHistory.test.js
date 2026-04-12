@@ -68,10 +68,48 @@ describe('useChatHistory', () => {
         });
 
         await waitFor(() => {
-            expect(sharedState.setChatHistory).toHaveBeenCalledWith([
+            expect(sharedState.setChatHistory).toHaveBeenCalledTimes(1);
+            const setHistoryUpdater = sharedState.setChatHistory.mock.calls[0][0];
+            const mergedHistory = setHistoryUpdater([]);
+            expect(mergedHistory).toEqual([
                 {type: AI, text: 'hello', model: 'model-1', _key: 'msg-1'},
             ]);
         });
+    });
+
+    it('preserves local AI notifications when chat hydration runs', async () => {
+        sharedState.chatId = 'chat-1';
+        sharedState.chatHistory = [
+            {type: 'USER', text: 'question', _key: 'user-1'},
+            {type: AI, text: 'answer', _key: 'ai-local', notifications: ['Jira workflow started']},
+        ];
+
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'msg-1', messageType: 'USER', message: 'question'},
+                {id: 'msg-2', messageType: AI, message: 'answer', model: 'model-1'},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => {
+            expect(sharedState.setChatHistory).toHaveBeenCalledTimes(1);
+        });
+
+        const setHistoryUpdater = sharedState.setChatHistory.mock.calls[0][0];
+        const mergedHistory = setHistoryUpdater(sharedState.chatHistory);
+
+        expect(mergedHistory).toEqual([
+            {type: 'USER', text: 'question', model: undefined, _key: 'msg-1'},
+            {
+                type: AI,
+                text: 'answer',
+                model: 'model-1',
+                _key: 'msg-2',
+                notifications: ['Jira workflow started'],
+            },
+        ]);
     });
 
     it('appendToLastAIMessage', () => {

@@ -11,6 +11,7 @@ function useChatStream({
     chatHistory,
     setChatHistory,
     appendToLastAIMessage,
+    appendNotificationToLastAIMessage,
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
     activeElicitation,
@@ -36,6 +37,7 @@ function useChatStream({
             activeElicitation,
             chatId,
             appendToLastAIMessage,
+            appendNotificationMessage: appendNotificationToLastAIMessage,
             ensureChatIdFromResponse,
             finalizeLastAIMessage,
             setActiveElicitation,
@@ -46,6 +48,7 @@ function useChatStream({
         activeElicitation,
         chatId,
         appendToLastAIMessage,
+        appendNotificationToLastAIMessage,
         ensureChatIdFromResponse,
         finalizeLastAIMessage,
         setActiveElicitation,
@@ -90,7 +93,7 @@ function useChatStream({
 
         const updatedHistory = chatHistory.filter((message) => !message.ephemeral);
         const userMessage = {type: USER, text: submittedMessageText, _key: generateMessageKey('user')};
-        const aiPlaceholder = {type: AI, text: '', _key: generateMessageKey('ai'), isStreaming: true};
+        const aiPlaceholder = {type: AI, text: '', _key: generateMessageKey('ai'), isStreaming: true, notifications: []};
 
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);

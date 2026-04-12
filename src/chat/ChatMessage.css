@@ -71,6 +71,116 @@
     overflow-x: auto;
 }
 
+.notification-log {
+    margin-bottom: 10px;
+    padding: 8px 10px 6px 10px;
+    border-left: 3px solid rgba(255, 255, 255, 0.5);
+    background-color: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+}
+
+/* Streaming state */
+.notification-log-streaming-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.notification-log-spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    flex-shrink: 0;
+    animation: notification-spin 0.7s linear infinite;
+}
+
+@keyframes notification-spin {
+    to { transform: rotate(360deg); }
+}
+
+.notification-log-current-step {
+    opacity: 0.9;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Completed state: summary toggle */
+.notification-log-summary-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1.35;
+    padding: 0;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+}
+
+.notification-log-summary-toggle:hover {
+    opacity: 1;
+}
+
+.notification-log-summary-toggle:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+
+.notification-log-checkmark-icon {
+    color: #6fcf97;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.notification-log-summary-label {
+    flex: 1;
+}
+
+.notification-log-chevron {
+    font-size: 14px;
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.notification-log-chevron--expanded {
+    transform: rotate(180deg);
+}
+
+/* Completed state: expanded step list */
+.notification-log-step-list {
+    list-style: none;
+    padding: 6px 0 0 0;
+    margin: 6px 0 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.notification-log-step-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.notification-log-step-checkmark {
+    color: #6fcf97;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
 .message-text .markdown-body {
     white-space: normal;
 }
