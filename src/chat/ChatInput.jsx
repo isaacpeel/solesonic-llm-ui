@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import {useEffect} from 'react';
 import PropTypes from 'prop-types';
 import './ChatInput.css';
-import McpTool from "./McpTool.jsx";
+import SlashCommandList from './SlashCommandList.jsx';
+import SelectedCommandChip from './SelectedCommandChip.jsx';
 
 function ChatInput({
     loading,
@@ -9,8 +10,14 @@ function ChatInput({
     handleInputChange,
     handleSubmit,
     chatInputRef,
-    ghostText,
-    onTabAccept,
+    commandCandidates,
+    selectedIndex,
+    selectedCommand,
+    onCommandSelect,
+    onArrowUp,
+    onArrowDown,
+    onDismiss,
+    onDeselect,
 }) {
     useEffect(() => {
         const adjustInputHeight = () => {
@@ -27,13 +34,22 @@ function ChatInput({
         }
     }, [chatInputRef, inputValue]);
 
+    const hasCandidates = commandCandidates.length > 0;
+
     return (
         <div className="chat-input-container">
             <div className="textarea-parent">
-                {ghostText && !loading && (
-                    <McpTool inputValue={inputValue}
-                             ghostText={ghostText} />
+                {selectedCommand && !loading && (
+                    <SelectedCommandChip
+                        selectedCommand={selectedCommand}
+                        onDeselect={onDeselect}
+                    />
                 )}
+                <SlashCommandList
+                    commandCandidates={commandCandidates}
+                    selectedIndex={selectedIndex}
+                    onCommandSelect={onCommandSelect}
+                />
                 <textarea
                     disabled={loading}
                     ref={chatInputRef}
@@ -44,16 +60,47 @@ function ChatInput({
                     rows={1}
                     onKeyDown={(event) => {
 
-                        if (event.key === 'Tab' && ghostText) {
+                        if (hasCandidates && event.key === 'ArrowDown') {
                             event.preventDefault();
-                            onTabAccept();
+                            onArrowDown();
+                            return;
+                        }
+
+                        if (hasCandidates && event.key === 'ArrowUp') {
+                            event.preventDefault();
+                            onArrowUp();
+                            return;
+                        }
+
+                        if (hasCandidates && event.key === 'Tab') {
+                            event.preventDefault();
+                            const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
+                            onCommandSelect(commandCandidates[targetIndex]);
+                            return;
+                        }
+
+                        if (hasCandidates && event.key === 'Escape') {
+                            event.preventDefault();
+                            onDismiss();
+                            return;
+                        }
+
+                        if (event.key === 'Backspace' && inputValue === '' && selectedCommand) {
+                            onDeselect();
                             return;
                         }
 
                         if (event.key === 'Enter' && !event.shiftKey) {
+                            if (hasCandidates && selectedIndex >= 0) {
+                                event.preventDefault();
+                                onCommandSelect(commandCandidates[selectedIndex]);
+                                return;
+                            }
+
                             event.preventDefault();
                             handleSubmit().then(() => {
                                 chatInputRef.current.style.height = "auto";
+                                onDeselect();
                             });
                         }
                     }}
@@ -69,5 +116,21 @@ function ChatInput({
         </div>
     );
 }
+
+ChatInput.propTypes = {
+    loading: PropTypes.bool.isRequired,
+    inputValue: PropTypes.string.isRequired,
+    handleInputChange: PropTypes.func.isRequired,
+    handleSubmit: PropTypes.func.isRequired,
+    chatInputRef: PropTypes.object.isRequired,
+    commandCandidates: PropTypes.array.isRequired,
+    selectedIndex: PropTypes.number.isRequired,
+    selectedCommand: PropTypes.object,
+    onCommandSelect: PropTypes.func.isRequired,
+    onArrowUp: PropTypes.func.isRequired,
+    onArrowDown: PropTypes.func.isRequired,
+    onDismiss: PropTypes.func.isRequired,
+    onDeselect: PropTypes.func.isRequired,
+};
 
 export default ChatInput;
