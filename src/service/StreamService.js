@@ -49,11 +49,10 @@ const streamService = {
                 onmessage(eventSourceMessage) {
                     const eventType = eventSourceMessage?.event && eventSourceMessage.event.length > 0 ? eventSourceMessage.event : 'message';
                     const dataString = eventSourceMessage?.data ?? '';
-                    const frameString = `event: ${eventType}\n` + `data: ${dataString}\n\n`;
 
                     if (onChunk) {
                         try {
-                            onChunk(frameString);
+                            onChunk({ event: eventType, data: dataString });
                         } catch (callbackError) {
                             console.warn('[ChatService] onChunk callback error:', callbackError);
                         }
