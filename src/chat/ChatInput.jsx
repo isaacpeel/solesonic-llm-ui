@@ -91,9 +91,10 @@ function ChatInput({
                         }
 
                         if (event.key === 'Enter' && !event.shiftKey) {
-                            if (hasCandidates && selectedIndex >= 0) {
+                            if (hasCandidates && (selectedIndex >= 0 || commandCandidates.length === 1)) {
                                 event.preventDefault();
-                                onCommandSelect(commandCandidates[selectedIndex]);
+                                const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
+                                onCommandSelect(commandCandidates[targetIndex]);
                                 return;
                             }
 
