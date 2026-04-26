@@ -21,6 +21,7 @@ function ChatMessage({message}) {
 
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
+
     const components = useMemo(() => ({
         a: ({ node, ...props }) => (
             <a {...props} target="_blank" rel="noopener noreferrer" />

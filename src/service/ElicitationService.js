@@ -2,7 +2,28 @@ import {AI, SYSTEM, USER} from "../chat/ChatMessage.jsx";
 import streamService from "./StreamService.js"
 
 
+const DEFAULT_CONFIRMATION_ACTIONS = ['accept', 'cancel', 'decline'];
+
 const elicitationService = {
+    normalizeElicitationSchema: (requestedSchema) => {
+        const schema = requestedSchema || {};
+        const properties = schema.properties;
+
+        if (properties !== undefined && Object.keys(properties).length === 0) {
+            return {
+                ...schema,
+                properties: {
+                    action: {
+                        type: 'string',
+                        enum: DEFAULT_CONFIRMATION_ACTIONS,
+                    },
+                },
+            };
+        }
+
+        return schema;
+    },
+
     handleElicitationChange: (fieldName, fieldValue, setElicitationValues) => {
         setElicitationValues((previousValues) => ({
             ...previousValues,
@@ -52,6 +73,7 @@ const elicitationService = {
         const payloadToSend = {
             ...fieldsToSend,
             elicitationId,
+            chatId,
         };
 
         setError(null);

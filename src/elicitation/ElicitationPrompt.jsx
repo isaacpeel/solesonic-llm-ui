@@ -1,4 +1,5 @@
 import "./ElicitationPrompt.css";
+import elicitationService from '../service/ElicitationService.js';
 
 const SpinnerLabel = () => (
     <div className="inline-flex items-center text-xs text-slate-400">
@@ -42,10 +43,13 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
         return null;
     }
 
-    const schema = elicitation.requestedSchema || {};
-    const properties = schema.properties || {};
+    const schema = elicitationService.normalizeElicitationSchema(elicitation.requestedSchema);
+    const isDirectSchema = !schema.properties && (schema.type || schema.enum || schema.oneOf);
 
-    const nonMetaPropertyEntries = Object.entries(properties).filter(([fieldName]) => fieldName !== 'chatId');
+    const nonMetaPropertyEntries = isDirectSchema
+        ? [['value', schema]]
+        : Object.entries(schema.properties || {}).filter(([fieldName]) => fieldName !== 'chatId');
+
     const actionField = nonMetaPropertyEntries.length === 1 ? nonMetaPropertyEntries[0][1] : null;
     const isSingleActionField = Boolean(actionField?.enum || actionField?.oneOf);
 

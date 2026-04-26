@@ -1,4 +1,4 @@
-import {useRef, useState} from 'react';
+import {useRef, useState, useEffect} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -16,6 +16,25 @@ import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
 
 function ChatScreen() {
     const {chatInputRef} = useSharedData();
+
+    useEffect(() => {
+        const handleCopy = (event) => {
+            const selection = window.getSelection();
+            if (!selection || selection.isCollapsed) return;
+
+            const range = selection.getRangeAt(0);
+            const ancestor = range.commonAncestorContainer;
+            const element = ancestor.nodeType === Node.ELEMENT_NODE ? ancestor : ancestor.parentElement;
+            if (!element?.closest('.message-text')) return;
+
+            const cleanText = selection.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+            event.clipboardData.setData('text/plain', cleanText);
+            event.preventDefault();
+        };
+
+        document.addEventListener('copy', handleCopy);
+        return () => document.removeEventListener('copy', handleCopy);
+    }, []);
     const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse} = useChatHistory();
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
