@@ -1,4 +1,4 @@
-import {AI, SYSTEM, USER} from "../chat/ChatMessage.jsx";
+import {AI, SYSTEM} from "../chat/ChatMessage.jsx";
 import streamService from "./StreamService.js"
 
 
@@ -58,12 +58,16 @@ const elicitationService = {
             .map(([, fieldValue]) => `${fieldValue}`);
 
         const updatedHistory = chatHistory.filter((message) => !message.ephemeral);
-        const systemElicitationMessage = { type: SYSTEM, text: activeElicitation.message, _key: `user-${timestamp}` };
-        const userElicitationResponse = { type: USER, text: summaryParts.join(', '), _key: `user-${timestamp}-resp` };
+        const resolvedElicitationMessage = {
+            type: SYSTEM,
+            text: activeElicitation.message,
+            elicitationResponse: summaryParts.join(', '),
+            _key: `elicitation-${timestamp}`,
+        };
         const aiPlaceholder = { type: AI, text: '', _key: `ai-${timestamp}`, isStreaming: true };
 
         setActiveElicitation(null);
-        setChatHistory([...updatedHistory, systemElicitationMessage, userElicitationResponse, aiPlaceholder]);
+        setChatHistory([...updatedHistory, resolvedElicitationMessage, aiPlaceholder]);
 
         setElicitationSubmitting(true);
 

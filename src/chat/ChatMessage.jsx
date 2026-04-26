@@ -2,6 +2,9 @@ import PropTypes from "prop-types";
 import {useState, useMemo} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
+
+const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
+const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
 import ReactMarkdown from "react-markdown";
 import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
 import remarkGfm from "remark-gfm";
@@ -53,6 +56,31 @@ function ChatMessage({message}) {
         const isFinal = !message.isStreaming;
         return buildStreamingMarkdownDisplay(rawText, { isFinal });
     }, [message.text, message.isStreaming, showPlaceholder]);
+
+    if (message.elicitationResponse) {
+        const responseText = message.elicitationResponse;
+        const responseLower = responseText.toLowerCase();
+        const badgeModifier = POSITIVE_RESPONSE_KEYWORDS.has(responseLower)
+            ? 'elicitation-resolved-badge--positive'
+            : NEGATIVE_RESPONSE_KEYWORDS.has(responseLower)
+                ? 'elicitation-resolved-badge--negative'
+                : 'elicitation-resolved-badge--neutral';
+        const displayResponse = responseText.charAt(0).toUpperCase() + responseText.slice(1);
+
+        return (
+            <div className="chat-message-container SYSTEM">
+                <div className="info-icon-wrapper" data-dialog="AI Assistant">
+                    <InformationCircleIcon />
+                </div>
+                <div className="message SYSTEM elicitation-resolved">
+                    <span className="elicitation-resolved-question">{message.text}</span>
+                    <span className={`elicitation-resolved-badge ${badgeModifier}`}>
+                        ✓ {displayResponse}
+                    </span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={`chat-message-container ${message.type}`}>
