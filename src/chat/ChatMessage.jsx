@@ -49,7 +49,7 @@ function ChatMessage({message}) {
             return null;
         }
 
-        const rawText = message.text || '';
+        const rawText = (message.text || '').trimEnd();
         const isFinal = !message.isStreaming;
         return buildStreamingMarkdownDisplay(rawText, { isFinal });
     }, [message.text, message.isStreaming, showPlaceholder]);

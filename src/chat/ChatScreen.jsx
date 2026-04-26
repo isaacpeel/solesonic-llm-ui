@@ -23,11 +23,11 @@ function ChatScreen() {
             if (!selection || selection.isCollapsed) return;
 
             const range = selection.getRangeAt(0);
-            const ancestor = range.commonAncestorContainer;
-            const element = ancestor.nodeType === Node.ELEMENT_NODE ? ancestor : ancestor.parentElement;
-            if (!element?.closest('.message-text')) return;
+            const startNode = range.startContainer;
+            const startElement = startNode.nodeType === Node.ELEMENT_NODE ? startNode : startNode.parentElement;
+            if (!startElement?.closest('.message-text')) return;
 
-            const cleanText = selection.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+            const cleanText = selection.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
             event.clipboardData.setData('text/plain', cleanText);
             event.preventDefault();
         };
