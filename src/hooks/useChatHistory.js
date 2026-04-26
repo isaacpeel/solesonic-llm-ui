@@ -1,7 +1,7 @@
 import {useCallback, useEffect} from 'react';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
-import {AI} from '../chat/ChatMessage.jsx';
+import {AI, SYSTEM} from '../chat/ChatMessage.jsx';
 
 function useChatHistory() {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
@@ -28,12 +28,18 @@ function useChatHistory() {
             const response = await chatService.findChatDetails(chatId);
 
             return response.chatMessages.map((message, index) => {
-                return {
+                const base = {
                     type: message.messageType,
                     text: message.message,
                     model: message.model,
                     _key: message.id ?? `${chatId || 'new'}-${index}`,
                 };
+
+                if (message.messageType === SYSTEM && message.elicitationId && message.elicitationResponse) {
+                    base.elicitationResponse = message.elicitationResponse.action;
+                }
+
+                return base;
             });
         }
 

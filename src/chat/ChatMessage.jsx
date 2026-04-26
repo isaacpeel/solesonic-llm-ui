@@ -65,7 +65,7 @@ function ChatMessage({message}) {
             : NEGATIVE_RESPONSE_KEYWORDS.has(responseLower)
                 ? 'elicitation-resolved-badge--negative'
                 : 'elicitation-resolved-badge--neutral';
-        const displayResponse = responseText.charAt(0).toUpperCase() + responseText.slice(1);
+        const displayResponse = responseText.charAt(0).toUpperCase() + responseText.slice(1).toLowerCase();
 
         return (
             <div className="chat-message-container SYSTEM">
