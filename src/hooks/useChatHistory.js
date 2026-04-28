@@ -27,7 +27,18 @@ function useChatHistory() {
         async function fetchChatDetails() {
             const response = await chatService.findChatDetails(chatId);
 
-            return response.chatMessages.map((message, index) => {
+            const formattedMessages = [];
+            let pendingProgressNotifications = [];
+
+            response.chatMessages.forEach((message, index) => {
+                if (message.progressData) {
+                    const notificationText = (message.progressData.message || message.message || '').trim();
+                    if (notificationText) {
+                        pendingProgressNotifications.push(notificationText);
+                    }
+                    return;
+                }
+
                 const base = {
                     type: message.messageType,
                     text: message.message,
@@ -39,8 +50,15 @@ function useChatHistory() {
                     base.elicitationResponse = message.elicitationResponse.action;
                 }
 
-                return base;
+                if (message.messageType === AI && pendingProgressNotifications.length > 0) {
+                    base.notifications = pendingProgressNotifications;
+                    pendingProgressNotifications = [];
+                }
+
+                formattedMessages.push(base);
             });
+
+            return formattedMessages;
         }
 
         fetchChatDetails().then((formattedMessages) => {
