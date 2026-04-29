@@ -1,76 +1,100 @@
-# Nginx Runtime Template Guide
+# Nginx Configuration for Solesonic LLM UI
 
-This guide explains how the app uses Nginx’s runtime templating and what you need to put in your `.env` file to configure it.
+This guide explains how the app is served by Nginx within the Docker container.
 
 ## Overview
-- The container uses the official `nginx:alpine` image.
-- On container start, Nginx’s entrypoint renders `/etc/nginx/templates/default.conf.template` into `/etc/nginx/conf.d/default.conf` using environment variables (via `envsubst`).
-- Environment variables are loaded by Docker Compose from the project’s `.env` file.
-- SSL certificates are mounted read‑only from the host at `/etc/letsencrypt`.
 
-Relevant project files:
-- `nginx.conf.template` (at repo root): the Nginx template with placeholders.
-- `Dockerfile`: installs `gettext` (for `envsubst`) and copies the template to `/etc/nginx/templates/default.conf.template`.
-- `docker-compose.yml`: loads `.env`, exposes ports 80/443, and mounts certificates/logs.
-- `.env`: contains both frontend (Vite) and Nginx runtime variables.
+The container uses the official `nginx:alpine` image to serve the built React application.
+- Nginx runs on port 80 within the container
+- The built application files are located at `/usr/share/nginx/html`
+- The container is configured to allow access on localhost:3000 by the host
+- For production HTTPS, place a reverse proxy (like host Nginx) in front of the container
 
-## Required .env variables for Nginx
-Add the following to your `.env` (alongside existing Vite vars). Adjust values for your domain/cert paths:
+Relevant files:
+- `nginx.conf` — Nginx configuration for the container
+- `Dockerfile` — Multi-stage build that compiles React and configures Nginx
+- `docker-compose.yml` — Compose configuration that exposes the container
 
+## Nginx Configuration
+
+The `nginx.conf` file handles:
+- Static asset caching (7-day expiration for images, CSS, JS, fonts)
+- SPA routing fallback to `index.html` for client-side routes
+- Error and access logging
+
+```nginx
+location ~* \.(jpg|jpeg|png|gif|css|js|woff2?|ttf|eot|svg|webp)$ {
+    expires 7d;
+    add_header Cache-Control "public";
+}
+
+location / {
+    try_files $uri $uri/ /index.html;
+}
 ```
-SERVER_NAME="example.com www.example.com"
-SSL_CERT_PATH=/etc/letsencrypt/live/your-domain/fullchain.pem
-SSL_KEY_PATH=/etc/letsencrypt/live/your-domain/privkey.pem
-TZ=UTC
+
+## Running the Container
+
+Start the container with Docker Compose:
+
+```bash
+docker-compose up -d
 ```
 
-What they do:
-- SERVER_NAME: Space‑separated list of hostnames this server should respond to.
-- SSL_CERT_PATH: Path to the fullchain certificate inside the container.
-- SSL_KEY_PATH: Path to the private key inside the container.
-- TZ: Container timezone (also passed via Compose `environment`).
+The application is then available at `http://localhost:3000`.
 
-The repo’s `.env` may also include Vite variables (prefixed with `VITE_`) used at build time. Keep those as needed.
+## Production Deployment
 
-## How the template works
-`nginx.conf.template` contains placeholders like `${SERVER_NAME}`, `${SSL_CERT_PATH}`, and `${SSL_KEY_PATH}`. At runtime, Nginx’s entrypoint replaces them with the values from your environment and writes the final file to `/etc/nginx/conf.d/default.conf`.
+For production HTTPS deployment:
 
-Key locations in the image:
-- Template source: `/etc/nginx/templates/default.conf.template`
-- Rendered config: `/etc/nginx/conf.d/default.conf`
-- App static files: `/usr/share/nginx/html`
+1. Run the container on localhost (as configured in docker-compose.yml)
+2. Place a reverse proxy (like host Nginx or a load balancer) in front that handles:
+   - HTTPS/TLS termination
+   - Let’s Encrypt certificate management
+   - Domain routing
 
-## Prerequisites
-- DNS for your domain points to the server.
-- Let’s Encrypt certs exist on the host under `/etc/letsencrypt/live/your-domain/`.
-  - The Compose file mounts `/etc/letsencrypt` from the host into the container as read‑only.
+Example host Nginx reverse proxy:
 
-## Quick start
-1) Put your values in `.env` (see the block above). Ensure the cert paths match your host’s real cert locations.
-2) Start the container:
-   - `docker compose up -d`
-3) Verify the template rendered correctly:
-   - `docker compose exec solesonic-llm-ui sh -c "cat /etc/nginx/conf.d/default.conf"`
-   - Check that `server_name` and SSL paths are concrete values (not `${...}`).
-4) Visit your domain over HTTPS to confirm it serves the app.
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name example.com www.example.com;
 
-## Certificate renewal
-- Renew Let’s Encrypt certs on the host as usual (e.g., with `certbot`).
-- Reload Nginx to pick up renewed files:
-  - `docker compose exec solesonic-llm-ui nginx -s reload`
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
 
 ## Troubleshooting
-- Template not rendering:
-  - Ensure the template exists at `/etc/nginx/templates/default.conf.template` (provided by Dockerfile).
-  - Ensure Compose is loading `.env` (see `env_file` in `docker-compose.yml`).
-  - Check logs: `docker compose logs -f`
-- SSL errors:
-  - Confirm the host cert paths are correct and mounted read‑only at `/etc/letsencrypt`.
-  - Ensure `SERVER_NAME` matches the certificate’s domains.
-- 403/404 for routes:
-  - The template serves static assets and falls back to `index.html` for SPA routes (`/`, `/settings`, and general SPA fallback).
 
-## Notes
-- Keep `/etc/letsencrypt` mounted read‑only for safety.
-- You can maintain different `.env` files per environment and swap them before `docker compose up`.
-- Do not commit private keys or secrets; `.env` is typically excluded from version control.
+Check container logs if the app is not responding:
+
+```bash
+docker-compose logs -f solesonic-llm-ui
+```
+
+Verify Nginx is running inside the container:
+
+```bash
+docker-compose exec solesonic-llm-ui nginx -t
+```
+
+Test that the app is accessible on localhost:
+
+```bash
+curl http://localhost:3000
+```
+
+## Environment Variables for Build
+
+The Docker build process uses environment variables from `.env`:
+- Vite variables (`VITE_*`) are used at build time to configure the React application
+- Other variables are passed through docker-compose to the container environment
