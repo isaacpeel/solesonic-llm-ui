@@ -391,11 +391,6 @@ const OllamaModelSettings = () => {
             </div>
         );
     };
-
-    const isNativeModel = (model) => availableInstalledModels.some(
-        available => available.ollamaModel.model === model.ollamaModel.model
-    );
-
     return (
         <div className="ollama-model-settings-container">
             <ToastContainer />
