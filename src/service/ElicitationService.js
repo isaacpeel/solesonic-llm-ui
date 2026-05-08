@@ -1,8 +1,29 @@
-import {AI, SYSTEM, USER} from "../chat/ChatMessage.jsx";
+import {AI, SYSTEM} from "../chat/ChatMessage.jsx";
 import streamService from "./StreamService.js"
 
 
+const DEFAULT_CONFIRMATION_ACTIONS = ['accept', 'cancel', 'decline'];
+
 const elicitationService = {
+    normalizeElicitationSchema: (requestedSchema) => {
+        const schema = requestedSchema || {};
+        const properties = schema.properties;
+
+        if (properties !== undefined && Object.keys(properties).length === 0) {
+            return {
+                ...schema,
+                properties: {
+                    action: {
+                        type: 'string',
+                        enum: DEFAULT_CONFIRMATION_ACTIONS,
+                    },
+                },
+            };
+        }
+
+        return schema;
+    },
+
     handleElicitationChange: (fieldName, fieldValue, setElicitationValues) => {
         setElicitationValues((previousValues) => ({
             ...previousValues,
@@ -37,35 +58,38 @@ const elicitationService = {
             .map(([, fieldValue]) => `${fieldValue}`);
 
         const updatedHistory = chatHistory.filter((message) => !message.ephemeral);
-        const systemElicitationMessage = { type: SYSTEM, text: activeElicitation.message, _key: `user-${timestamp}` };
-        const userElicitationResponse = { type: USER, text: summaryParts.join(', '), _key: `user-${timestamp}-resp` };
+        const resolvedElicitationMessage = {
+            type: SYSTEM,
+            text: activeElicitation.message,
+            elicitationResponse: summaryParts.join(', '),
+            _key: `elicitation-${timestamp}`,
+        };
         const aiPlaceholder = { type: AI, text: '', _key: `ai-${timestamp}`, isStreaming: true };
 
-        setChatHistory([...updatedHistory, systemElicitationMessage, userElicitationResponse, aiPlaceholder]);
+        setActiveElicitation(null);
+        setChatHistory([...updatedHistory, resolvedElicitationMessage, aiPlaceholder]);
 
         setElicitationSubmitting(true);
 
         const elicitationId = activeElicitation.elicitationId;
         const chatId = activeElicitation.chatId;
 
-        const responsePayload = {
-            elicitationResponse: {
-                name: activeElicitation.name,
-                fields: { ...fieldsToSend },
-            },
+        const payloadToSend = {
+            ...fieldsToSend,
+            elicitationId,
+            chatId,
         };
 
         setError(null);
 
         try {
-            await streamService.chatStreamElicitationResponse(responsePayload, chatId, elicitationId, {
+            await streamService.chatStreamElicitationResponse(payloadToSend, chatId, elicitationId, {
                 onChunk: handleStreamChunk,
             });
         } catch (error) {
             streamService.handleStreamError(error, setError, setChatHistory);
         }
 
-        setActiveElicitation(null);
         setElicitationSubmitting(false);
     },
 };

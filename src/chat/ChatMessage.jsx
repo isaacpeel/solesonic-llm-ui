@@ -1,7 +1,10 @@
 import PropTypes from "prop-types";
-import {useMemo} from "react";
+import {useState, useMemo} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
+
+const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
+const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
 import ReactMarkdown from "react-markdown";
 import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
 import remarkGfm from "remark-gfm";
@@ -13,10 +16,14 @@ export const SYSTEM = "SYSTEM";
 
 function ChatMessage({message}) {
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
+    const isAIMessage = message.type === AI;
     const hasText = message.text && message.text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText;
+    const notificationLog = Array.isArray(message.notifications) ? message.notifications : [];
+    const [isNotificationLogExpanded, setIsNotificationLogExpanded] = useState(false);
 
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
+
 
     const components = useMemo(() => ({
         a: ({ node, ...props }) => (
@@ -45,10 +52,35 @@ function ChatMessage({message}) {
             return null;
         }
 
-        const rawText = message.text || '';
+        const rawText = (message.text || '').trimEnd();
         const isFinal = !message.isStreaming;
         return buildStreamingMarkdownDisplay(rawText, { isFinal });
     }, [message.text, message.isStreaming, showPlaceholder]);
+
+    if (message.elicitationResponse) {
+        const responseText = message.elicitationResponse;
+        const responseLower = responseText.toLowerCase();
+        const badgeModifier = POSITIVE_RESPONSE_KEYWORDS.has(responseLower)
+            ? 'elicitation-resolved-badge--positive'
+            : NEGATIVE_RESPONSE_KEYWORDS.has(responseLower)
+                ? 'elicitation-resolved-badge--negative'
+                : 'elicitation-resolved-badge--neutral';
+        const displayResponse = responseText.charAt(0).toUpperCase() + responseText.slice(1).toLowerCase();
+
+        return (
+            <div className="chat-message-container SYSTEM">
+                <div className="info-icon-wrapper" data-dialog="AI Assistant">
+                    <InformationCircleIcon />
+                </div>
+                <div className="message SYSTEM elicitation-resolved">
+                    <span className="elicitation-resolved-question">{message.text}</span>
+                    <span className={`elicitation-resolved-badge ${badgeModifier}`}>
+                        ✓ {displayResponse}
+                    </span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={`chat-message-container ${message.type}`}>
@@ -62,6 +94,55 @@ function ChatMessage({message}) {
             )}
             <div className={`message ${message.type}`}>
                 <div className="message-text">
+                    {isAIMessage && notificationLog.length > 0 && (
+                        <div className="notification-log" role="status" aria-live="polite">
+                            {message.isStreaming ? (
+                                <div className="notification-log-streaming-row">
+                                    <span className="notification-log-spinner" aria-hidden="true" />
+                                    <span className="notification-log-current-step">
+                                        {notificationLog[notificationLog.length - 1]}
+                                    </span>
+                                </div>
+                            ) : (
+                                <>
+                                    <button
+                                        className="notification-log-summary-toggle"
+                                        onClick={() => setIsNotificationLogExpanded(previousValue => !previousValue)}
+                                        aria-expanded={isNotificationLogExpanded}
+                                        aria-controls={`notification-steps-${message._key}`}
+                                    >
+                                        <span className="notification-log-checkmark-icon" aria-hidden="true">✓</span>
+                                        <span className="notification-log-summary-label">
+                                            {notificationLog.length} {notificationLog.length === 1 ? 'step' : 'steps'} completed
+                                        </span>
+                                        <span
+                                            className={`notification-log-chevron ${isNotificationLogExpanded ? 'notification-log-chevron--expanded' : ''}`}
+                                            aria-hidden="true"
+                                        >
+                                            ▾
+                                        </span>
+                                    </button>
+                                    {isNotificationLogExpanded && (
+                                        <ul
+                                            id={`notification-steps-${message._key}`}
+                                            className="notification-log-step-list"
+                                        >
+                                            {notificationLog.map((notificationText, notificationIndex) => (
+                                                <li
+                                                    key={`${message._key}-notification-${notificationIndex}`}
+                                                    className="notification-log-step-item"
+                                                >
+                                                    <span className="notification-log-step-checkmark" aria-hidden="true">✓</span>
+                                                    {notificationText}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     {showPlaceholder ? (
                         <span className="message-placeholder">Thinking...</span>
                     ) : (

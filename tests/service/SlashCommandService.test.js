@@ -34,7 +34,7 @@ describe('SlashCommandService', () => {
     });
 
     it('fetchCommands returns commands array', async () => {
-        const commands = [{command: 'agile', name: 'jira-agile-board-prompt', description: 'desc'}];
+        const commands = [{commands: 'agile', name: 'jira-agile-board-prompt', description: 'desc'}];
         axiosClient.get.mockResolvedValueOnce({commands});
 
         const result = await slashCommandService.fetchCommands('ag');

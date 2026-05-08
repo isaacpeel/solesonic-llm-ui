@@ -18,6 +18,9 @@ A React-based user interface for the Solesonic LLM chat application. This projec
   - [ChatService](#chatservice)
   - [StreamService](#streamservice)
   - [ElicitationService](#elicitationservice)
+  - [SlashCommandService](#slashcommandservice)
+  - [OllamaService](#ollamaservice)
+  - [UserPreferencesService](#userpreferencesservice)
 - [Example Usage](#example-usage)
 - [License](#license)
 
@@ -26,7 +29,12 @@ A React-based user interface for the Solesonic LLM chat application. This projec
 - Realtime chat UI for interacting with Solesonic LLM
 - Elicitation prompts (assistant asks for missing info and collects fields)
 - Server-Sent Events (SSE) streaming for low-latency responses
-- User authentication via AWS Cognito (with optional mock mode)
+- User authentication via Keycloak
+- Slash commands with auto-completion and command suggestions
+- Model configuration UI for managing Ollama and other models
+- User preferences and settings management
+- RAG (Retrieval Augmented Generation) management for custom training
+- Persistent notifications for workflow updates
 - Document upload and management
 - Atlassian integrations (e.g., Jira) via backend intents
 - Responsive design for desktop and mobile
@@ -37,7 +45,7 @@ A React-based user interface for the Solesonic LLM chat application. This projec
 
 - Node.js (LTS version recommended)
 - npm or yarn
-- Access to AWS Cognito for authentication (or use mock mode)
+- Access to a Keycloak server for authentication
 
 ### Installation
 
@@ -64,20 +72,22 @@ A React-based user interface for the Solesonic LLM chat application. This projec
 
 ## Environment Variables
 
-The UI is configured via Vite environment variables:
+The UI is configured via Vite environment variables. Required for Keycloak authentication:
 
 - `VITE_API_BASE_URI` — Base URI of the backend API (e.g., `http://localhost:8080/api`)
 - `VITE_UI_BASE_URI` — Base URI of this UI (used for redirects)
-- `VITE_MOCK_AMPLIFY` — Optional; set to `true` to mock Amplify/Cognito during local development
-- `VITE_MOCK_API` — Optional; set to `true` to mock API responses during local development
+- `VITE_KEYCLOAK_URL` — URL of your Keycloak server (e.g., `http://localhost:8080`)
+- `VITE_KEYCLOAK_REALM` — Keycloak realm name
+- `VITE_KEYCLOAK_CLIENT_ID` — Keycloak client ID for this application
 
 Example `.env`:
 
 ```
 VITE_API_BASE_URI=http://localhost:8080/api
 VITE_UI_BASE_URI=http://localhost:3000
-VITE_MOCK_AMPLIFY=true
-VITE_MOCK_API=true
+VITE_KEYCLOAK_URL=http://localhost:8080
+VITE_KEYCLOAK_REALM=solesonic
+VITE_KEYCLOAK_CLIENT_ID=solesonic-ui
 ```
 
 ## Production Deployment
@@ -87,17 +97,25 @@ For production deployment using Docker and Nginx, see [README.docker.md](README.
 ## Project Structure
 
 - `src/` — Source code
-  - `chat/` — Chat interface components
+  - `chat/` — Chat interface components and slash command UI
   - `elicitation/` — Elicitation UI components (dynamic prompts/forms)
-  - `service/` — Service layer for API communication and streaming
+  - `user/` — User settings, preferences, and model configuration UI
+  - `train/` — RAG management for custom training/knowledge base
+  - `service/` — Service layer for API communication (chat, streaming, auth, etc.)
   - `client/` — HTTP client configuration
   - `properties/` — Application configuration (URIs, etc.)
-  - `util/` — Utility functions
-- `docs/` — Additional documentation (e.g., Elicitation feature)
+  - `config/` — Environment and framework configuration (Keycloak)
+  - `context/` — React Context for shared state
+  - `authorizer/` — Authentication and authorization components
+  - `providers/` — Context providers
+  - `hooks/` — Custom React hooks
+  - `util/` and `utils/` — Utility functions
+  - `common/` — Shared UI components
+- `docs/` — Additional documentation
 
 ## Architecture Overview
 
-The UI communicates with the Solesonic backend using REST and SSE streaming. Authentication is handled via AWS Cognito (or mock mode locally). Core flows:
+The UI communicates with the Solesonic backend using REST and SSE streaming. Authentication is handled via Keycloak, which provides secure token-based access. Core flows:
 
 ### Chat Streaming
 
@@ -128,34 +146,33 @@ See the dedicated doc: [docs/ELICITATION.md](docs/ELICITATION.md).
 
 Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:
 
-- `chatsUri = ${VITE_API_BASE_URI}/chats`
-- `streamingChatsUri = ${VITE_API_BASE_URI}/streaming/chats`
-- `usersUri = ${VITE_API_BASE_URI}/users`
-- `ollamaUri = ${VITE_API_BASE_URI}/ollama`
-- `atlassianUri = ${VITE_API_BASE_URI}/atlassian`
+- `chatsUri = ${VITE_API_BASE_URI}/chats` — Chat history and metadata
+- `streamingChatsUri = ${VITE_API_BASE_URI}/streaming/chats` — Streaming chat and elicitation responses
+- `usersUri = ${VITE_API_BASE_URI}/users` — User profile and preferences
+- `ollamaUri = ${VITE_API_BASE_URI}/ollama` — Model management and configuration
+- `atlassianUri = ${VITE_API_BASE_URI}/atlassian` — Jira and Atlassian integrations
+- `slashCommandsUri = ${VITE_API_BASE_URI}/slash/commands` — Slash command suggestions
 
 ### ChatService
 
-- `chatStream(message, chatId, { onChunk, onDone, signal })` — starts/continues a chat stream (SSE)
-- `handleStreamChunk(event, handlers)` — helper to process `init`, `chunk/message`, `elicitation`, and `done`
-- `findChatDetails(chatId)` — fetch chat metadata
-- `findChatHistory()` — fetch recent chats for the authenticated user
+- `chatStream(message, chatId, { onChunk, onDone, signal })` — initiates or continues a chat stream via SSE
+- `handleStreamChunk(event, handlers)` — processes server events: `init`, `chunk`/`message`, `elicitation`, and `done`
+- `findChatDetails(chatId)` — retrieves chat metadata
+- `findChatHistory()` — fetches recent chats for the authenticated user
 
-Server events processed by `handleStreamChunk` include `ELICITATION` which opens the elicitation UI and seeds default values.
+Server events include `ELICITATION`, which triggers the elicitation form UI with a JSON schema and message.
 
 ### StreamService
 
-- `chatStreamElicitationResponse(payload, chatId, elicitationId, { onChunk, timeoutMs })` — submits elicitation responses and streams the assistant’s reply via SSE to
-  `POST ${streamingChatsUri}/{chatId}/{elicitationId}/elicitation-response`
-- `handleStreamError(error, setError, setChatHistory)` — utility to unwind partial AI messages on failure
+- `chatStreamElicitationResponse(payload, chatId, elicitationId, { onChunk, timeoutMs })` — submits elicitation responses and streams the assistant’s follow-up via SSE
+- `handleStreamError(error, setError, setChatHistory)` — cleans up partial AI messages on stream errors
 
 ### ElicitationService
 
-- `handleElicitationChange(fieldName, value, setElicitationValues)` — update form state
-- `handleElicitationSubmit({ overrideFields, activeElicitation, elicitationValues, ... })` —
-  builds `elicitationResponse` and invokes `StreamService.chatStreamElicitationResponse(...)`
+- `handleElicitationChange(fieldName, value, setElicitationValues)` — updates form field state
+- `handleElicitationSubmit({ overrideFields, activeElicitation, elicitationValues, ... })` — constructs and submits the elicitation response payload
 
-Example elicitation response payload:
+Example elicitation response:
 
 ```json
 {
@@ -169,11 +186,29 @@ Example elicitation response payload:
 }
 ```
 
+### SlashCommandService
+
+- `fetchCommands(command)` — fetches available slash command suggestions, optionally filtered by partial command text
+
+### OllamaService
+
+- `models()` — lists all configured models
+- `getModel(id)` — retrieves details for a specific model
+- `createModel(model)` — creates a new model configuration
+- `updateModel(id, model)` — updates an existing model configuration
+- `installedModels()` — lists currently installed Ollama models
+
+### UserPreferencesService
+
+- `get()` — retrieves the authenticated user’s preferences
+- `save(userPreferences)` — saves or updates user preferences
+- `update(userPreferences)` — updates specific preference fields
+
 ## Security Considerations
 
 - Never commit your `.env` file to version control
 - Use environment-specific variables for different deployment environments
-- Keep AWS Cognito credentials secure
+- Keep Keycloak credentials and connection details secure
 - Use HTTPS in production environments
 
 

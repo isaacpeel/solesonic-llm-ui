@@ -1,4 +1,4 @@
-import {useRef, useState} from 'react';
+import {useRef, useState, useEffect} from 'react';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -11,11 +11,31 @@ import useChatHistory from '../hooks/useChatHistory.js';
 import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
+import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
 
 
 function ChatScreen() {
     const {chatInputRef} = useSharedData();
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse} = useChatHistory();
+
+    useEffect(() => {
+        const handleCopy = (event) => {
+            const selection = window.getSelection();
+            if (!selection || selection.isCollapsed) return;
+
+            const range = selection.getRangeAt(0);
+            const startNode = range.startContainer;
+            const startElement = startNode.nodeType === Node.ELEMENT_NODE ? startNode : startNode.parentElement;
+            if (!startElement?.closest('.message-text')) return;
+
+            const cleanText = selection.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+            event.clipboardData.setData('text/plain', cleanText);
+            event.preventDefault();
+        };
+
+        document.addEventListener('copy', handleCopy);
+        return () => document.removeEventListener('copy', handleCopy);
+    }, []);
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse} = useChatHistory();
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
@@ -27,6 +47,7 @@ function ChatScreen() {
         chatHistory,
         setChatHistory,
         appendToLastAIMessage,
+        appendNotificationToLastAIMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         activeElicitation,
@@ -37,9 +58,15 @@ function ChatScreen() {
         getMessageTextRef,
     });
 
-    const slashCommands = useSlashCommands({inputValue, setInputValue});
-    getSelectedCommandRef.current = slashCommands.getSelectedCommand;
-    getMessageTextRef.current = slashCommands.getMessageText;
+    const {commandCandidates} = useSlashCommands({inputValue});
+
+    const {selectedIndex, selectedCommand, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss} = useSlashCommandSelection({
+        commandCandidates,
+        setInputValue,
+    });
+
+    getSelectedCommandRef.current = () => selectedCommand?.command || null;
+    getMessageTextRef.current = () => inputValue.trim();
 
     const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
         chatHistory,
@@ -79,8 +106,14 @@ function ChatScreen() {
                     handleInputChange={handleInputChange}
                     handleSubmit={handleSubmit}
                     chatInputRef={chatInputRef}
-                    ghostText={slashCommands.ghostText}
-                    onTabAccept={slashCommands.handleTabAccept}
+                    commandCandidates={commandCandidates}
+                    selectedIndex={selectedIndex}
+                    selectedCommand={selectedCommand}
+                    onCommandSelect={handleCommandSelect}
+                    onArrowUp={handleArrowUp}
+                    onArrowDown={handleArrowDown}
+                    onDismiss={handleDismiss}
+                    onDeselect={handleDismiss}
                 />
             </div>
         </div>

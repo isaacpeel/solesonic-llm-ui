@@ -43,6 +43,7 @@ describe('useChatStream', () => {
             chatHistory: [{type: 'ASSISTANT', text: 'welcome', _key: '1', ephemeral: true}],
             setChatHistory,
             appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             activeElicitation: null,
@@ -156,7 +157,7 @@ describe('useChatStream', () => {
         expect(streamService.handleStreamError).toHaveBeenCalledTimes(1);
     });
 
-    it('handleSubmit with command', async () => {
+    it('handleSubmit with commands', async () => {
         options.getSelectedCommandRef = {current: vi.fn(() => 'agile')};
         const {result} = renderHook(() => useChatStream(options));
 
@@ -169,7 +170,7 @@ describe('useChatStream', () => {
         });
 
         expect(chatService.chatStream).toHaveBeenCalledWith(
-            {chatMessage: '/agile show board', command: 'agile'},
+            {chatMessage: '/agile show board', commands: ['agile']},
             options.chatId,
             expect.objectContaining({
                 onChunk: expect.any(Function),
@@ -179,7 +180,7 @@ describe('useChatStream', () => {
         );
     });
 
-    it('handleSubmit without command', async () => {
+    it('handleSubmit without commands', async () => {
         options.getSelectedCommandRef = {current: vi.fn(() => null)};
         const {result} = renderHook(() => useChatStream(options));
 
@@ -193,7 +194,7 @@ describe('useChatStream', () => {
 
         const payload = chatService.chatStream.mock.calls[0][0];
         expect(payload).toEqual({chatMessage: 'hello'});
-        expect(payload.command).toBeUndefined();
+        expect(payload.commands).toBeUndefined();
     });
 
     it('handleStreamChunk', () => {
@@ -208,6 +209,7 @@ describe('useChatStream', () => {
             activeElicitation: options.activeElicitation,
             chatId: options.chatId,
             appendToLastAIMessage: options.appendToLastAIMessage,
+            appendNotificationMessage: options.appendNotificationToLastAIMessage,
             ensureChatIdFromResponse: options.ensureChatIdFromResponse,
             finalizeLastAIMessage: options.finalizeLastAIMessage,
             setActiveElicitation: options.setActiveElicitation,

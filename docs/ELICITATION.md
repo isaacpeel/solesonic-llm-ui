@@ -15,61 +15,45 @@ Elicitation is an interactive flow where the assistant requests missing informat
 
 ## User Interaction
 
-- For boolean-only prompts, buttons are shown for accept/decline/cancel and submission is immediate.
-- For text fields, the user types values and the response is sent, after which streaming resumes.
-- While waiting for the assistant, a subtle “Waiting for assistant…” indicator is displayed.
+The ElicitationPrompt component (`src/elicitation/ElicitationPrompt.jsx`) renders form fields based on the schema:
 
-Rendered by: `src/elicitation/ElicitationPrompt.jsx`
+- **Enum/OneOf fields**: Rendered as buttons for small sets of options, or select dropdowns for larger sets
+- **Text fields**: Input fields where users type values
+- **Multi-select fields**: Checkboxes or multi-select controls
+- **Boolean actions**: Primary action buttons (accept/confirm) highlighted with special styling
+- **Waiting state**: Subtle “Waiting for assistant…” spinner shown while streaming the response
 
-```jsx
-// simplified excerpt
-function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting }) {
-  if (!elicitation) {
-    return null;
-  }
+The component intelligently detects the primary action button (based on keywords like ACCEPT, CONFIRM, YES, OK, APPROVE) and highlights it with primary styling.
 
-  const schema = elicitation.requestedSchema || {};
-  const properties = schema.properties || {};
-
-  return (
-    <div>
-      <div>{elicitation.message}</div>
-      {Object.entries(properties)
-        .filter(([name]) => name !== 'chatId')
-        .map(([name, def]) => (
-          <input key={name} value={values[name] || ''} onChange={(e) => onChange(name, e.target.value)} />
-        ))}
-    </div>
-  );
-}
-```
+Schema normalization via `ElicitationService.normalizeElicitationSchema()` handles both standard schema objects and direct property definitions.
 
 ## Field Submission
 
-Submission is orchestrated by `ElicitationService`:
-
-File: `src/service/ElicitationService.js`
+Submission is handled by `ElicitationService.handleElicitationSubmit()`:
 
 ```js
-const responsePayload = {
-  elicitationResponse: {
-    name: activeElicitation.name,
-    fields: { ...fieldsToSend },
-  },
+const payloadToSend = {
+  ...fieldsToSend,
+  elicitationId,
+  chatId,
 };
 
 await streamService.chatStreamElicitationResponse(
-  responsePayload,
+  payloadToSend,
   chatId,
   elicitationId,
   { onChunk: handleStreamChunk }
 );
 ```
 
-Notes:
+The service:
+- Builds a summary of submitted fields for display in the chat
+- Updates chat history with the original elicitation message and the user’s response summary
+- Adds an AI placeholder message marked as `isStreaming: true` to stream the assistant’s follow-up
+- Clears the elicitation UI after submission
+- Handles errors by rolling back partial AI messages
 
-- The service also updates the chat history to include the system prompt and the user’s field summary before streaming begins.
-- The last AI message is flagged as `isStreaming` and filled incrementally.
+Default confirmation actions (when no specific fields are defined): `[‘accept’, ‘cancel’, ‘decline’]`
 
 ## Streaming Response Mechanism
 
@@ -109,10 +93,13 @@ Server events handled during chat streaming (see `ChatService.js`):
 
 ## Code Reference
 
-- UI component: `src/elicitation/ElicitationPrompt.jsx`
-- Submit logic: `src/service/ElicitationService.js`
-- Streaming submission: `src/service/StreamService.js`
-- Stream handling: `src/service/ChatService.js` (`handleStreamChunk`)
+Key files and their responsibilities:
+
+- `src/elicitation/ElicitationPrompt.jsx` — Renders form fields, enum/oneOf options, and waiting indicator
+- `src/service/ElicitationService.js` — Manages form state, normalizes schemas, orchestrates submission
+- `src/service/StreamService.js` — Sends elicitation response and manages SSE streaming
+- `src/service/ChatService.js` — Processes stream events including `elicitation` event type
+- `src/chat/ChatScreen.jsx` — Coordinates elicitation flow and chat updates
 
 ## Example: Responding to a Boolean Elicitation
 
