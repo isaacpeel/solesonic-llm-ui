@@ -18,8 +18,8 @@ function ChatMessage({message}) {
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const isAIMessage = message.type === AI;
     const hasText = message.text && message.text.trim() !== '';
-    const showPlaceholder = isAIorSystem && !hasText;
     const notificationLog = Array.isArray(message.notifications) ? message.notifications : [];
+    const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0;
     const [isNotificationLogExpanded, setIsNotificationLogExpanded] = useState(false);
 
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
