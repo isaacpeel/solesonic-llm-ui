@@ -2,13 +2,13 @@ import axiosClient from "../client/AxiosClient.js"
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import {fetchEventSource} from '@microsoft/fetch-event-source';
+import {getProgressNotificationTextFromRawData} from './ProgressNotificationService.js';
 
 export const CHUNK = "chunk";
 export const MESSAGE = "message";
 export const DONE = "done";
 export const INIT = "init";
 export const ELICITATION = "elicitation";
-export const PROGRESS_NOTIFICATION_METHOD = 'notifications/progress';
 
 const chatService = {
     // Non-streaming chat (kept for backward compatibility)
@@ -264,53 +264,6 @@ function normalizePayload(input) {
     return typeof input === 'string'
         ? {chatMessage: input}
         : input;
-}
-
-function getProgressNotificationText(parsedPayload) {
-    const progressParams = extractProgressParams(parsedPayload);
-
-    if (!progressParams) {
-        return null;
-    }
-
-    const progressMessage = typeof progressParams.message === 'string' ? progressParams.message.trim() : '';
-
-    if (progressMessage) {
-        return progressMessage;
-    }
-}
-
-function getProgressNotificationTextFromRawData(rawData) {
-    if (typeof rawData !== 'string' || rawData.length === 0) {
-        return null;
-    }
-
-    try {
-        const parsedPayload = JSON.parse(rawData);
-        return getProgressNotificationText(parsedPayload);
-    } catch {
-        return null;
-    }
-}
-
-function extractProgressParams(parsedPayload) {
-    if (!parsedPayload || typeof parsedPayload !== 'object') {
-        return null;
-    }
-
-    if (parsedPayload.progressToken && (
-        typeof parsedPayload.message === 'string'
-        || Number.isFinite(Number(parsedPayload.progress))
-        || Number.isFinite(Number(parsedPayload.total))
-    )) {
-        return parsedPayload;
-    }
-
-    if (parsedPayload.method === PROGRESS_NOTIFICATION_METHOD && parsedPayload.params && typeof parsedPayload.params === 'object') {
-        return parsedPayload.params;
-    }
-
-    return null;
 }
 
 export default chatService;
