@@ -185,6 +185,29 @@
     white-space: normal;
 }
 
+.message-text .markdown-body a {
+    color: #7eb8f7;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-color: rgba(126, 184, 247, 0.45);
+    transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.message-text .markdown-body a:hover {
+    color: #b3d4ff;
+    text-decoration-color: rgba(179, 212, 255, 0.75);
+}
+
+.message.USER .message-text .markdown-body a {
+    color: #1a5fad;
+    text-decoration-color: rgba(26, 95, 173, 0.45);
+}
+
+.message.USER .message-text .markdown-body a:hover {
+    color: #1347cc;
+    text-decoration-color: rgba(19, 71, 204, 0.7);
+}
+
 .message-text .markdown-body p {
     margin: 0.5rem 0; /* Paragraph spacing */
 }

@@ -102,7 +102,7 @@ const authService = {
             localStorage.setItem(testKey, testKey);
             localStorage.removeItem(testKey);
         } catch (localStorageException) {
-            this.authFailure(localStorageException);
+            authService.authFailure(localStorageException);
             return true; // Local storage is not supported
         }
 

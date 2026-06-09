@@ -1,4 +1,4 @@
-import {render, waitFor} from '@testing-library/react';
+import {render, waitFor, fireEvent} from '@testing-library/react';
 import {MemoryRouter, Routes, Route} from 'react-router-dom';
 import UserSettings from '../../src/user/UserSettings.jsx';
 import {describe, it, vi, expect} from 'vitest';
@@ -6,6 +6,7 @@ import AtlassianAuthService from "../../src/service/AtlassianAuthService.js";
 
 vi.mock('../../src/service/AtlassianAuthService.js', () => ({
     default: {
+        authUri: vi.fn().mockResolvedValue({uri: 'https://atlassian.example.com/oauth'}),
         authCallback: vi.fn((code) => {
             if (code === '12345') {
                 return Promise.resolve({tokens: {accessToken: 'mock-token'}});
@@ -22,6 +23,7 @@ vi.mock('../../src/service/OllamaService.js', () => ({
                 name: 'model1',
                 censored: false,
                 ollamaModel: {
+                    model: 'model1',
                     details: {
                         parentModel: 'parent1',
                         format: 'format1',
@@ -29,7 +31,6 @@ vi.mock('../../src/service/OllamaService.js', () => ({
                         parameter_size: '7B',
                         quantization_level: '4k',
                     },
-
                 },
                 ollamaShow: {
                     capabilities: []
@@ -40,6 +41,7 @@ vi.mock('../../src/service/OllamaService.js', () => ({
                 model: 'model2',
                 censored: false,
                 ollamaModel: {
+                    model: 'model2',
                     details: {
                         parameter_size: '13B',
                     },
@@ -48,8 +50,8 @@ vi.mock('../../src/service/OllamaService.js', () => ({
                     capabilities: []
                 }
             },
-
         ]),
+        installedModels: vi.fn().mockResolvedValue([]),
     },
 }));
 
@@ -65,6 +67,15 @@ vi.mock('../../src/service/AuthService.js', () => ({
     }
 }))
 
+function renderSettings(initialRoute = '/settings') {
+    return render(
+        <MemoryRouter initialEntries={[initialRoute]}>
+            <Routes>
+                <Route path="/settings" element={<UserSettings/>}/>
+            </Routes>
+        </MemoryRouter>
+    );
+}
 
 describe('UserSettings', () => {
     it('calls authCallback once per mount when the page is refreshed', async () => {
@@ -93,5 +104,40 @@ describe('UserSettings', () => {
         );
 
         await waitFor(() => expect(mockAuthCallback).toHaveBeenCalledTimes(1));
+    });
+
+    it('renders Chat Model tab as selected by default', () => {
+        const {container} = renderSettings();
+
+        const selectedItem = container.querySelector('.settings-sidebar-item.selected');
+        expect(selectedItem).not.toBeNull();
+        expect(selectedItem.textContent).toContain('Chat Model');
+    });
+
+    it('clicking the Ollama Models tab selects it', () => {
+        const {getByText} = renderSettings();
+
+        fireEvent.click(getByText('Ollama Models'));
+
+        const selectedItem = getByText('Ollama Models').closest('.settings-sidebar-item');
+        expect(selectedItem.classList.contains('selected')).toBe(true);
+    });
+
+    it('clicking the Atlassian tab selects it', () => {
+        const {getByText} = renderSettings();
+
+        fireEvent.click(getByText('Atlassian'));
+
+        const selectedItem = getByText('Atlassian').closest('.settings-sidebar-item');
+        expect(selectedItem.classList.contains('selected')).toBe(true);
+    });
+
+    it('clicking the General tab selects it', () => {
+        const {getByText} = renderSettings();
+
+        fireEvent.click(getByText('General'));
+
+        const selectedItem = getByText('General').closest('.settings-sidebar-item');
+        expect(selectedItem.classList.contains('selected')).toBe(true);
     });
 });

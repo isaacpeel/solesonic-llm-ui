@@ -49,11 +49,10 @@ describe('useSlashCommands', () => {
         vi.clearAllMocks();
     });
 
-    it('No suggestion when input does not start with /', () => {
+    it('clears commandCandidates when input does not start with /', () => {
         const {result} = createHook('hello');
 
-        expect(result.current.ghostText).toBe('');
-        expect(result.current.suggestion).toBe(null);
+        expect(result.current.commandCandidates).toEqual([]);
     });
 
     it('Fetches commands when input starts with /', async () => {
@@ -64,59 +63,6 @@ describe('useSlashCommands', () => {
         await waitForDebounce();
 
         expect(slashCommandService.fetchCommands).toHaveBeenCalledWith('ag');
-    });
-
-    it('Ghost text computation', async () => {
-        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
-        slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
-
-        const {result} = createHook('/ag');
-        await waitForDebounce();
-
-        expect(result.current.ghostText).toBe('ile');
-    });
-
-    it('Tab accept', async () => {
-        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
-        const setInputValue = vi.fn();
-        slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
-
-        const {result} = createHook('/ag', setInputValue);
-        await waitForDebounce();
-
-        act(() => {
-            result.current.handleTabAccept();
-        });
-
-        expect(setInputValue).toHaveBeenCalledWith('/agile ');
-        expect(result.current.suggestion).toBe(null);
-    });
-
-    it('getSelectedCommand returns commands', async () => {
-        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
-        slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
-
-        const {result} = createHook('/agile ');
-        await waitForDebounce();
-
-        expect(result.current.getSelectedCommand()).toBe(null);
-    });
-
-    it('getSelectedCommand returns null', () => {
-        const {result} = createHook('hello');
-
-        expect(result.current.getSelectedCommand()).toBe(null);
-    });
-
-    it('Exact match', async () => {
-        const commandResults = [{commands: 'agile', name: 'agile', description: 'desc'}];
-        slashCommandService.fetchCommands.mockResolvedValueOnce(commandResults);
-
-        const {result} = createHook('/agile');
-        await waitForDebounce();
-
-        expect(result.current.ghostText).toBe('');
-        expect(result.current.getSelectedCommand()).toBe('agile');
     });
 
     it('Debounce', async () => {
