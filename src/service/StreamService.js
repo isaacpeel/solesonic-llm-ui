@@ -2,7 +2,7 @@ import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import { parseSseStream } from '../client/parseSseStream.js';
 import {AI} from "../chat/ChatMessage.jsx"
-import {DONE} from './ChatService.js';
+import {DONE, ERROR} from './ChatService.js';
 
 const streamService = {
     chatStreamElicitationResponse: async (
@@ -22,15 +22,20 @@ const streamService = {
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
+            const requestHeaders = {
+                'Content-Type': 'application/json',
+                Accept: 'text/event-stream',
+            };
+
+            if (token) {
+                requestHeaders.Authorization = `Bearer ${token}`;
+            }
+
             const response = await fetch(uri, {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 signal: controller.signal,
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'text/event-stream',
-                },
+                headers: requestHeaders,
             });
 
             if (!response.ok) {
@@ -40,7 +45,7 @@ const streamService = {
             for await (const event of parseSseStream(response.body)) {
                 onChunk?.(event);
 
-                if (event.event === DONE) {
+                if (event.event === DONE || event.event === ERROR) {
                     break;
                 }
             }

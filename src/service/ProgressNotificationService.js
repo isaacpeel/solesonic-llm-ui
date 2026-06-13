@@ -35,6 +35,10 @@ function extractProgressParams(parsedPayload) {
         return null;
     }
 
+    if (parsedPayload.method === 'notifications/progress' && parsedPayload.params) {
+        return parsedPayload.params;
+    }
+
     if (parsedPayload.progressToken && (
         typeof parsedPayload.message === 'string'
         || Number.isFinite(Number(parsedPayload.progress))

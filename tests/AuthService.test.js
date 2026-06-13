@@ -254,6 +254,7 @@ describe('authFailure', () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+        vi.stubGlobal('localStorage', localStorageMock);
     });
 
     it('first call stores one failure in localStorage', async () => {

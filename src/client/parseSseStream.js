@@ -1,4 +1,8 @@
 export async function* parseSseStream(responseBody) {
+    if (!responseBody) {
+        throw new Error('Response body is null');
+    }
+
     const decoder = new TextDecoder();
     const reader = responseBody.getReader();
     let buffer = '';

@@ -18,6 +18,7 @@ vi.mock('../../src/chat/ChatMessage.jsx', () => ({
 
 vi.mock('../../src/service/ChatService.js', () => ({
     DONE: 'done',
+    ERROR: 'error',
 }));
 
 vi.mock('../../src/client/parseSseStream.js', () => ({

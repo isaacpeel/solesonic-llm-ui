@@ -102,6 +102,16 @@ function useChatStream({
         } catch (caughtError) {
             if (caughtError.name === 'AbortError') {
                 log.info('[ChatScreen] Stream aborted.');
+                setChatHistory((previousHistory) => {
+                    const newHistory = [...previousHistory];
+                    const lastIndex = newHistory.length - 1;
+
+                    if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                        newHistory[lastIndex] = { ...newHistory[lastIndex], isStreaming: false };
+                    }
+
+                    return newHistory;
+                });
                 return;
             }
             streamService.handleStreamError(caughtError, setError, setChatHistory);

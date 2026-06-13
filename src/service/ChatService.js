@@ -119,15 +119,20 @@ const chatService = {
         const userId = await authService.getUserId();
         const { uri, method } = buildStreamingRequest(chatId, userId, config.streamingChatsUri);
 
+        const requestHeaders = {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+        };
+
+        if (token) {
+            requestHeaders.Authorization = `Bearer ${token}`;
+        }
+
         const response = await fetch(uri, {
             method,
             body: JSON.stringify(normalizePayload(payload)),
             signal,
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                Accept: 'text/event-stream',
-            },
+            headers: requestHeaders,
         });
 
         if (!response.ok) {
@@ -137,7 +142,7 @@ const chatService = {
         for await (const event of parseSseStream(response.body)) {
             onChunk?.(event);
 
-            if (event.event === DONE) {
+            if (event.event === DONE || event.event === ERROR) {
                 break;
             }
         }
