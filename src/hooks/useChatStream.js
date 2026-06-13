@@ -43,6 +43,7 @@ function useChatStream({
             setActiveElicitation,
             setElicitationSubmitting,
             setElicitationValues,
+            setError,
         });
     }, [
         activeElicitation,
@@ -54,6 +55,7 @@ function useChatStream({
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
+        setError,
     ]);
 
     const handleSubmit = async () => {

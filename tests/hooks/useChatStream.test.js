@@ -212,6 +212,7 @@ describe('useChatStream', () => {
             setActiveElicitation: options.setActiveElicitation,
             setElicitationSubmitting: options.setElicitationSubmitting,
             setElicitationValues: options.setElicitationValues,
+            setError: expect.any(Function),
         });
     });
 });

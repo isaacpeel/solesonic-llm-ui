@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import chatService, {CHUNK, DONE, ELICITATION, INIT, MESSAGE} from '../src/service/ChatService.js';
+import chatService, {CHUNK, DONE, ELICITATION, ERROR, INIT, MESSAGE} from '../src/service/ChatService.js';
 import authClient from "../src/service/AuthService.js";
 
 vi.mock('../src/client/ApiClient.js', () => ({
@@ -64,6 +64,7 @@ function makeCallbacks(overrides = {}) {
         setActiveElicitation: vi.fn(),
         setElicitationSubmitting: vi.fn(),
         setElicitationValues: vi.fn(),
+        setError: vi.fn(),
         ...overrides,
     };
 }
@@ -253,6 +254,58 @@ describe('handleStreamChunk — ELICITATION', () => {
         const payload = {event: ELICITATION, data: 'not-json'};
 
         expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+});
+
+describe('handleStreamChunk — ERROR', () => {
+    it('valid content calls setError with an Error containing the message', () => {
+        const callbacks = makeCallbacks();
+        const payload = {event: ERROR, data: JSON.stringify({content: 'Something went wrong on the server'})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.setError).toHaveBeenCalledOnce();
+        const receivedError = callbacks.setError.mock.calls[0][0];
+        expect(receivedError).toBeInstanceOf(Error);
+        expect(receivedError.message).toBe('Something went wrong on the server');
+    });
+
+    it('does not call appendToLastAIMessage', () => {
+        const callbacks = makeCallbacks();
+        const payload = {event: ERROR, data: JSON.stringify({content: 'Oops'})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('empty content does not call setError', () => {
+        const callbacks = makeCallbacks();
+        const payload = {event: ERROR, data: JSON.stringify({content: ''})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.setError).not.toHaveBeenCalled();
+    });
+
+    it('missing content does not call setError', () => {
+        const callbacks = makeCallbacks();
+        const payload = {event: ERROR, data: JSON.stringify({})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.setError).not.toHaveBeenCalled();
+    });
+
+    it('malformed JSON logs error and does not throw', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const callbacks = makeCallbacks();
+        const payload = {event: ERROR, data: 'not-json'};
+
+        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        expect(callbacks.setError).not.toHaveBeenCalled();
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });

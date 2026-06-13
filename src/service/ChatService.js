@@ -9,6 +9,7 @@ export const MESSAGE = "message";
 export const DONE = "done";
 export const INIT = "init";
 export const ELICITATION = "elicitation";
+export const ERROR = "error";
 
 const chatService = {
     // Handle streaming chunks including SSE frames for chunk/done/elicitation
@@ -22,6 +23,7 @@ const chatService = {
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
+        setError,
     }) => {
         const progressNotificationText = getProgressNotificationTextFromRawData(eventPayload?.data);
 
@@ -33,6 +35,18 @@ const chatService = {
         const event = eventPayload.event;
 
         switch (event) {
+            case ERROR:
+                try {
+                    const errorData = JSON.parse(eventPayload.data);
+                    const content = errorData?.content;
+
+                    if (typeof content === 'string' && content.length > 0) {
+                        setError(new Error(content));
+                    }
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse error payload:', parseError);
+                }
+                break;
             case INIT:
                 try {
                     const initData = JSON.parse(eventPayload.data);
