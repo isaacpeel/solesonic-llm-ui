@@ -95,13 +95,11 @@ describe('parseSseStream', () => {
             'event: chunk\ndata: second\n\n',
         ]);
 
-        const events = [];
-        for await (const event of parseSseStream(stream)) {
-            events.push(event);
-            break;
-        }
+        const asyncIterator = parseSseStream(stream)[Symbol.asyncIterator]();
+        const { value: firstEvent } = await asyncIterator.next();
+        await asyncIterator.return?.();
 
-        expect(events).toHaveLength(1);
-        expect(events[0].data).toBe('first');
+        expect(firstEvent).toBeDefined();
+        expect(firstEvent.data).toBe('first');
     });
 });
