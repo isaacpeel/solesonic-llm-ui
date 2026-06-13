@@ -141,8 +141,6 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
     return text;
 }
 
-export default buildStreamingMarkdownDisplay;
-
 /**
  * Streaming-only space normalization.
  *

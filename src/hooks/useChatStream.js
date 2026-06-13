@@ -4,7 +4,7 @@ import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
 import {AI, USER} from '../chat/ChatMessage.jsx';
-import {generateMessageKey} from '../utils/keys.js';
+import {generateMessageKey} from '../util/keys.js';
 
 function useChatStream({
     chatId,

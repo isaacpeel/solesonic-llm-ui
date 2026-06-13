@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStreamingMarkdownDisplay } from '../src/utils/streamingMarkdown.js';
+import { buildStreamingMarkdownDisplay } from '../src/util/streamingMarkdown.js';
 
 describe('buildStreamingMarkdownDisplay - streaming repairs', () => {
     it('closes unbalanced code fences during streaming', () => {

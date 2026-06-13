@@ -3,7 +3,7 @@ import {useMemo} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
-import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
+import {buildStreamingMarkdownDisplay} from "../util/streamingMarkdown.js";
 import "./ChatMessage.css";
 
 function ChatCard({text, bgColor, textColor, isError, isInfo, isStreaming, showPlaceholder, className, children}) {
