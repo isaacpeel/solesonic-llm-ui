@@ -6,7 +6,7 @@ import remarkBreaks from "remark-breaks";
 import {buildStreamingMarkdownDisplay} from "../utils/streamingMarkdown.js";
 import "./ChatMessage.css";
 
-function ChatCard({text, bgColor, textColor, isError, isInfo, isStreaming, className, children}) {
+function ChatCard({text, bgColor, textColor, isError, isInfo, isStreaming, showPlaceholder, className, children}) {
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
@@ -50,15 +50,13 @@ function ChatCard({text, bgColor, textColor, isError, isInfo, isStreaming, class
         >
             <div className="message-text">
                 {children}
-                {
-                  (
-                        <div className="markdown-body">
-                            <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
-                                {displayText ||  'Thinking...'}
-                            </ReactMarkdown>
-                        </div>
-                  )
-                }
+                {(displayText || showPlaceholder) && (
+                    <div className="markdown-body">
+                        <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
+                            {displayText || 'Thinking...'}
+                        </ReactMarkdown>
+                    </div>
+                )}
             </div>
         </div>
     );
