@@ -18,18 +18,25 @@ const ModelSettings = () => {
             return await userPreferencesService.get();
         }
 
-        getModels().then(models => {
-            // Ensure models is an array
-            const modelsArray = Array.isArray(models) ? models : [];
-            setModels(modelsArray);
+        getModels()
+            .then((models) => {
+                const modelsArray = Array.isArray(models) ? models : [];
+                setModels(modelsArray);
 
-            getPreferences().then((preferences) => {
-                const modelDetails = Array.isArray(modelsArray) ? 
-                    modelsArray.find((model) => model.name === preferences.model) : 
-                    undefined;
-                setSelectedModel(modelDetails);
+                getPreferences()
+                    .then((preferences) => {
+                        const modelDetails = Array.isArray(modelsArray)
+                            ? modelsArray.find((model) => model.name === preferences.model)
+                            : undefined;
+                        setSelectedModel(modelDetails);
+                    })
+                    .catch((error) => {
+                        console.error('[ModelSettings] Failed to load preferences:', error);
+                    });
             })
-        });
+            .catch((error) => {
+                console.error('[ModelSettings] Failed to load models:', error);
+            });
     }, [setModels, setSelectedModel]);
 
     return (

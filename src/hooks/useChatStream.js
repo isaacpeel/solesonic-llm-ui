@@ -56,28 +56,6 @@ function useChatStream({
         setElicitationValues,
     ]);
 
-    const handleStreamClose = useCallback((raw) => {
-        chatService.handleFinalChunk(raw, {
-            activeElicitation,
-            chatId,
-            appendToLastAIMessage,
-            ensureChatIdFromResponse,
-            finalizeLastAIMessage,
-            setActiveElicitation,
-            setElicitationSubmitting,
-            setElicitationValues,
-        });
-    }, [
-        activeElicitation,
-        chatId,
-        appendToLastAIMessage,
-        ensureChatIdFromResponse,
-        finalizeLastAIMessage,
-        setActiveElicitation,
-        setElicitationSubmitting,
-        setElicitationValues,
-    ]);
-
     const handleSubmit = async () => {
         if (loading) {
             return;
@@ -118,14 +96,12 @@ function useChatStream({
             await chatService.chatStream(payload, chatId, {
                 signal: controller.current.signal,
                 onChunk: handleStreamChunk,
-                onDone: handleStreamClose,
             });
         } catch (caughtError) {
             if (caughtError.name === 'AbortError') {
                 log.info('[ChatScreen] Stream aborted.');
                 return;
             }
-
             streamService.handleStreamError(caughtError, setError, setChatHistory);
         } finally {
             setLoading(false);

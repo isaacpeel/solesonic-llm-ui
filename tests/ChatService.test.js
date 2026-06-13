@@ -1,80 +1,51 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import chatService, {CHUNK, DONE, ELICITATION, INIT, MESSAGE} from '../src/service/ChatService.js';
-import axiosClient from '../src/client/AxiosClient.js';
 import authClient from "../src/service/AuthService.js";
 
+vi.mock('../src/client/ApiClient.js', () => ({
+    default: {
+        get: vi.fn().mockResolvedValue({chatDetails: {}}),
+        post: vi.fn().mockResolvedValue({success: true}),
+        put: vi.fn().mockResolvedValue({success: true}),
+    },
+}));
+
+vi.mock('../src/properties/ApplicationProperties', () => ({
+    default: {
+        chatsUri: 'https://api.example.com/chat',
+        streamingChatsUri: 'https://api.example.com/stream',
+        apiBaseUri: 'https://api.example.com',
+    },
+}));
+
+vi.mock('../src/client/parseSseStream.js', () => ({
+    parseSseStream: vi.fn(),
+}));
+
+import apiClient from '../src/client/ApiClient.js';
+import { parseSseStream } from '../src/client/parseSseStream.js';
+
 beforeEach(() => {
-    vi.mock('../src/client/AxiosClient.js', () => ({
-        default: {
-            get: vi.fn().mockResolvedValue({chatDetails: {}}),
-            post: vi.fn().mockResolvedValue({success: true}),
-            put: vi.fn().mockResolvedValue({success: true}),
-            setAuthHeader: vi.fn().mockReturnValue({ headers: { 'Authorization': 'Bearer mock-access-token' } }),
-            buildUrl: vi.fn().mockImplementation(uri => uri)
-        }
-    }));
-
     authClient.getAccessToken = vi.fn(async () => 'mock-access-token');
-    authClient.getUserId = vi.fn(async () => 'mock-user-id')
-    authClient.initializeUser = vi.fn().mockResolvedValue({
-        tokens: {accessToken: 'mock-access-token'},
-        userSub: 'mock-user-id',
-    });
-
-    vi.mock('../src/properties/ApplicationProperties', () => ({
-        default: {
-            chatsUri: 'https://api.example.com/chat',
-            streamingChatsUri: 'https://api.example.com/stream',
-            apiBaseUri: 'https://api.example.com',
-        },
-    }));
+    authClient.getUserId = vi.fn(async () => 'mock-user-id');
 });
 
 afterEach(() => {
     vi.clearAllMocks();
 });
 
-describe('chatClient', () => {
-    it('should send a chat message to an existing chat successfully', async () => {
-        const userMessage = 'Hello, world!';
-        const chatId = '12345';
+// ---------------------------------------------------------------------------
+// findChatDetails / findChatHistory
+// ---------------------------------------------------------------------------
 
-        const result = await chatService.chat(userMessage, chatId);
+describe('findChatDetails', () => {
+    it('calls apiClient.get with the chat URI and returns the result', async () => {
+        apiClient.get.mockResolvedValue({chatMessages: []});
 
-        expect(axiosClient.setAuthHeader).toHaveBeenCalledWith('mock-access-token');
-        expect(axiosClient.put).toHaveBeenCalledWith(
-            'https://api.example.com/chat/12345/users/mock-user-id',
-            {chatMessage: userMessage},
-            { headers: { 'Authorization': 'Bearer mock-access-token' } }
-        );
-        expect(result).toEqual({success: true});
-    });
+        const result = await chatService.findChatDetails('67890');
 
-    it('should create a new chat when chatId is not provided', async () => {
-        const userMessage = 'Hello, world!';
-
-        const result = await chatService.chat(userMessage);
-
-        expect(axiosClient.setAuthHeader).toHaveBeenCalledWith('mock-access-token');
-        expect(axiosClient.post).toHaveBeenCalledWith(
-            'https://api.example.com/chat/users/mock-user-id',
-            {chatMessage: userMessage},
-            { headers: { 'Authorization': 'Bearer mock-access-token' } }
-        );
-        expect(result).toEqual({success: true});
-    });
-
-    it('should retrieve chat details successfully', async () => {
-        const chatId = '67890';
-
-        const result = await chatService.findChatDetails(chatId);
-
-        expect(axiosClient.setAuthHeader).toHaveBeenCalledWith('mock-access-token');
-        expect(axiosClient.get).toHaveBeenCalledWith(
-            'https://api.example.com/chat/67890',
-            { headers: { 'Authorization': 'Bearer mock-access-token' } }
-        );
-        expect(result).toEqual({chatDetails: {}});
+        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/chat/67890');
+        expect(result).toEqual({chatMessages: []});
     });
 });
 
@@ -320,204 +291,132 @@ describe('handleStreamChunk — progress notification', () => {
 // chatStream
 // ---------------------------------------------------------------------------
 
-vi.mock('@microsoft/fetch-event-source', () => ({
-    fetchEventSource: vi.fn(),
-}));
-
-import {fetchEventSource} from '@microsoft/fetch-event-source';
+function makeSseAsyncGenerator(events) {
+    return async function* () {
+        for (const event of events) {
+            yield event;
+        }
+    };
+}
 
 describe('chatStream', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.stubGlobal('fetch', vi.fn());
         authClient.getAccessToken = vi.fn(async () => 'mock-access-token');
         authClient.getUserId = vi.fn(async () => 'mock-user-id');
     });
 
-    it('happy path — onmessage forwards events to onChunk and onclose calls onDone', async () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('happy path — chunks then done: onChunk called for each event, exits after done', async () => {
         const onChunk = vi.fn();
-        const onDone = vi.fn();
+        const events = [
+            {event: INIT, data: JSON.stringify({id: 'chat-1'})},
+            {event: CHUNK, data: JSON.stringify({content: 'hi'})},
+            {event: DONE, data: JSON.stringify({id: 'chat-1'})},
+        ];
 
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: true});
-            options.onmessage({event: CHUNK, data: JSON.stringify({content: 'hi'})});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'chat-1'})});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator(events));
 
-        await chatService.chatStream('hello', null, {onChunk, onDone});
+        await chatService.chatStream('hello', null, {onChunk});
 
-        expect(onChunk).toHaveBeenCalledTimes(2);
-        expect(onDone).toHaveBeenCalledTimes(1);
+        expect(onChunk).toHaveBeenCalledTimes(3);
     });
 
-    it('onopen non-OK response — chatStream rethrows as streaming connection failed', async () => {
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: false, status: 503, statusText: 'Service Unavailable'});
-        });
+    it('done event triggers break before stream body closes', async () => {
+        const onChunk = vi.fn();
+        const events = [
+            {event: DONE, data: JSON.stringify({id: 'chat-1'})},
+            {event: CHUNK, data: JSON.stringify({content: 'should not reach'})},
+        ];
 
-        await expect(chatService.chatStream('hello', null, {})).rejects.toThrow('Streaming connection failed');
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator(events));
+
+        await chatService.chatStream('hello', null, {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
+        expect(onChunk).toHaveBeenCalledWith(events[0]);
     });
 
-    it('AbortError — propagates out of chatStream unchanged', async () => {
+    it('server error on open — throws streaming failed error', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
+
+        await expect(chatService.chatStream('hello', null, {})).rejects.toThrow('Streaming failed: 500');
+    });
+
+    it('AbortError from fetch — propagates to caller', async () => {
         const abortError = Object.assign(new Error('Aborted'), {name: 'AbortError'});
-
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onerror(abortError);
-        });
+        vi.mocked(fetch).mockRejectedValue(abortError);
 
         await expect(chatService.chatStream('hello', null, {})).rejects.toMatchObject({name: 'AbortError'});
     });
 
-    it('"Streaming failed:" error is rethrown wrapped in streaming connection failed', async () => {
-        const streamingError = new Error('Streaming failed: 500 Internal Server Error');
+    it('INIT event sets chat ID and onChunk receives it', async () => {
+        const onChunk = vi.fn();
+        const initEvent = {event: INIT, data: JSON.stringify({id: 'abc'})};
 
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onerror(streamingError);
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            initEvent,
+            {event: DONE, data: JSON.stringify({id: 'abc'})},
+        ]));
 
-        await expect(chatService.chatStream('hello', null, {})).rejects.toThrow('Streaming connection failed');
-    });
+        await chatService.chatStream('hello', null, {onChunk});
 
-    it('stream closed normally after DONE — chatStream resolves without rethrowing', async () => {
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: true});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'chat-1'})});
-            try {
-                options.onclose();
-            } catch (closeError) {
-                throw closeError;
-            }
-        });
-
-        await expect(chatService.chatStream('hello', null, {})).resolves.toBeUndefined();
-    });
-
-    it('onerror with existing activeChatId — returns undefined to allow retry', async () => {
-        let errorHandlerReturn;
-
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: true});
-            options.onmessage({event: INIT, data: JSON.stringify({id: 'existing-chat'})});
-            errorHandlerReturn = options.onerror(new Error('network blip'));
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'existing-chat'})});
-            options.onclose();
-        });
-
-        await chatService.chatStream('hello', 'existing-chat', {});
-
-        expect(errorHandlerReturn).toBeUndefined();
-    });
-
-    it('onerror before chat created — throws to prevent duplicate POST', async () => {
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onerror(new Error('network error'));
-        });
-
-        await expect(chatService.chatStream('hello', null, {})).rejects.toThrow();
-        consoleError.mockRestore();
-    });
-
-    it('activeChatId sync — after INIT event, reconnect fetch uses PUT', async () => {
-        let capturedFetch;
-
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            capturedFetch = options.fetch;
-            options.onopen({ok: true});
-            options.onmessage({event: INIT, data: JSON.stringify({id: 'new-chat-from-init'})});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'new-chat-from-init'})});
-            options.onclose();
-        });
-
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok: true}));
-
-        await chatService.chatStream('hello', null, {});
-
-        await capturedFetch('unused-url', {headers: {}});
-
-        const fetchCall = globalThis.fetch.mock.calls[0];
-        expect(fetchCall[0]).toContain('new-chat-from-init');
-        expect(fetchCall[1].method).toBe('PUT');
-
-        vi.unstubAllGlobals();
-    });
-});
-
-// ---------------------------------------------------------------------------
-// buildStreamingRequest / normalizePayload (tested via chatStream)
-// ---------------------------------------------------------------------------
-
-describe('buildStreamingRequest and normalizePayload via chatStream', () => {
-    beforeEach(() => {
-        authClient.getAccessToken = vi.fn(async () => 'mock-access-token');
-        authClient.getUserId = vi.fn(async () => 'mock-user-id');
+        expect(onChunk).toHaveBeenCalledWith(initEvent);
     });
 
     it('null chatId → POST to streamingChatsUri/users/userId', async () => {
-        let capturedUri;
-        let capturedMethod;
-
-        fetchEventSource.mockImplementation(async (uri, options) => {
-            capturedUri = uri;
-            capturedMethod = options.method;
-            options.onopen({ok: true});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'c1'})});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: DONE, data: JSON.stringify({id: 'c1'})},
+        ]));
 
         await chatService.chatStream('hello', null, {});
 
+        const [capturedUri, capturedInit] = vi.mocked(fetch).mock.calls[0];
         expect(capturedUri).toBe('https://api.example.com/stream/users/mock-user-id');
-        expect(capturedMethod).toBe('POST');
+        expect(capturedInit.method).toBe('POST');
     });
 
     it('existing chatId → PUT to streamingChatsUri/chatId/users/userId', async () => {
-        let capturedUri;
-        let capturedMethod;
-
-        fetchEventSource.mockImplementation(async (uri, options) => {
-            capturedUri = uri;
-            capturedMethod = options.method;
-            options.onopen({ok: true});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'existing'})});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: DONE, data: JSON.stringify({id: 'existing'})},
+        ]));
 
         await chatService.chatStream('hello', 'existing', {});
 
+        const [capturedUri, capturedInit] = vi.mocked(fetch).mock.calls[0];
         expect(capturedUri).toBe('https://api.example.com/stream/existing/users/mock-user-id');
-        expect(capturedMethod).toBe('PUT');
+        expect(capturedInit.method).toBe('PUT');
     });
 
     it('string message → body normalized to { chatMessage: string }', async () => {
-        let capturedBody;
-
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            capturedBody = options.body;
-            options.onopen({ok: true});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'c1'})});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: DONE, data: JSON.stringify({id: 'c1'})},
+        ]));
 
         await chatService.chatStream('hello', null, {});
 
+        const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
         expect(JSON.parse(capturedBody)).toEqual({chatMessage: 'hello'});
     });
 
     it('object message → body passed through unchanged', async () => {
-        let capturedBody;
-        const messageObject = {chatMessage: 'from object'};
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: DONE, data: JSON.stringify({id: 'c1'})},
+        ]));
 
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            capturedBody = options.body;
-            options.onopen({ok: true});
-            options.onmessage({event: DONE, data: JSON.stringify({id: 'c1'})});
-            options.onclose();
-        });
+        await chatService.chatStream({chatMessage: 'from object'}, null, {});
 
-        await chatService.chatStream(messageObject, null, {});
-
+        const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
         expect(JSON.parse(capturedBody)).toEqual({chatMessage: 'from object'});
     });
 });

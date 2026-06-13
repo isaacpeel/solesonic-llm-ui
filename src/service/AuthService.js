@@ -1,4 +1,4 @@
-import axiosClient from "../client/AxiosClient.js";
+import { buildUrl } from '../client/ApiClient.js';
 import log from "loglevel";
 import config from "../properties/ApplicationProperties.jsx";
 
@@ -74,12 +74,13 @@ const authService = {
         }
     },
     authFailure: async (error) => {
-        const uri = `${config.uiBaseUri}/auth-failure`;
-        const queryParams = {error: `${error}`};
-        const options = {noOp: true};
+        const uri = buildUrl(`${config.uiBaseUri}/auth-failure`, { error: `${error}` });
 
-        const fullUri = axiosClient.buildUrl(uri, queryParams);
-        await axiosClient.get(fullUri, options);
+        try {
+            await fetch(uri);
+        } catch {
+            // fire-and-forget — errors are intentionally swallowed
+        }
 
         const now = Date.now();
 

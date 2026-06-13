@@ -1,34 +1,29 @@
-import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {describe, it, expect, vi, afterEach} from 'vitest';
+
+vi.mock('../src/client/ApiClient.js', () => ({
+    default: {
+        get: vi.fn().mockResolvedValue({chatHistory: []}),
+        post: vi.fn().mockResolvedValue({success: true}),
+        put: vi.fn().mockResolvedValue({success: true}),
+    },
+}));
+
+vi.mock('../src/service/AuthService.js', () => ({
+    default: {
+        getAccessToken: vi.fn().mockResolvedValue('mock-access-token'),
+        getUserId: vi.fn().mockResolvedValue('mock-user-id'),
+    },
+}));
+
+vi.mock('../src/properties/ApplicationProperties', () => ({
+    default: {
+        chatsUri: 'https://api.example.com/chat',
+        apiBaseUri: 'https://api.example.com',
+    },
+}));
+
 import chatHistoryService from '../src/service/ChatService.js';
-import axiosClient from '../src/client/AxiosClient.js';
-import authClient from "../src/service/AuthService.js";
-
-beforeEach(() => {
-    vi.mock('../src/client/AxiosClient.js', () => ({
-        default: {
-            get: vi.fn().mockResolvedValue({chatHistory: []}),
-            post: vi.fn().mockResolvedValue({success: true}),
-            put: vi.fn().mockResolvedValue({success: true}),
-            setAuthHeader: vi.fn().mockReturnValue({ headers: { 'Authorization': 'Bearer mock-access-token' } }),
-            buildUrl: vi.fn().mockImplementation(uri => uri)
-        }
-    }));
-
-    authClient.getAccessToken = vi.fn(async () => 'mock-access-token');
-    authClient.getUserId = vi.fn(async () => 'mock-user-id')
-    authClient.initializeUser = vi.fn().mockResolvedValue({
-        tokens: {accessToken: 'mock-access-token'},
-        userSub: 'mock-user-id',
-    });
-
-    vi.mock('../src/properties/ApplicationProperties', () => ({
-        default: {
-            chatsUri: 'https://api.example.com/chat',
-            apiBaseUri: 'https://api.example.com',
-        },
-    }));
-
-});
+import apiClient from '../src/client/ApiClient.js';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -38,11 +33,8 @@ describe('chatHistoryClient', () => {
     it('should retrieve chat history successfully', async () => {
         const result = await chatHistoryService.findChatHistory();
 
-        // Assertions
-        expect(axiosClient.setAuthHeader).toHaveBeenCalledWith('mock-access-token');
-        expect(axiosClient.get).toHaveBeenCalledWith(
-            'https://api.example.com/chat/users/mock-user-id', 
-            { headers: { 'Authorization': 'Bearer mock-access-token' } }
+        expect(apiClient.get).toHaveBeenCalledWith(
+            'https://api.example.com/chat/users/mock-user-id',
         );
         expect(result).toEqual({chatHistory: []});
     });

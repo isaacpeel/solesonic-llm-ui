@@ -1,35 +1,20 @@
-import axiosClient from "../client/AxiosClient.js"
+import apiClient from '../client/ApiClient.js';
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 
 const userPreferencesService = {
     update: async (userPreferences) => {
-        const accessToken = await authService.getAccessToken();
         const userId = await authService.getUserId();
-
-        const uri = `${config.usersUri}/${userId}/preferences`;
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        return await axiosClient.put(uri, userPreferences, options);
+        return await apiClient.put(`${config.usersUri}/${userId}/preferences`, userPreferences);
     },
     get: async () => {
-        const accessToken = await authService.getAccessToken();
         const userId = await authService.getUserId();
-
-        const uri = `${config.usersUri}/${userId}/preferences`;
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        return await axiosClient.get(uri, options);
+        return await apiClient.get(`${config.usersUri}/${userId}/preferences`);
     },
     save: async (userPreferences) => {
-        const accessToken = await authService.getAccessToken();
         const userId = await authService.getUserId();
-
-        const uri = `${config.usersUri}/${userId}/preferences`;
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        return await axiosClient.post(uri, userPreferences, options);
-    }
-}
+        return await apiClient.post(`${config.usersUri}/${userId}/preferences`, userPreferences);
+    },
+};
 
 export default userPreferencesService;

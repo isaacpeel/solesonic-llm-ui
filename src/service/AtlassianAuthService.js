@@ -1,24 +1,12 @@
-import axiosClient from "../client/AxiosClient.js"
-import authService from './AuthService.js';
+import apiClient, { buildUrl } from '../client/ApiClient.js';
 import config from "../properties/ApplicationProperties";
 
 const atlassianAuthService = {
-    authUri: async () => {
-        const accessToken = await authService.getAccessToken();
-        const uri = `${config.atlassianUri}/auth/uri`;
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        return await axiosClient.get(uri, options);
-    },
+    authUri: async () => apiClient.get(`${config.atlassianUri}/auth/uri`),
     authCallback: async (code) => {
-        const accessToken = await authService.getAccessToken();
-        const uri = `${config.atlassianUri}/auth/callback`;
-        const queryParams = { code: `${code}` };
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        const fullUri = axiosClient.buildUrl(uri, queryParams);
-        return await axiosClient.get(fullUri, options);
-    }
-}
+        const uri = buildUrl(`${config.atlassianUri}/auth/callback`, { code: `${code}` });
+        return await apiClient.get(uri);
+    },
+};
 
 export default atlassianAuthService;

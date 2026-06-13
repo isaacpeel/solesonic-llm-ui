@@ -14,11 +14,15 @@ const GeneralUserSettings = () => {
             return await userPreferencesService.get();
         };
 
-        getUserPreferences().then(userPreferences => {
-            if (userPreferences.similarityThreshold !== undefined) {
-                setSimilarityThreshold(userPreferences.similarityThreshold);
-            }
-        });
+        getUserPreferences()
+            .then((userPreferences) => {
+                if (userPreferences.similarityThreshold !== undefined) {
+                    setSimilarityThreshold(userPreferences.similarityThreshold);
+                }
+            })
+            .catch((error) => {
+                console.error('[GeneralUserSettings] Failed to load preferences:', error);
+            });
     }, []);
 
     const handleSimilarityThresholdChange = (e) => {

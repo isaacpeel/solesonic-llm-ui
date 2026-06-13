@@ -381,13 +381,16 @@
 }
 
 .message.SYSTEM.elicitation-resolved {
+    padding: 8px 16px;
+    opacity: 0.75;
+}
+
+.message.SYSTEM.elicitation-resolved .message-text {
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 16px;
-    opacity: 0.75;
 }
 
 .elicitation-resolved-question {

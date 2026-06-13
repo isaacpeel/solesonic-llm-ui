@@ -1,7 +1,7 @@
-import axiosClient from "../client/AxiosClient.js"
+import apiClient from '../client/ApiClient.js';
+import { parseSseStream } from '../client/parseSseStream.js';
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
-import {fetchEventSource} from '@microsoft/fetch-event-source';
 import {getProgressNotificationTextFromRawData} from './ProgressNotificationService.js';
 
 export const CHUNK = "chunk";
@@ -11,27 +11,6 @@ export const INIT = "init";
 export const ELICITATION = "elicitation";
 
 const chatService = {
-    // Non-streaming chat (kept for backward compatibility)
-    chat: async (userMessage, chatId) => {
-        const accessToken = await authService.getAccessToken();
-        const userId = await authService.getUserId();
-        const options = axiosClient.setAuthHeader(accessToken);
-        const chatBody = {chatMessage: userMessage};
-
-        if (chatId) {
-            const uri = `${config.chatsUri}/${chatId}/users/${userId}`;
-            return await axiosClient.put(uri, chatBody, options);
-        }
-
-        // Start a new chat for the user
-        const uri = `${config.chatsUri}/users/${userId}`;
-        return await axiosClient.post(uri, chatBody, options);
-    },
-
-    handleFinalChunk: () => {
-        console.log("Stream closed")
-    },
-
     // Handle streaming chunks including SSE frames for chunk/done/elicitation
     handleStreamChunk: (eventPayload, {
         activeElicitation,
@@ -121,137 +100,43 @@ const chatService = {
         }
     },
 
-    // Streaming chat using fetchEventSource (SSE). This replaces manual ReadableStream parsing.
-    async chatStream(userMessage, chatId, {onChunk, onDone, signal} = {}) {
+    async chatStream(payload, chatId, { onChunk, signal } = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
-        let activeChatId = chatId;
-        let streamDone = false;
+        const { uri, method } = buildStreamingRequest(chatId, userId, config.streamingChatsUri);
 
-        const {uri, method} = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
-        const body = JSON.stringify(normalizePayload(userMessage));
+        const response = await fetch(uri, {
+            method,
+            body: JSON.stringify(normalizePayload(payload)),
+            signal,
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                Accept: 'text/event-stream',
+            },
+        });
 
-        try {
-            await fetchEventSource(uri, {
-                method,
-                body,
-                signal,
-                mode: 'cors',
-                credentials: 'same-origin',
-                openWhenHidden: true,
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'text/event-stream'
-                },
-                fetch: (_requestInput, init = {}) => {
-                    const {
-                        uri: rebuiltUri,
-                        method: rebuiltMethod
-                    } = buildStreamingRequest(activeChatId, userId, config.streamingChatsUri);
-                    return globalThis.fetch(rebuiltUri, {
-                        ...init,
-                        method: rebuiltMethod,
-                    });
-                },
-                onopen(response) {
-                    if (!response.ok) {
-                        throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
-                    }
-                },
-                onmessage(eventPayload) {
+        if (!response.ok) {
+            throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
+        }
 
-                    if (eventPayload.event === INIT || eventPayload.event === DONE) {
-                        try {
-                            const parsedPayload = JSON.parse(eventPayload.data);
+        for await (const event of parseSseStream(response.body)) {
+            onChunk?.(event);
 
-                            if (parsedPayload?.id) {
-                                activeChatId = parsedPayload.id;
-                            }
-
-                            if (eventPayload.event === DONE) {
-                                streamDone = true;
-                            }
-                        } catch (parseError) {
-                            console.warn('[ChatService] Failed to parse stream payload for chat id sync:', parseError);
-                        }
-                    }
-
-                    if (onChunk) {
-                        onChunk(eventPayload);
-                    }
-                },
-                onclose() {
-                    if (onDone) {
-                        onDone();
-                    }
-
-                    if (streamDone) {
-                        // Stream finished normally. Throw to stop fetchEventSource retry loop
-                        // so the original request body is not sent again.
-                        throw new Error('Stream closed');
-                    }
-                },
-                onerror(error) {
-                    if (error?.name === 'AbortError') {
-                        throw error;
-                    }
-
-                    if (error instanceof Error && error.message.startsWith('Streaming failed:')) {
-                        throw error;
-                    }
-
-                    // If the stream already completed, do not retry.
-                    if (streamDone) {
-                        throw error instanceof Error ? error : new Error(String(error));
-                    }
-
-                    if (activeChatId) {
-                        console.warn('[ChatService] Stream interrupted, will reconnect to chat:', activeChatId);
-                        return;
-                    }
-
-                    // No chatId yet — retry would POST and create a duplicate.
-                    console.error('[ChatService] Stream failed before chat was created, not retrying.');
-                    throw error instanceof Error ? error : new Error(String(error));
-                }
-            });
-        } catch (error) {
-            if (error?.name === 'AbortError') {
-                throw error;
+            if (event.event === DONE) {
+                break;
             }
-            // 'Stream closed' is thrown intentionally from onclose to stop the retry loop.
-            if (error?.message === 'Stream closed') {
-                return;
-            }
-            // If stream completed successfully but errored during teardown, swallow it.
-            if (streamDone) {
-                console.debug('[ChatService] Post-completion error (ignored):', error?.message);
-                return;
-            }
-            console.error('[ChatService] Streaming connection failed:', error);
-            throw new Error(`Streaming connection failed: ${error.message || String(error)}`);
         }
     },
 
     findChatDetails: async (chatId) => {
-        const accessToken = await authService.getAccessToken();
-        const uri = `${config.chatsUri}/${chatId}`;
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        return await axiosClient.get(uri, options);
+        return await apiClient.get(`${config.chatsUri}/${chatId}`);
     },
 
     findChatHistory: async () => {
-        const accessToken = await authService.getAccessToken();
         const userId = await authService.getUserId();
-        const uri = `${config.chatsUri}/users/${userId}`;
-        const options = axiosClient.setAuthHeader(accessToken);
-
-        return await axiosClient.get(uri, options);
+        return await apiClient.get(`${config.chatsUri}/users/${userId}`);
     },
-
-
 }
 
 function buildStreamingRequest(chatId, userId, baseUri) {

@@ -1,8 +1,4 @@
-import {describe, it, expect, vi, afterEach} from 'vitest';
-
-vi.mock('@microsoft/fetch-event-source', () => ({
-    fetchEventSource: vi.fn(),
-}));
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 
 vi.mock('../../src/service/AuthService.js', () => ({
     default: {
@@ -20,12 +16,33 @@ vi.mock('../../src/chat/ChatMessage.jsx', () => ({
     AI: 'AI',
 }));
 
-import {fetchEventSource} from '@microsoft/fetch-event-source';
+vi.mock('../../src/service/ChatService.js', () => ({
+    DONE: 'done',
+}));
+
+vi.mock('../../src/client/parseSseStream.js', () => ({
+    parseSseStream: vi.fn(),
+}));
+
 import streamService from '../../src/service/StreamService.js';
+import { parseSseStream } from '../../src/client/parseSseStream.js';
 import {AI} from '../../src/chat/ChatMessage.jsx';
+
+function makeSseAsyncGenerator(events) {
+    return async function* () {
+        for (const event of events) {
+            yield event;
+        }
+    };
+}
+
+beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+});
 
 afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
 });
 
 // ---------------------------------------------------------------------------
@@ -36,11 +53,11 @@ describe('chatStreamElicitationResponse', () => {
     it('happy path — forwards SSE events to onChunk', async () => {
         const onChunk = vi.fn();
 
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: true});
-            options.onmessage({event: 'CHUNK', data: '{"content":"hi"}'});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: 'CHUNK', data: '{"content":"hi"}'},
+            {event: 'done', data: '{}'},
+        ]));
 
         await streamService.chatStreamElicitationResponse(
             {action: 'accept', chatId: 'c-1'},
@@ -53,56 +70,37 @@ describe('chatStreamElicitationResponse', () => {
     });
 
     it('builds the URI from streamingChatsUri, chatId, and elicitationId', async () => {
-        fetchEventSource.mockImplementation(async (uri, options) => {
-            options.onopen({ok: true});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'done', data: '{}'}]));
 
         await streamService.chatStreamElicitationResponse({}, 'chat-42', 'elicit-7', {});
 
-        const capturedUri = fetchEventSource.mock.calls[0][0];
+        const capturedUri = vi.mocked(fetch).mock.calls[0][0];
         expect(capturedUri).toBe(
             'https://api.example.com/stream/chat-42/elicit-7/elicitation-response',
         );
     });
 
-    it('onopen non-OK response — rejects with streaming error', async () => {
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: false, status: 503, statusText: 'Service Unavailable'});
-        });
+    it('non-OK response — rejects with streaming failed error', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503, statusText: 'Service Unavailable' });
 
         await expect(
             streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {}),
-        ).rejects.toThrow('Streaming request failed');
+        ).rejects.toThrow('Streaming failed');
     });
 
-    it('AbortError from onerror is rethrown unchanged', async () => {
+    it('AbortError from fetch is rethrown unchanged', async () => {
         const abortError = Object.assign(new Error('Aborted'), {name: 'AbortError'});
-
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onerror(abortError);
-        });
+        vi.mocked(fetch).mockRejectedValue(abortError);
 
         await expect(
             streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {}),
         ).rejects.toMatchObject({name: 'AbortError'});
     });
 
-    it('other error from onerror is rethrown as Error', async () => {
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onerror(new Error('network failure'));
-        });
-
-        await expect(
-            streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {}),
-        ).rejects.toThrow('network failure');
-    });
-
     it('uses POST method with JSON-serialized payload', async () => {
-        fetchEventSource.mockImplementation(async (_uri, options) => {
-            options.onopen({ok: true});
-            options.onclose();
-        });
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'done', data: '{}'}]));
 
         await streamService.chatStreamElicitationResponse(
             {action: 'accept', chatId: 'c-1'},
@@ -111,9 +109,33 @@ describe('chatStreamElicitationResponse', () => {
             {},
         );
 
-        const capturedOptions = fetchEventSource.mock.calls[0][1];
-        expect(capturedOptions.method).toBe('POST');
-        expect(JSON.parse(capturedOptions.body)).toEqual({action: 'accept', chatId: 'c-1'});
+        const capturedInit = vi.mocked(fetch).mock.calls[0][1];
+        expect(capturedInit.method).toBe('POST');
+        expect(JSON.parse(capturedInit.body)).toEqual({action: 'accept', chatId: 'c-1'});
+    });
+
+    it('string payload is wrapped in chatMessage object', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'done', data: '{}'}]));
+
+        await streamService.chatStreamElicitationResponse('user text', 'c-1', 'e-1', {});
+
+        const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
+        expect(JSON.parse(capturedBody)).toEqual({chatMessage: 'user text'});
+    });
+
+    it('done event breaks the loop', async () => {
+        const onChunk = vi.fn();
+
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: 'done', data: '{}'},
+            {event: 'CHUNK', data: 'should not reach'},
+        ]));
+
+        await streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
     });
 });
 

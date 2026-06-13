@@ -1,17 +1,13 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 
-vi.mock('../../src/client/AxiosClient.js', () => ({
+vi.mock('../../src/client/ApiClient.js', () => ({
     default: {
         get: vi.fn(),
-        setAuthHeader: vi.fn(),
-        buildUrl: vi.fn(),
+        post: vi.fn(),
+        put: vi.fn(),
+        delete: vi.fn(),
     },
-}));
-
-vi.mock('../../src/service/AuthService.js', () => ({
-    default: {
-        getAccessToken: vi.fn(),
-    },
+    buildUrl: vi.fn(),
 }));
 
 vi.mock('../../src/properties/ApplicationProperties', () => ({
@@ -21,13 +17,18 @@ vi.mock('../../src/properties/ApplicationProperties', () => ({
 }));
 
 import atlassianAuthService from '../../src/service/AtlassianAuthService.js';
-import axiosClient from '../../src/client/AxiosClient.js';
-import authService from '../../src/service/AuthService.js';
+import apiClient, { buildUrl } from '../../src/client/ApiClient.js';
 
 beforeEach(() => {
-    authService.getAccessToken.mockResolvedValue('mock-token');
-    axiosClient.setAuthHeader.mockReturnValue({headers: {Authorization: 'Bearer mock-token'}});
-    axiosClient.buildUrl.mockImplementation((uri) => uri);
+    buildUrl.mockImplementation((uri, params) => {
+        if (!params) {
+            return uri;
+        }
+        const queryString = Object.entries(params)
+            .map(([key, value]) => `${key}=${value}`)
+            .join('&');
+        return `${uri}?${queryString}`;
+    });
 });
 
 afterEach(() => {
@@ -39,15 +40,13 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('authUri', () => {
-    it('calls axiosClient.get with the auth/uri endpoint and auth header', async () => {
-        axiosClient.get.mockResolvedValue({uri: 'https://atlassian.example.com/oauth'});
+    it('calls apiClient.get with the auth/uri endpoint and returns the result', async () => {
+        apiClient.get.mockResolvedValue({uri: 'https://atlassian.example.com/oauth'});
 
         const result = await atlassianAuthService.authUri();
 
-        expect(axiosClient.setAuthHeader).toHaveBeenCalledWith('mock-token');
-        expect(axiosClient.get).toHaveBeenCalledWith(
+        expect(apiClient.get).toHaveBeenCalledWith(
             'https://api.example.com/atlassian/auth/uri',
-            {headers: {Authorization: 'Bearer mock-token'}},
         );
         expect(result).toEqual({uri: 'https://atlassian.example.com/oauth'});
     });
@@ -58,31 +57,27 @@ describe('authUri', () => {
 // ---------------------------------------------------------------------------
 
 describe('authCallback', () => {
-    it('builds URL with code query param and calls axiosClient.get', async () => {
-        axiosClient.buildUrl.mockReturnValue(
-            'https://api.example.com/atlassian/auth/callback?code=abc123',
-        );
-        axiosClient.get.mockResolvedValue({tokens: {accessToken: 'atlassian-token'}});
+    it('builds URL with code query param and calls apiClient.get', async () => {
+        apiClient.get.mockResolvedValue({tokens: {accessToken: 'atlassian-token'}});
 
         const result = await atlassianAuthService.authCallback('abc123');
 
-        expect(axiosClient.buildUrl).toHaveBeenCalledWith(
+        expect(buildUrl).toHaveBeenCalledWith(
             'https://api.example.com/atlassian/auth/callback',
             {code: 'abc123'},
         );
-        expect(axiosClient.get).toHaveBeenCalledWith(
+        expect(apiClient.get).toHaveBeenCalledWith(
             'https://api.example.com/atlassian/auth/callback?code=abc123',
-            {headers: {Authorization: 'Bearer mock-token'}},
         );
         expect(result).toEqual({tokens: {accessToken: 'atlassian-token'}});
     });
 
     it('coerces the code to a string in the query params', async () => {
-        axiosClient.get.mockResolvedValue({});
+        apiClient.get.mockResolvedValue({});
 
         await atlassianAuthService.authCallback(12345);
 
-        expect(axiosClient.buildUrl).toHaveBeenCalledWith(
+        expect(buildUrl).toHaveBeenCalledWith(
             expect.any(String),
             {code: '12345'},
         );

@@ -61,11 +61,15 @@ function useChatHistory() {
             return formattedMessages;
         }
 
-        fetchChatDetails().then((formattedMessages) => {
-            setChatHistory((previousHistory) => {
-                return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
+        fetchChatDetails()
+            .then((formattedMessages) => {
+                setChatHistory((previousHistory) => {
+                    return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
+                });
+            })
+            .catch((error) => {
+                console.error('[useChatHistory] Failed to load chat details:', error);
             });
-        });
     }, [chatId, setChatHistory]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {

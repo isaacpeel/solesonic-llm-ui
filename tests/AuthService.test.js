@@ -11,11 +11,9 @@ const localStorageMock = {
 };
 vi.stubGlobal('localStorage', localStorageMock);
 
-vi.mock('../src/client/AxiosClient.js', () => ({
-    default: {
-        get: vi.fn().mockResolvedValue(undefined),
-        buildUrl: vi.fn().mockImplementation((uri) => uri),
-    },
+vi.mock('../src/client/ApiClient.js', () => ({
+    default: {},
+    buildUrl: vi.fn().mockImplementation((uri) => uri),
 }));
 
 vi.mock('../src/properties/ApplicationProperties.jsx', () => ({
@@ -24,7 +22,7 @@ vi.mock('../src/properties/ApplicationProperties.jsx', () => ({
     },
 }));
 
-import axiosClient from '../src/client/AxiosClient.js';
+import { buildUrl } from '../src/client/ApiClient.js';
 
 describe('authClient', () => {
     const mockKeycloakInstance = {
@@ -250,8 +248,12 @@ describe('authFailure', () => {
     beforeEach(() => {
         localStorage.clear();
         vi.clearAllMocks();
-        axiosClient.buildUrl.mockImplementation((uri) => uri);
-        axiosClient.get.mockResolvedValue(undefined);
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(undefined));
+        buildUrl.mockImplementation((uri) => uri);
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it('first call stores one failure in localStorage', async () => {
