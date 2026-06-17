@@ -8,7 +8,7 @@ import OllamaModelSettings from "./OllamaModelSettings.jsx";
 import { useLocation } from 'react-router-dom';
 
 import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
-import { AtlassianIcon } from '@atlaskit/logo';
+import { SiAtlassian } from 'react-icons/si';
 
 import atlassianAuthService from "../service/AtlassianAuthService.js";
 import AtlassianSettings from "./AtlassianSettings.jsx";
@@ -89,7 +89,7 @@ const UserSettings = () => {
                         className={`settings-sidebar-item ${selectedSetting === "atlassianSettings" ? "selected" : ""}`}
                         onClick={() => setSelectedSetting("atlassianSettings")}>
                         <div className="settings-sidebar-icon">
-                            <AtlassianIcon size="small" appearance="brand"/>
+                            <SiAtlassian size={20} color="#0052CC"/>
                         </div>
                         <div className="settings-sidebar-item-label">Atlassian</div>
                     </div>

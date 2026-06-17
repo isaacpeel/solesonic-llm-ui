@@ -9,7 +9,7 @@ function isTypingSlashCommand(inputValue) {
     return /^\/\S*$/.test(inputValue);
 }
 
-function useSlashCommands({inputValue}) {
+function useSlashCommands({inputValue, setInputValue}) {
     const [commandCandidates, setCommandCandidates] = useState([]);
     const debounceTimerRef = useRef(null);
 
@@ -61,7 +61,32 @@ function useSlashCommands({inputValue}) {
         };
     }, [inputValue]);
 
-    return {commandCandidates};
+    const suggestion = commandCandidates[0] ?? null;
+
+    const partialToken = isTypingSlashCommand(inputValue) ? extractCommandToken(inputValue) : '';
+
+    let ghostText = '';
+    if (suggestion && partialToken && suggestion.name.startsWith(partialToken) && suggestion.name !== partialToken) {
+        ghostText = suggestion.name.slice(partialToken.length);
+    }
+
+    function handleTabAccept() {
+        if (suggestion) {
+            setInputValue(`/${suggestion.name} `);
+            setCommandCandidates([]);
+        }
+    }
+
+    function getSelectedCommand() {
+        if (!isTypingSlashCommand(inputValue)) {
+            return null;
+        }
+        const token = extractCommandToken(inputValue);
+        const exactMatch = commandCandidates.find(candidate => candidate.name === token);
+        return exactMatch ? exactMatch.name : null;
+    }
+
+    return {commandCandidates, ghostText, suggestion, handleTabAccept, getSelectedCommand};
 }
 
 export default useSlashCommands;
