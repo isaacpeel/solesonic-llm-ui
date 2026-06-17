@@ -9,23 +9,27 @@ const ModelDropdown = ({selectedModel, setSelectedModel, models}) => {
 
         const preferenceData = {model: selectedFromDropdown};
 
-        userPreferencesService.update(preferenceData).then(updatedPreferences => {
-            const updatedModelName = updatedPreferences.model;
-            const modelDetails = models.find(model => model.name === updatedModelName);
-            setSelectedModel(modelDetails);
-            toast(
-                "Model updated: " + updatedModelName, {
-                    position: "top-right",
-                    autoClose: 2500,
-                    hideProgressBar: true,
-                    closeOnClick: true,
-                    pauseOnHover: false,
-                    draggable: false,
-                    progress: undefined,
-                    theme: "dark",
-                    transition: Bounce,
-                });
-        });
+        userPreferencesService.update(preferenceData)
+            .then((updatedPreferences) => {
+                const updatedModelName = updatedPreferences.model;
+                const modelDetails = models.find((model) => model.name === updatedModelName);
+                setSelectedModel(modelDetails);
+                toast(
+                    "Model updated: " + updatedModelName, {
+                        position: "top-right",
+                        autoClose: 2500,
+                        hideProgressBar: true,
+                        closeOnClick: true,
+                        pauseOnHover: false,
+                        draggable: false,
+                        progress: undefined,
+                        theme: "dark",
+                        transition: Bounce,
+                    });
+            })
+            .catch((error) => {
+                toast.error('Failed to update model: ' + error.message);
+            });
     };
 
     return (

@@ -1,7 +1,8 @@
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
-import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { parseSseStream } from '../client/parseSseStream.js';
 import {AI} from "../chat/ChatMessage.jsx"
+import {DONE, ERROR} from './ChatService.js';
 
 const streamService = {
     chatStreamElicitationResponse: async (
@@ -11,82 +12,45 @@ const streamService = {
         { onChunk, timeoutMs = 30000 } = {}
     ) => {
         const token = await authService.getAccessToken();
+        const uri = `${config.streamingChatsUri}/${chatId}/${elicitationId}/elicitation-response`;
 
-        const payload = (typeof elicitationPayload === 'string')
+        const payload = typeof elicitationPayload === 'string'
             ? { chatMessage: elicitationPayload }
             : elicitationPayload;
 
-        const uri = `${config.streamingChatsUri}/${chatId}/${elicitationId}/elicitation-response`;
         const controller = new AbortController();
-        const { signal } = controller;
-        const method = 'POST';
-        const body = JSON.stringify(payload);
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        let timeoutId;
         try {
-            timeoutId = setTimeout(() => {
-                controller.abort();
-                console.error(`[ChatService] Streaming request timed out after ${timeoutMs}ms`);
-            }, timeoutMs);
+            const requestHeaders = {
+                'Content-Type': 'application/json',
+                Accept: 'text/event-stream',
+            };
 
-            await fetchEventSource(uri, {
-                method,
-                body,
-                signal,
-                mode: 'cors',
-                credentials: 'same-origin',
-                openWhenHidden: false,
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'text/event-stream',
-                },
-                onopen(response) {
-                    if (!response.ok) {
-                        throw new Error(`Streaming request failed: ${response.status} ${response.statusText}`);
-                    }
-                },
-                onmessage(eventSourceMessage) {
-                    const eventType = eventSourceMessage?.event && eventSourceMessage.event.length > 0 ? eventSourceMessage.event : 'message';
-                    const dataString = eventSourceMessage?.data ?? '';
+            if (token) {
+                requestHeaders.Authorization = `Bearer ${token}`;
+            }
 
-                    if (onChunk) {
-                        try {
-                            onChunk({ event: eventType, data: dataString });
-                        } catch (callbackError) {
-                            console.warn('[ChatService] onChunk callback error:', callbackError);
-                        }
-                    }
-                },
-                onerror(error) {
-                    if (error?.name === 'AbortError') {
-                        throw error;
-                    }
-                    console.error('[ChatService] SSE onerror (elicitation):', error);
-                    throw error instanceof Error ? error : new Error(String(error));
-                },
-                onclose() {
-                    if (timeoutId) {
-                        clearTimeout(timeoutId);
-                    }
-                    console.debug('[ChatService] Streaming connection closed (elicitation)');
-                },
+            const response = await fetch(uri, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+                headers: requestHeaders,
             });
-        } catch (error) {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
             }
 
-            if (error?.name === 'AbortError') {
-                throw error;
-            }
+            for await (const event of parseSseStream(response.body)) {
+                onChunk?.(event);
 
-            console.error('[ChatService] Elicitation streaming error:', error);
-            throw error instanceof Error ? error : new Error(String(error));
+                if (event.event === DONE || event.event === ERROR) {
+                    break;
+                }
+            }
         } finally {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-            }
+            clearTimeout(timeoutId);
         }
     },
     handleStreamError(error, setError, setChatHistory) {

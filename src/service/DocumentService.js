@@ -1,25 +1,13 @@
-import axiosClient from "../client/AxiosClient.js"
-import authService from './AuthService.js';
+import apiClient from '../client/ApiClient.js';
 import config from "../properties/ApplicationProperties";
 
 const documentService = {
     findTrainingDocuments: async () => {
-        const authToken = await authService.getAccessToken();
-        const uri = `${config.apiBaseUri}/trainingdocuments`;
-        const options = axiosClient.setAuthHeader(authToken);
-
-        return await axiosClient.get(uri, options);
+        return await apiClient.get(`${config.apiBaseUri}/trainingdocuments`);
     },
     uploadDocument: async (file) => {
-        const authToken = await authService.getAccessToken();
-        const uri = `${config.apiBaseUri}/documents/data/upload`;
-        const options = {
-            ...axiosClient.setAuthHeader(authToken),
-            noOp: true
-        };
-
-        return await axiosClient.post(uri, file, options);
-    }
-}
+        return await apiClient.post(`${config.apiBaseUri}/documents/data/upload`, file, { noOp: true });
+    },
+};
 
 export default documentService;

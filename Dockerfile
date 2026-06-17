@@ -7,7 +7,7 @@ FROM node:lts-slim AS build
 WORKDIR /app
 
 # Install dependencies (prefer npm ci when package-lock.json exists)
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy source and build

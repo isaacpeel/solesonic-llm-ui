@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {generateMessageKey} from '../../src/utils/keys.js';
+import {generateMessageKey} from '../../src/util/keys.js';
 
 describe('generateMessageKey', () => {
     it('returns string with prefix', () => {

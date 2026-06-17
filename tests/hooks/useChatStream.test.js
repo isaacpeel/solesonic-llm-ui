@@ -9,7 +9,6 @@ vi.mock('../../src/service/AuthService.js', () => ({
 vi.mock('../../src/service/ChatService.js', () => ({
     default: {
         handleStreamChunk: vi.fn(),
-        handleFinalChunk: vi.fn(),
         chatStream: vi.fn().mockResolvedValue(undefined),
     },
 }));
@@ -110,7 +109,6 @@ describe('useChatStream', () => {
             options.chatId,
             expect.objectContaining({
                 onChunk: expect.any(Function),
-                onDone: expect.any(Function),
                 signal: expect.any(AbortSignal),
             })
         );
@@ -174,7 +172,6 @@ describe('useChatStream', () => {
             options.chatId,
             expect.objectContaining({
                 onChunk: expect.any(Function),
-                onDone: expect.any(Function),
                 signal: expect.any(AbortSignal),
             })
         );
@@ -215,6 +212,7 @@ describe('useChatStream', () => {
             setActiveElicitation: options.setActiveElicitation,
             setElicitationSubmitting: options.setElicitationSubmitting,
             setElicitationValues: options.setElicitationValues,
+            setError: expect.any(Function),
         });
     });
 });

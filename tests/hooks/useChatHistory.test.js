@@ -183,3 +183,201 @@ describe('useChatHistory', () => {
         expect(setChatIdUpdater('existing-chat-id')).toBe('existing-chat-id');
     });
 });
+
+// ---------------------------------------------------------------------------
+// appendNotificationToLastAIMessage
+// ---------------------------------------------------------------------------
+
+describe('appendNotificationToLastAIMessage', () => {
+    let sharedState;
+
+    beforeEach(() => {
+        sharedState = {
+            chatId: null,
+            setChatId: vi.fn(),
+            chatHistory: [{type: AI, text: 'seed', _key: 'seed'}],
+            setChatHistory: vi.fn(),
+        };
+        useSharedData.mockReturnValue(sharedState);
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('ignores null input — does not append to history', () => {
+        const {result} = renderHook(() => useChatHistory());
+        const callsBefore = sharedState.setChatHistory.mock.calls.length;
+
+        result.current.appendNotificationToLastAIMessage(null);
+
+        expect(sharedState.setChatHistory.mock.calls.length).toBe(callsBefore);
+    });
+
+    it('ignores empty string input — does not append to history', () => {
+        const {result} = renderHook(() => useChatHistory());
+        const callsBefore = sharedState.setChatHistory.mock.calls.length;
+
+        result.current.appendNotificationToLastAIMessage('');
+
+        expect(sharedState.setChatHistory.mock.calls.length).toBe(callsBefore);
+    });
+
+    it('ignores whitespace-only input — does not append to history', () => {
+        const {result} = renderHook(() => useChatHistory());
+        const callsBefore = sharedState.setChatHistory.mock.calls.length;
+
+        result.current.appendNotificationToLastAIMessage('   ');
+
+        expect(sharedState.setChatHistory.mock.calls.length).toBe(callsBefore);
+    });
+
+    it('appends to the notifications array on the last AI message', () => {
+        const {result} = renderHook(() => useChatHistory());
+
+        result.current.appendNotificationToLastAIMessage('Step complete');
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const history = [{type: AI, text: 'hello', _key: 'ai-1', notifications: ['previous']}];
+        const updatedHistory = updater(history);
+
+        expect(updatedHistory[0].notifications).toEqual(['previous', 'Step complete']);
+    });
+
+    it('creates notifications array when none exists on the last AI message', () => {
+        const {result} = renderHook(() => useChatHistory());
+
+        result.current.appendNotificationToLastAIMessage('Step complete');
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const history = [{type: AI, text: 'hello', _key: 'ai-1'}];
+        const updatedHistory = updater(history);
+
+        expect(updatedHistory[0].notifications).toEqual(['Step complete']);
+    });
+
+    it('does nothing when the last message is not type AI', () => {
+        const {result} = renderHook(() => useChatHistory());
+
+        result.current.appendNotificationToLastAIMessage('Step complete');
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const history = [{type: 'USER', text: 'question', _key: 'user-1'}];
+        const updatedHistory = updater(history);
+
+        expect(updatedHistory).toBe(history);
+    });
+
+    it('does nothing when history is empty', () => {
+        const {result} = renderHook(() => useChatHistory());
+
+        result.current.appendNotificationToLastAIMessage('Step complete');
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const emptyHistory = [];
+        const updatedHistory = updater(emptyHistory);
+
+        expect(updatedHistory).toBe(emptyHistory);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// mergeFetchedChatHistoryWithLocalNotifications (via setChatHistory updater)
+// ---------------------------------------------------------------------------
+
+describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
+    let sharedState;
+
+    beforeEach(() => {
+        sharedState = {
+            chatId: 'chat-1',
+            setChatId: vi.fn(),
+            chatHistory: [],
+            setChatHistory: vi.fn(),
+        };
+        useSharedData.mockReturnValue(sharedState);
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('empty fetched history with no local AI+notifications → returns empty array', async () => {
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const previousHistory = [{type: 'USER', text: 'question', _key: 'u1'}];
+        const result = updater(previousHistory);
+
+        expect(result).toEqual([]);
+    });
+
+    it('empty fetched history where last local message is AI with notifications → returns previousHistory', async () => {
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const previousHistory = [
+            {type: AI, text: 'answer', _key: 'ai-1', notifications: ['notification']},
+        ];
+        const result = updater(previousHistory);
+
+        expect(result).toBe(previousHistory);
+    });
+
+    it('non-empty fetched history, last local is not AI → returns fetched history as-is', async () => {
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'msg-1', messageType: AI, message: 'answer', model: 'gpt-4'},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const previousHistory = [
+            {type: 'USER', text: 'question', _key: 'u1'},
+        ];
+        const result = updater(previousHistory);
+
+        expect(result).toEqual([
+            {type: AI, text: 'answer', model: 'gpt-4', _key: 'msg-1'},
+        ]);
+    });
+
+    it('non-empty fetched history, last local is AI with notifications, last fetched is not AI → appends local AI message with notifications', async () => {
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'msg-1', messageType: 'USER', message: 'question'},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const previousHistory = [
+            {type: 'USER', text: 'question', _key: 'u1'},
+            {type: AI, text: 'answer', _key: 'ai-1', notifications: ['notification']},
+        ];
+        const result = updater(previousHistory);
+
+        expect(result).toHaveLength(2);
+        expect(result[0]).toMatchObject({type: 'USER', text: 'question'});
+        expect(result[1]).toMatchObject({
+            type: AI,
+            notifications: ['notification'],
+        });
+    });
+});

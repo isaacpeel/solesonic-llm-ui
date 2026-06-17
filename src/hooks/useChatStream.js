@@ -4,7 +4,7 @@ import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
 import {AI, USER} from '../chat/ChatMessage.jsx';
-import {generateMessageKey} from '../utils/keys.js';
+import {generateMessageKey} from '../util/keys.js';
 
 function useChatStream({
     chatId,
@@ -43,6 +43,7 @@ function useChatStream({
             setActiveElicitation,
             setElicitationSubmitting,
             setElicitationValues,
+            setError,
         });
     }, [
         activeElicitation,
@@ -54,28 +55,7 @@ function useChatStream({
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
-    ]);
-
-    const handleStreamClose = useCallback((raw) => {
-        chatService.handleFinalChunk(raw, {
-            activeElicitation,
-            chatId,
-            appendToLastAIMessage,
-            ensureChatIdFromResponse,
-            finalizeLastAIMessage,
-            setActiveElicitation,
-            setElicitationSubmitting,
-            setElicitationValues,
-        });
-    }, [
-        activeElicitation,
-        chatId,
-        appendToLastAIMessage,
-        ensureChatIdFromResponse,
-        finalizeLastAIMessage,
-        setActiveElicitation,
-        setElicitationSubmitting,
-        setElicitationValues,
+        setError,
     ]);
 
     const handleSubmit = async () => {
@@ -118,14 +98,22 @@ function useChatStream({
             await chatService.chatStream(payload, chatId, {
                 signal: controller.current.signal,
                 onChunk: handleStreamChunk,
-                onDone: handleStreamClose,
             });
         } catch (caughtError) {
             if (caughtError.name === 'AbortError') {
                 log.info('[ChatScreen] Stream aborted.');
+                setChatHistory((previousHistory) => {
+                    const newHistory = [...previousHistory];
+                    const lastIndex = newHistory.length - 1;
+
+                    if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
+                        newHistory[lastIndex] = { ...newHistory[lastIndex], isStreaming: false };
+                    }
+
+                    return newHistory;
+                });
                 return;
             }
-
             streamService.handleStreamError(caughtError, setError, setChatHistory);
         } finally {
             setLoading(false);

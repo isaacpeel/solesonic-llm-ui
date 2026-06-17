@@ -18,13 +18,21 @@ const AtlassianSettings = () => {
             return await userPreferencesService.get();
         }
 
-        getAtlassianAuthUri().then(authUri => {
-            setAtlassianAuthLink(authUri);
-        })
+        getAtlassianAuthUri()
+            .then((authUri) => {
+                setAtlassianAuthLink(authUri);
+            })
+            .catch((error) => {
+                console.error('[AtlassianSettings] Failed to load auth URI:', error);
+            });
 
-        getUserPreferences().then(userPreferences => {
-            setAtlassianAuthentication(userPreferences.atlassianAuthentication);
-        })
+        getUserPreferences()
+            .then((userPreferences) => {
+                setAtlassianAuthentication(userPreferences.atlassianAuthentication);
+            })
+            .catch((error) => {
+                console.error('[AtlassianSettings] Failed to load preferences:', error);
+            });
 
     }, [setAtlassianAuthLink])
 
