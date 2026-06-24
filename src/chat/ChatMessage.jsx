@@ -1,8 +1,8 @@
 import PropTypes from "prop-types";
-import {useState} from "react";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ChatCard from "./ChatCard.jsx";
+import ChatNotifications from "./ChatNotifications.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -24,7 +24,6 @@ function ChatMessage({message}) {
     const hasText = message.text && message.text.trim() !== '';
     const notificationLog = Array.isArray(message.notifications) ? message.notifications : [];
     const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
-    const [isNotificationLogExpanded, setIsNotificationLogExpanded] = useState(false);
 
     const containerClass = isElicitation ? SYSTEM : message.type;
     const showIcon = isElicitation || isAIorSystem;
@@ -52,53 +51,12 @@ function ChatMessage({message}) {
         );
     })() : null;
 
-    const notificationLogChildren = !isElicitation && isAIMessage && notificationLog.length > 0 ? (
-        <div className="notification-log" role="status" aria-live="polite">
-            {message.isStreaming ? (
-                <div className="notification-log-streaming-row">
-                    <span className="notification-log-spinner" aria-hidden="true" />
-                    <span className="notification-log-current-step">
-                        {notificationLog[notificationLog.length - 1]}
-                    </span>
-                </div>
-            ) : (
-                <>
-                    <button
-                        className="notification-log-summary-toggle"
-                        onClick={() => setIsNotificationLogExpanded(previousValue => !previousValue)}
-                        aria-expanded={isNotificationLogExpanded}
-                        aria-controls={`notification-steps-${message._key}`}
-                    >
-                        <span className="notification-log-checkmark-icon" aria-hidden="true">✓</span>
-                        <span className="notification-log-summary-label">
-                            {notificationLog.length} {notificationLog.length === 1 ? 'step' : 'steps'} completed
-                        </span>
-                        <span
-                            className={`notification-log-chevron ${isNotificationLogExpanded ? 'notification-log-chevron--expanded' : ''}`}
-                            aria-hidden="true"
-                        >
-                            ▾
-                        </span>
-                    </button>
-                    {isNotificationLogExpanded && (
-                        <ul
-                            id={`notification-steps-${message._key}`}
-                            className="notification-log-step-list"
-                        >
-                            {notificationLog.map((notificationText, notificationIndex) => (
-                                <li
-                                    key={`${message._key}-notification-${notificationIndex}`}
-                                    className="notification-log-step-item"
-                                >
-                                    <span className="notification-log-step-checkmark" aria-hidden="true">✓</span>
-                                    {notificationText}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </>
-            )}
-        </div>
+    const notificationLogChildren = !isElicitation && isAIMessage ? (
+        <ChatNotifications
+            notifications={notificationLog}
+            isStreaming={!!message.isStreaming}
+            messageKey={message._key}
+        />
     ) : null;
 
     return (
