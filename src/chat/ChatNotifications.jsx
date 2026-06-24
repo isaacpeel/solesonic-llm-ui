@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import {useState} from "react";Mo
+import {useState} from "react";
 
 function ChatNotifications({notifications, isStreaming, messageKey}) {
     const [isExpanded, setIsExpanded] = useState(false);

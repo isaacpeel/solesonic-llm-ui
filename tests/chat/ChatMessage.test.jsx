@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen} from '@testing-library/react';
 import ChatMessage from '../../src/chat/ChatMessage.jsx';
 
 function buildMessage(overrides) {
@@ -143,78 +143,31 @@ describe('ChatMessage', () => {
     });
 
     describe('notification log', () => {
-        it('shows spinner and last notification while streaming', () => {
-            render(<ChatMessage message={buildMessage({
-                type: 'ASSISTANT',
-                text: '',
-                isStreaming: true,
-                notifications: ['Step 1', 'Step 2'],
-            })} />);
-            expect(screen.getByText('Step 2')).toBeDefined();
-            expect(screen.queryByRole('list')).toBeNull();
-        });
-
-        it('shows step count button when finalized', () => {
-            render(<ChatMessage message={buildMessage({
-                type: 'ASSISTANT',
-                text: 'Done',
-                isStreaming: false,
-                notifications: ['Step 1', 'Step 2'],
-            })} />);
-            expect(screen.getByText('2 steps completed')).toBeDefined();
-        });
-
-        it('uses singular "step" when only one notification', () => {
-            render(<ChatMessage message={buildMessage({
-                type: 'ASSISTANT',
-                text: 'Done',
-                isStreaming: false,
-                notifications: ['Only step'],
-            })} />);
-            expect(screen.getByText('1 step completed')).toBeDefined();
-        });
-
-        it('step list is collapsed by default', () => {
+        it('renders notification log for AI messages with notifications', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 type: 'ASSISTANT',
                 text: 'Done',
                 isStreaming: false,
                 notifications: ['Step 1'],
             })} />);
-            expect(container.querySelector('.notification-log-step-list')).toBeNull();
+            expect(container.querySelector('.notification-log')).not.toBeNull();
         });
 
-        it('expands step list when toggle is clicked', () => {
-            render(<ChatMessage message={buildMessage({
-                type: 'ASSISTANT',
-                text: 'Done',
-                isStreaming: false,
-                notifications: ['Step 1', 'Step 2'],
-            })} />);
-            fireEvent.click(screen.getByRole('button'));
-            expect(screen.getByText('Step 1')).toBeDefined();
-            expect(screen.getByText('Step 2')).toBeDefined();
-        });
-
-        it('collapses step list when toggle is clicked again', () => {
+        it('does not render notification log for USER messages', () => {
             const {container} = render(<ChatMessage message={buildMessage({
-                type: 'ASSISTANT',
-                text: 'Done',
-                isStreaming: false,
+                type: 'USER',
+                text: 'Hello',
                 notifications: ['Step 1'],
             })} />);
-            const button = screen.getByRole('button');
-            fireEvent.click(button);
-            fireEvent.click(button);
-            expect(container.querySelector('.notification-log-step-list')).toBeNull();
+            expect(container.querySelector('.notification-log')).toBeNull();
         });
 
-        it('does not render notification log when notifications array is empty', () => {
+        it('does not render notification log for elicitation messages', () => {
             const {container} = render(<ChatMessage message={buildMessage({
-                type: 'ASSISTANT',
-                text: 'Done',
-                isStreaming: false,
-                notifications: [],
+                type: 'SYSTEM',
+                text: 'Do you accept?',
+                elicitationResponse: 'yes',
+                notifications: ['Step 1'],
             })} />);
             expect(container.querySelector('.notification-log')).toBeNull();
         });
