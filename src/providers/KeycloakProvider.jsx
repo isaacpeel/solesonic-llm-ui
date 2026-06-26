@@ -110,6 +110,8 @@ export const KeycloakProvider = ({ children }) => {
         return keycloak?.token || null;
     };
 
+    const hasRole = (roleName) => user?.roles?.includes(roleName) ?? false;
+
     const contextValue = {
         keycloak,
         authenticated,
@@ -118,6 +120,7 @@ export const KeycloakProvider = ({ children }) => {
         login,
         logout,
         getToken,
+        hasRole,
     };
 
     return (

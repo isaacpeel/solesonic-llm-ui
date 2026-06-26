@@ -7,15 +7,31 @@ import ModelSettings from "./ModelSettings.jsx";
 import OllamaModelSettings from "./OllamaModelSettings.jsx";
 import { useLocation } from 'react-router-dom';
 
-import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
-import { SiAtlassian } from 'react-icons/si';
+import {XMarkIcon, BackspaceIcon} from "@heroicons/react/24/solid";
 
 import atlassianAuthService from "../service/AtlassianAuthService.js";
 import AtlassianSettings from "./AtlassianSettings.jsx";
 import GeneralUserSettings from "./GeneralUserSettings.jsx";
+import {useKeycloak} from "../providers/KeycloakProvider.jsx";
+import { SETTINGS_CONFIG } from './settingsConfig.js';
+import RoleGuard from '../authorizer/RoleGuard.jsx';
+
+const PANEL_COMPONENTS = {
+    ragManagement: <RagManagement />,
+    modelSettings: <ModelSettings />,
+    ollamaModelSettings: <OllamaModelSettings />,
+    atlassianSettings: <AtlassianSettings />,
+    generalUserSettings: <GeneralUserSettings />,
+};
 
 const UserSettings = () => {
-    const [selectedSetting, setSelectedSetting] = useState("modelSettings");
+    const { hasRole } = useKeycloak();
+    const visibleSettings = SETTINGS_CONFIG.filter(
+        item => !item.requiredRole || hasRole(item.requiredRole)
+    );
+    const [selectedSetting, setSelectedSetting] = useState(
+        visibleSettings[0]?.key ?? 'generalUserSettings'
+    );
     const navigate = useNavigate();
     const location = useLocation();
     const useCallback = useRef(true);
@@ -29,29 +45,33 @@ const UserSettings = () => {
         };
 
         if (code && useCallback) {
-
-            callback(code).then( () => {
-                    useCallback.current = false;
-                }
-            );
+            callback(code).then(() => {
+                useCallback.current = false;
+            });
         }
     }, [location.search, useCallback]);
 
     const renderContent = () => {
-        switch (selectedSetting) {
-            case "ragManagement":
-                return <RagManagement/>;
-            case "modelSettings":
-                return <ModelSettings/>;
-            case "ollamaModelSettings":
-                return <OllamaModelSettings/>;
-            case "atlassianSettings":
-                return <AtlassianSettings/>;
-            case "generalUserSettings":
-                return <GeneralUserSettings/>;
-            default:
-                return <p>Select a setting from the menu.</p>;
+        const panelConfig = SETTINGS_CONFIG.find(item => item.key === selectedSetting);
+
+        if (!panelConfig) {
+            return <p>Select a setting from the menu.</p>;
         }
+
+        const panel = PANEL_COMPONENTS[selectedSetting] ?? <p>Select a setting from the menu.</p>;
+
+        if (panelConfig.requiredRole) {
+            return (
+                <RoleGuard
+                    role={panelConfig.requiredRole}
+                    fallback={<p>You do not have permission to view this setting.</p>}
+                >
+                    {panel}
+                </RoleGuard>
+            );
+        }
+
+        return panel;
     };
 
     return (
@@ -61,47 +81,21 @@ const UserSettings = () => {
                     <div className="settings-sidebar-header">
                         Settings
                     </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "modelSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("modelSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <Cog6ToothIcon/>
-                        </div>
-                        <div className="settings-sidebar-item-label">Chat Model</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "ollamaModelSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("ollamaModelSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <ServerIcon/>
-                        </div>
-                        <div className="settings-sidebar-item-label">Ollama Models</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "generalUserSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("generalUserSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <UserCircleIcon/>
-                        </div>
-                        <div className="settings-sidebar-item-label">General</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "atlassianSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("atlassianSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <SiAtlassian size={20} color="#0052CC"/>
-                        </div>
-                        <div className="settings-sidebar-item-label">Atlassian</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "ragManagement" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("ragManagement")}
-                    >
-                        <div className="settings-sidebar-icon">
-                            <CubeTransparentIcon/>
-                        </div>
-                        <div className="settings-sidebar-item-label">RAG</div>
-                    </div>
+                    {visibleSettings.map(item => {
+                        const Icon = item.icon;
+                        return (
+                            <div
+                                key={item.key}
+                                className={`settings-sidebar-item ${selectedSetting === item.key ? 'selected' : ''}`}
+                                onClick={() => setSelectedSetting(item.key)}
+                            >
+                                <div className="settings-sidebar-icon">
+                                    <Icon {...(item.iconProps ?? {})} />
+                                </div>
+                                <div className="settings-sidebar-item-label">{item.label}</div>
+                            </div>
+                        );
+                    })}
                     <div
                         className="settings-sidebar-mobile settings-sidebar-item"
                         onClick={() => navigate("/")}

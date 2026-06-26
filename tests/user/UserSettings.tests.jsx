@@ -1,8 +1,15 @@
 import {render, waitFor, fireEvent} from '@testing-library/react';
 import {MemoryRouter, Routes, Route} from 'react-router-dom';
 import UserSettings from '../../src/user/UserSettings.jsx';
-import {describe, it, vi, expect} from 'vitest';
+import {describe, it, vi, expect, beforeEach, afterEach} from 'vitest';
 import AtlassianAuthService from "../../src/service/AtlassianAuthService.js";
+import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
+import { SETTINGS_CONFIG } from '../../src/user/settingsConfig.js';
+import { ROLES } from '../../src/authorizer/roles.js';
+
+vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({
+    useKeycloak: vi.fn(),
+}));
 
 vi.mock('../../src/service/AtlassianAuthService.js', () => ({
     default: {
@@ -67,6 +74,34 @@ vi.mock('../../src/service/AuthService.js', () => ({
     }
 }))
 
+function makeModelAdminKeycloakMock() {
+    return {
+        keycloak: {},
+        authenticated: true,
+        loading: false,
+        user: {name: 'Admin User', roles: ['model-admin']},
+        hasRole: (role) => role === 'model-admin',
+        roles: ['model-admin'],
+        login: vi.fn(),
+        logout: vi.fn(),
+        getToken: vi.fn(),
+    };
+}
+
+function makeRegularUserKeycloakMock() {
+    return {
+        keycloak: {},
+        authenticated: true,
+        loading: false,
+        user: {name: 'Regular User', roles: []},
+        hasRole: () => false,
+        roles: [],
+        login: vi.fn(),
+        logout: vi.fn(),
+        getToken: vi.fn(),
+    };
+}
+
 function renderSettings(initialRoute = '/settings') {
     return render(
         <MemoryRouter initialEntries={[initialRoute]}>
@@ -77,7 +112,33 @@ function renderSettings(initialRoute = '/settings') {
     );
 }
 
+describe('SETTINGS_CONFIG', () => {
+    it('every entry has a key and label', () => {
+        for (const item of SETTINGS_CONFIG) {
+            expect(item.key).toBeTruthy();
+            expect(item.label).toBeTruthy();
+        }
+    });
+
+    it('every requiredRole is a known ROLES constant', () => {
+        const knownRoles = new Set(Object.values(ROLES));
+        for (const item of SETTINGS_CONFIG) {
+            if (item.requiredRole) {
+                expect(knownRoles.has(item.requiredRole)).toBe(true);
+            }
+        }
+    });
+});
+
 describe('UserSettings', () => {
+    beforeEach(() => {
+        useKeycloak.mockReturnValue(makeModelAdminKeycloakMock());
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
     it('calls authCallback once per mount when the page is refreshed', async () => {
         const initialRoute = '/settings/?code=12345';
 
@@ -106,7 +167,7 @@ describe('UserSettings', () => {
         await waitFor(() => expect(mockAuthCallback).toHaveBeenCalledTimes(1));
     });
 
-    it('renders Chat Model tab as selected by default', () => {
+    it('renders Chat Model tab as selected by default for model-admin users', () => {
         const {container} = renderSettings();
 
         const selectedItem = container.querySelector('.settings-sidebar-item.selected');
@@ -139,5 +200,64 @@ describe('UserSettings', () => {
 
         const selectedItem = getByText('General').closest('.settings-sidebar-item');
         expect(selectedItem.classList.contains('selected')).toBe(true);
+    });
+
+    describe('model-admin role', () => {
+        it('sees Chat Model in the sidebar', () => {
+            const {getByText} = renderSettings();
+            expect(getByText('Chat Model')).toBeDefined();
+        });
+
+        it('sees Ollama Models in the sidebar', () => {
+            const {getByText} = renderSettings();
+            expect(getByText('Ollama Models')).toBeDefined();
+        });
+
+        it('can navigate to the Chat Model panel', () => {
+            const {getByText} = renderSettings();
+            fireEvent.click(getByText('Chat Model'));
+            const selectedItem = getByText('Chat Model').closest('.settings-sidebar-item');
+            expect(selectedItem.classList.contains('selected')).toBe(true);
+        });
+
+        it('can navigate to the Ollama Models panel', () => {
+            const {getByText} = renderSettings();
+            fireEvent.click(getByText('Ollama Models'));
+            const selectedItem = getByText('Ollama Models').closest('.settings-sidebar-item');
+            expect(selectedItem.classList.contains('selected')).toBe(true);
+        });
+    });
+
+    describe('non-admin role', () => {
+        beforeEach(() => {
+            useKeycloak.mockReturnValue(makeRegularUserKeycloakMock());
+        });
+
+        it('does not see Chat Model in the sidebar', () => {
+            const {queryByText} = renderSettings();
+            expect(queryByText('Chat Model')).toBeNull();
+        });
+
+        it('does not see Ollama Models in the sidebar', () => {
+            const {queryByText} = renderSettings();
+            expect(queryByText('Ollama Models')).toBeNull();
+        });
+
+        it('defaults to the General panel', () => {
+            const {container} = renderSettings();
+            const selectedItem = container.querySelector('.settings-sidebar-item.selected');
+            expect(selectedItem).not.toBeNull();
+            expect(selectedItem.textContent).toContain('General');
+        });
+
+        it('sees General in the sidebar', () => {
+            const {getByText} = renderSettings();
+            expect(getByText('General')).toBeDefined();
+        });
+
+        it('sees Atlassian in the sidebar', () => {
+            const {getByText} = renderSettings();
+            expect(getByText('Atlassian')).toBeDefined();
+        });
     });
 });
