@@ -12,7 +12,7 @@ export const SETTINGS_CONFIG = [
         key: 'modelSettings',
         label: 'Chat Model',
         icon: Cog6ToothIcon,
-        requiredRole: ROLES.MODEL_ADMIN,
+        requiredRole: ROLES.MODEL_SELECT,
     },
     {
         key: 'ollamaModelSettings',
@@ -29,11 +29,11 @@ export const SETTINGS_CONFIG = [
         key: 'atlassianSettings',
         label: 'Atlassian',
         icon: SiAtlassian,
-        iconProps: { size: 20, color: '#0052CC' },
     },
     {
         key: 'ragManagement',
         label: 'RAG',
         icon: CubeTransparentIcon,
+        requiredRole: ROLES.RAG_ADMIN,
     },
 ];
