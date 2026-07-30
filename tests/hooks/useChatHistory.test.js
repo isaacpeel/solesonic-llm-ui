@@ -357,6 +357,53 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         ]);
     });
 
+    it('keeps a live streaming placeholder when hydration lands mid-stream', async () => {
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'msg-1', messageType: 'USER', message: 'question'},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const streamingMessage = {type: AI, text: 'The capital of', _key: 'ai-live', isStreaming: true};
+        const result = updater([
+            {type: 'USER', text: 'question', _key: 'u1'},
+            streamingMessage,
+        ]);
+
+        expect(result).toHaveLength(2);
+        expect(result[0]).toMatchObject({type: 'USER', messageId: 'msg-1'});
+        expect(result[1]).toBe(streamingMessage);
+    });
+
+    it('drops the server\'s partial AI row rather than rendering a second bubble', async () => {
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'msg-1', messageType: 'USER', message: 'question'},
+                {id: 'msg-2', messageType: AI, message: ''},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const streamingMessage = {type: AI, text: 'The capital of', _key: 'ai-live', isStreaming: true};
+        const result = updater([
+            {type: 'USER', text: 'question', _key: 'u1'},
+            streamingMessage,
+        ]);
+
+        expect(result).toHaveLength(2);
+        expect(result[1]).toBe(streamingMessage);
+        expect(result[1].text).toBe('The capital of');
+    });
+
     it('non-empty fetched history, last local is AI with notifications, last fetched is not AI → appends local AI message with notifications', async () => {
         chatService.findChatDetails.mockResolvedValue({
             chatMessages: [
@@ -380,6 +427,75 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         expect(result[1]).toMatchObject({
             type: AI,
             notifications: ['notification'],
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// hydration suppression for a chat id adopted mid-stream
+// ---------------------------------------------------------------------------
+
+describe('hydration on chatId change', () => {
+    let sharedState;
+
+    beforeEach(() => {
+        sharedState = {
+            chatId: null,
+            setChatId: vi.fn(),
+            chatHistory: [{type: AI, text: 'seed', _key: 'seed'}],
+            setChatHistory: vi.fn(),
+        };
+        useSharedData.mockReturnValue(sharedState);
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('does not hydrate for an id adopted from this client\'s own in-flight stream', async () => {
+        const {result, rerender} = renderHook(() => useChatHistory());
+
+        result.current.ensureChatIdFromResponse({id: 'chat-streaming'});
+        sharedState.chatId = 'chat-streaming';
+        rerender();
+
+        await waitFor(() => expect(sharedState.setChatId).toHaveBeenCalled());
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+    });
+
+    it('hydrates when the user selects a chat from the sidebar', async () => {
+        const {rerender} = renderHook(() => useChatHistory());
+
+        sharedState.chatId = 'chat-selected';
+        rerender();
+
+        await waitFor(() => {
+            expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-selected');
+        });
+    });
+
+    it('hydrates on returning to a chat whose id was adopted during an earlier stream', async () => {
+        const {result, rerender} = renderHook(() => useChatHistory());
+
+        result.current.ensureChatIdFromResponse({id: 'chat-a'});
+        sharedState.chatId = 'chat-a';
+        rerender();
+
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+
+        sharedState.chatId = 'chat-b';
+        rerender();
+
+        await waitFor(() => {
+            expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-b');
+        });
+
+        sharedState.chatId = 'chat-a';
+        rerender();
+
+        await waitFor(() => {
+            expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-a');
         });
     });
 });

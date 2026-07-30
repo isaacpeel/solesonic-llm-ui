@@ -1,10 +1,17 @@
-import {useCallback, useEffect} from 'react';
+import {useCallback, useEffect, useRef} from 'react';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
 import {AI, SYSTEM, USER} from '../chat/ChatMessage.jsx';
 
 function useChatHistory() {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
+
+    /*
+     * Holds an id this client adopted from its own in-flight stream, so hydration can tell
+     * that case apart from the user picking a chat out of the sidebar — both are a bare
+     * setChatId and are otherwise indistinguishable.
+     */
+    const adoptedChatIdRef = useRef(null);
 
     useEffect(() => {
         if (chatHistory.length === 0) {
@@ -23,6 +30,24 @@ function useChatHistory() {
         if (!chatId) {
             return;
         }
+
+        /*
+         * A new chat learns its id from its own `init` frame, milliseconds after the stream
+         * opens. Hydrating on that transition would read a server state holding only the USER
+         * message — the streaming placeholder would be replaced, and every later frame would
+         * land on a USER entry where appendToLastAIMessage/finalizeLastAIMessage drop it in
+         * silence. Skip exactly that one transition; a real sidebar selection still hydrates.
+         */
+        if (adoptedChatIdRef.current === chatId) {
+            return;
+        }
+
+        /*
+         * Cleared only on the fetching path, so this stays correct if the user later navigates
+         * away and back to the same chat, and so React StrictMode's double-invoked effect takes
+         * the same branch both times.
+         */
+        adoptedChatIdRef.current = null;
 
         async function fetchChatDetails() {
             const response = await chatService.findChatDetails(chatId);
@@ -133,6 +158,9 @@ function useChatHistory() {
         const resolvedChatId = response?.id ?? response?.chatId;
 
         if (resolvedChatId) {
+            /* Marked before the state change so hydration sees it on the resulting effect run. */
+            adoptedChatIdRef.current = resolvedChatId;
+
             setChatId((currentChatId) => {
                 if (!currentChatId) {
                     return resolvedChatId;
@@ -239,22 +267,37 @@ function mergeFetchedChatHistoryWithLocalNotifications(fetchedHistory, previousH
         return previousHistory;
     }
 
-    if (fetchedHistory.length === 0) {
-        const lastLocalMessage = previousHistory[previousHistory.length - 1];
-        const localNotifications = Array.isArray(lastLocalMessage?.notifications) ? lastLocalMessage.notifications : [];
-
-        if (lastLocalMessage?.type === AI && localNotifications.length > 0) {
-            return previousHistory;
-        }
-
-        return fetchedHistory;
-    }
-
     const lastLocalMessage = previousHistory[previousHistory.length - 1];
     const localNotifications = Array.isArray(lastLocalMessage?.notifications) ? lastLocalMessage.notifications : [];
 
-    if (lastLocalMessage?.type !== AI || localNotifications.length === 0) {
+    /*
+     * A bubble that is still streaming outranks anything the server can report about it: its
+     * turn is not persisted yet, so hydrating over it would discard the tokens already on
+     * screen and unseat the AI entry the remaining frames append to.
+     */
+    const isLastLocalMessageStreaming = lastLocalMessage?.type === AI && !!lastLocalMessage.isStreaming;
+    const shouldPreserveLastLocalMessage = lastLocalMessage?.type === AI
+        && (isLastLocalMessageStreaming || localNotifications.length > 0);
+
+    if (!shouldPreserveLastLocalMessage) {
         return fetchedHistory;
+    }
+
+    if (fetchedHistory.length === 0) {
+        return previousHistory;
+    }
+
+    /*
+     * Keep the live bubble itself — text, notifications and `_key` all intact, so no remount
+     * and no lost tokens. Any trailing fetched AI row is the server's partial view of this
+     * same turn, so it is dropped rather than rendered as a second bubble.
+     */
+    if (isLastLocalMessageStreaming) {
+        const historyBeforeStreamingMessage = fetchedHistory[fetchedHistory.length - 1]?.type === AI
+            ? fetchedHistory.slice(0, -1)
+            : fetchedHistory;
+
+        return [...historyBeforeStreamingMessage, lastLocalMessage];
     }
 
     const mergedHistory = [...fetchedHistory];
