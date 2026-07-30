@@ -3,6 +3,7 @@ import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
+import MessageAttachments from "./MessageAttachments.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -17,7 +18,7 @@ const TYPE_COLORS = {
     [SYSTEM]: {bgColor: '#3b4d61', textColor: '#ffffff'},
 };
 
-function ChatMessage({message}) {
+function ChatMessage({message, onExpandAttachment}) {
     const isElicitation = !!message.elicitationResponse;
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const isAIMessage = message.type === AI;
@@ -51,6 +52,16 @@ function ChatMessage({message}) {
         );
     })() : null;
 
+    /*
+     * USER messages only — attachments are not a thing on assistant messages today, and
+     * ChatCard renders {children} above the markdown body, so the strip lands above the text
+     * with no ChatCard change.
+     */
+    const attachmentList = Array.isArray(message.attachments) ? message.attachments : [];
+    const attachmentChildren = message.type === USER && attachmentList.length > 0 ? (
+        <MessageAttachments attachments={attachmentList} onExpand={onExpandAttachment}/>
+    ) : null;
+
     const notificationLogChildren = !isElicitation && isAIMessage ? (
         <ChatNotifications
             notifications={notificationLog}
@@ -76,6 +87,7 @@ function ChatMessage({message}) {
                 showPlaceholder={showPlaceholder}
                 className={cardClassName}
             >
+                {attachmentChildren}
                 {elicitationChildren}
                 {notificationLogChildren}
             </ChatCard>
@@ -85,6 +97,7 @@ function ChatMessage({message}) {
 
 ChatMessage.propTypes = {
     message: PropTypes.object.isRequired,
+    onExpandAttachment: PropTypes.func,
 };
 
 export default ChatMessage;

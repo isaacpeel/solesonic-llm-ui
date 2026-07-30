@@ -72,7 +72,7 @@ describe('useChatHistory', () => {
             const setHistoryUpdater = sharedState.setChatHistory.mock.calls[0][0];
             const mergedHistory = setHistoryUpdater([]);
             expect(mergedHistory).toEqual([
-                {type: AI, text: 'hello', model: 'model-1', _key: 'msg-1'},
+                {type: AI, text: 'hello', model: 'model-1', messageId: 'msg-1', attachments: [], _key: 'msg-1'},
             ]);
         });
     });
@@ -101,11 +101,13 @@ describe('useChatHistory', () => {
         const mergedHistory = setHistoryUpdater(sharedState.chatHistory);
 
         expect(mergedHistory).toEqual([
-            {type: 'USER', text: 'question', model: undefined, _key: 'msg-1'},
+            {type: 'USER', text: 'question', model: undefined, messageId: 'msg-1', attachments: [], _key: 'msg-1'},
             {
                 type: AI,
                 text: 'answer',
                 model: 'model-1',
+                messageId: 'msg-2',
+                attachments: [],
                 _key: 'msg-2',
                 notifications: ['Jira workflow started'],
             },
@@ -351,7 +353,7 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         const result = updater(previousHistory);
 
         expect(result).toEqual([
-            {type: AI, text: 'answer', model: 'gpt-4', _key: 'msg-1'},
+            {type: AI, text: 'answer', model: 'gpt-4', messageId: 'msg-1', attachments: [], _key: 'msg-1'},
         ]);
     });
 
@@ -378,6 +380,198 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         expect(result[1]).toMatchObject({
             type: AI,
             notifications: ['notification'],
+        });
+    });
+});
+
+describe('attachment-aware chat history', () => {
+    let sharedState;
+
+    beforeEach(() => {
+        sharedState = {
+            chatId: null,
+            setChatId: vi.fn(),
+            chatHistory: [{type: AI, text: 'existing', _key: 'existing'}],
+            setChatHistory: vi.fn(),
+        };
+        useSharedData.mockReturnValue(sharedState);
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    describe('ensureChatIdFromResponse', () => {
+        it('adopts the chat id from the `id` key', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.ensureChatIdFromResponse({id: 'chat-from-id'});
+
+            const chatIdUpdater = sharedState.setChatId.mock.calls.at(-1)[0];
+            expect(chatIdUpdater(null)).toBe('chat-from-id');
+        });
+
+        it('adopts the chat id from the `chatId` key', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.ensureChatIdFromResponse({chatId: 'chat-from-chatid'});
+
+            const chatIdUpdater = sharedState.setChatId.mock.calls.at(-1)[0];
+            expect(chatIdUpdater(null)).toBe('chat-from-chatid');
+        });
+
+        it('prefers `id` when both keys are present', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.ensureChatIdFromResponse({id: 'from-id', chatId: 'from-chatid'});
+
+            const chatIdUpdater = sharedState.setChatId.mock.calls.at(-1)[0];
+            expect(chatIdUpdater(null)).toBe('from-id');
+        });
+
+        it('leaves an already-set chat id alone', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.ensureChatIdFromResponse({chatId: 'new-chat'});
+
+            const chatIdUpdater = sharedState.setChatId.mock.calls.at(-1)[0];
+            expect(chatIdUpdater('existing-chat')).toBe('existing-chat');
+        });
+
+        it('ignores a payload carrying neither key', () => {
+            const {result} = renderHook(() => useChatHistory());
+            sharedState.setChatId.mockClear();
+
+            result.current.ensureChatIdFromResponse({messageId: 'msg-1'});
+
+            expect(sharedState.setChatId).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('attachments mapping', () => {
+        it('carries attachments through from a fetched USER message', async () => {
+            sharedState.chatId = 'chat-1';
+            const attachmentSummary = {id: 'attachment-1', fileName: 'a.png', description: 'the banner'};
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: 'USER', message: 'look', attachments: [attachmentSummary]},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].attachments).toEqual([attachmentSummary]);
+            expect(mappedHistory[0].messageId).toBe('msg-1');
+        });
+
+        it('normalises a missing or null attachments field to an empty array', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: 'USER', message: 'no attachments'},
+                    {id: 'msg-2', messageType: 'USER', message: 'null attachments', attachments: null},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].attachments).toEqual([]);
+            expect(mappedHistory[1].attachments).toEqual([]);
+        });
+
+        it('still skips progressData rows and folds them into the following AI message', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: 'USER', message: 'look', attachments: [{id: 'attachment-1'}]},
+                    {id: 'msg-2', messageType: AI, message: '', progressData: {message: 'Reading attached image a.png'}},
+                    {id: 'msg-3', messageType: AI, message: 'I see a banner'},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory).toHaveLength(2);
+            expect(mappedHistory[0].attachments).toEqual([{id: 'attachment-1'}]);
+            expect(mappedHistory[1].notifications).toEqual(['Reading attached image a.png']);
+        });
+    });
+
+    describe('seeded vision notification', () => {
+        it('replaces the seeded step with the first real progress frame', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendNotificationToLastAIMessage('Reading attached image screenshot.png');
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = historyUpdater([
+                {type: 'USER', text: 'look', _key: 'u1'},
+                {type: AI, text: '', _key: 'ai1', notifications: ['Reading 1 image…'], hasSeededNotification: true},
+            ]);
+
+            expect(updatedHistory[1].notifications).toEqual(['Reading attached image screenshot.png']);
+            expect(updatedHistory[1].hasSeededNotification).toBe(false);
+        });
+
+        it('appends normally once the seed has been replaced', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendNotificationToLastAIMessage('Second step');
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = historyUpdater([
+                {type: AI, text: '', _key: 'ai1', notifications: ['First step'], hasSeededNotification: false},
+            ]);
+
+            expect(updatedHistory[0].notifications).toEqual(['First step', 'Second step']);
+        });
+    });
+
+    describe('adoptMessageIdForLastUserMessage', () => {
+        it('sets messageId on the last USER entry without touching its _key', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.adoptMessageIdForLastUserMessage('msg-99');
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = historyUpdater([
+                {type: 'USER', text: 'first', _key: 'u1'},
+                {type: 'USER', text: 'second', _key: 'u2'},
+                {type: AI, text: '', _key: 'ai1'},
+            ]);
+
+            expect(updatedHistory[1]).toMatchObject({messageId: 'msg-99', _key: 'u2'});
+            expect(updatedHistory[0].messageId).toBeUndefined();
+        });
+
+        it('is a no-op without a message id', () => {
+            const {result} = renderHook(() => useChatHistory());
+            sharedState.setChatHistory.mockClear();
+
+            result.current.adoptMessageIdForLastUserMessage(undefined);
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+
+        it('leaves history untouched when there is no USER entry', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.adoptMessageIdForLastUserMessage('msg-99');
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [{type: AI, text: 'only ai', _key: 'ai1'}];
+
+            expect(historyUpdater(previousHistory)).toBe(previousHistory);
         });
     });
 });

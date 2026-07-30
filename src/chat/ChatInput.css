@@ -36,6 +36,18 @@
 .textarea-parent {
     position: relative;
     width: 45%;
+    display: flex;
+    align-items: flex-end;
+}
+
+/*
+ * The attachments wrapper takes the full composer width; the attach button sits beside it.
+ * SelectedCommandChip and SlashCommandList remain absolutely positioned against
+ * .textarea-parent, so they are unaffected by this becoming a flex container.
+ */
+.textarea-parent > .composer-attachments {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .dots-loader {

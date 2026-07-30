@@ -1,0 +1,7 @@
+.message-attachments {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-bottom: 6px;
+}

@@ -174,4 +174,47 @@ describe('ChatNotifications', () => {
             expect(items[2].textContent).toContain('Gamma');
         });
     });
+
+    describe('seeded vision step', () => {
+        it('shows the seeded step while streaming so the pre-token wait is not silent', () => {
+            render(
+                <ChatNotifications
+                    notifications={['Reading 2 images…']}
+                    isStreaming={true}
+                    messageKey={MESSAGE_KEY}
+                />
+            );
+
+            expect(screen.getByText('Reading 2 images…')).toBeDefined();
+        });
+
+        it('shows the real step once it has replaced the seed', () => {
+            render(
+                <ChatNotifications
+                    notifications={['Reading attached image screenshot.png']}
+                    isStreaming={true}
+                    messageKey={MESSAGE_KEY}
+                />
+            );
+
+            expect(screen.getByText('Reading attached image screenshot.png')).toBeDefined();
+            expect(screen.queryByText('Reading 2 images…')).toBeNull();
+        });
+
+        it('collapses a finished vision run into its step log', () => {
+            const {container} = render(
+                <ChatNotifications
+                    notifications={['Reading attached image one.png', 'Reading attached image two.png']}
+                    isStreaming={false}
+                    messageKey={MESSAGE_KEY}
+                />
+            );
+
+            fireEvent.click(screen.getByRole('button'));
+            const items = container.querySelectorAll('.notification-log-step-item');
+
+            expect(items).toHaveLength(2);
+            expect(items[0].textContent).toContain('Reading attached image one.png');
+        });
+    });
 });

@@ -1,7 +1,7 @@
 import {useCallback, useEffect} from 'react';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
-import {AI, SYSTEM} from '../chat/ChatMessage.jsx';
+import {AI, SYSTEM, USER} from '../chat/ChatMessage.jsx';
 
 function useChatHistory() {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
@@ -43,6 +43,8 @@ function useChatHistory() {
                     type: message.messageType,
                     text: message.message,
                     model: message.model,
+                    messageId: message.id,
+                    attachments: Array.isArray(message.attachments) ? message.attachments : [],
                     _key: message.id ?? `${chatId || 'new'}-${index}`,
                 };
 
@@ -122,17 +124,47 @@ function useChatHistory() {
         });
     }, [setChatHistory]);
 
+    /*
+     * The `init` frame has been observed carrying the chat id under `id`; the attachment
+     * design document specifies `chatId`. Accept both — guessing wrong means a new chat
+     * never adopts an id and every follow-up turn silently starts a fresh chat.
+     */
     const ensureChatIdFromResponse = useCallback((response) => {
-        if (response?.id) {
+        const resolvedChatId = response?.id ?? response?.chatId;
+
+        if (resolvedChatId) {
             setChatId((currentChatId) => {
                 if (!currentChatId) {
-                    return response.id;
+                    return resolvedChatId;
                 }
 
                 return currentChatId;
             });
         }
     }, [setChatId]);
+
+    /*
+     * Walks back to the last USER entry and records the server's message id on it. Must not
+     * touch `_key` — React would remount the bubble and the thumbnails would flicker.
+     */
+    const adoptMessageIdForLastUserMessage = useCallback((messageId) => {
+        if (!messageId) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            for (let messageIndex = previousHistory.length - 1; messageIndex >= 0; messageIndex -= 1) {
+                if (previousHistory[messageIndex].type === USER) {
+                    const newHistory = [...previousHistory];
+                    newHistory[messageIndex] = {...newHistory[messageIndex], messageId};
+
+                    return newHistory;
+                }
+            }
+
+            return previousHistory;
+        });
+    }, [setChatHistory]);
 
     const appendNotificationToLastAIMessage = useCallback((notificationMessageText) => {
         if (!notificationMessageText || typeof notificationMessageText !== 'string') {
@@ -163,6 +195,21 @@ function useChatHistory() {
                 ? lastMessage.notifications
                 : [];
 
+            /*
+             * A seeded step is a local placeholder covering the silent gap before the first
+             * real progress frame. The first real frame replaces it rather than stacking on
+             * top, so the finished log contains only steps the backend actually reported.
+             */
+            if (lastMessage.hasSeededNotification) {
+                newHistory[lastMessageIndex] = {
+                    ...lastMessage,
+                    notifications: [trimmedNotificationMessageText],
+                    hasSeededNotification: false,
+                };
+
+                return newHistory;
+            }
+
             newHistory[lastMessageIndex] = {
                 ...lastMessage,
                 notifications: [...existingNotifications, trimmedNotificationMessageText],
@@ -181,6 +228,7 @@ function useChatHistory() {
         appendNotificationToLastAIMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
+        adoptMessageIdForLastUserMessage,
     };
 }
 

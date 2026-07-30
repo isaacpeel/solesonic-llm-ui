@@ -85,4 +85,46 @@ describe('getProgressNotificationTextFromRawData', () => {
             expect(getProgressNotificationTextFromRawData(payload)).toBe('Step 3');
         });
     });
+
+    /*
+     * The vision pass emits progress frames keyed by attachment id with null progress/total.
+     * These lock in that the existing detector recognises that shape unchanged.
+     */
+    describe('vision attachment progress frames', () => {
+        it('recognises a vision frame with null progress and total', () => {
+            const payload = JSON.stringify({
+                progressToken: 'a3f1c8e2-4b7d-4c9a-9f2e-1d8b6a5c3e7f',
+                message: 'Reading attached image screenshot.png',
+                progress: null,
+                total: null,
+            });
+
+            expect(getProgressNotificationTextFromRawData(payload)).toBe('Reading attached image screenshot.png');
+        });
+
+        it('recognises a vision frame wrapped in notifications/progress', () => {
+            const payload = JSON.stringify({
+                method: 'notifications/progress',
+                params: {
+                    progressToken: 'a3f1c8e2-4b7d-4c9a-9f2e-1d8b6a5c3e7f',
+                    message: 'Reading attached image diagram.png',
+                    progress: null,
+                    total: null,
+                },
+            });
+
+            expect(getProgressNotificationTextFromRawData(payload)).toBe('Reading attached image diagram.png');
+        });
+
+        it('trims surrounding whitespace from a vision frame message', () => {
+            const payload = JSON.stringify({
+                progressToken: 'attachment-1',
+                message: '  Reading attached image a.png  ',
+                progress: null,
+                total: null,
+            });
+
+            expect(getProgressNotificationTextFromRawData(payload)).toBe('Reading attached image a.png');
+        });
+    });
 });

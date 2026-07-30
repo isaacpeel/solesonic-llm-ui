@@ -24,6 +24,7 @@ const chatService = {
         setElicitationSubmitting,
         setElicitationValues,
         setError,
+        adoptMessageId,
     }) => {
         const progressNotificationText = getProgressNotificationTextFromRawData(eventPayload?.data);
 
@@ -51,6 +52,9 @@ const chatService = {
                 try {
                     const initData = JSON.parse(eventPayload.data);
                     ensureChatIdFromResponse(initData);
+
+                    /* Optional, so callers routing elicitation frames need not supply it. */
+                    adoptMessageId?.(initData?.messageId);
                 } catch (parseError) {
                     console.error('[ChatService] Failed to parse init payload:', parseError);
                 }

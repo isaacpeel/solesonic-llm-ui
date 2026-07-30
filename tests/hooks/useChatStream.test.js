@@ -11,6 +11,13 @@ vi.mock('../../src/service/ChatService.js', () => ({
         handleStreamChunk: vi.fn(),
         chatStream: vi.fn().mockResolvedValue(undefined),
     },
+    /* useChatStream imports these constants directly; the mock must carry them. */
+    CHUNK: 'chunk',
+    MESSAGE: 'message',
+    DONE: 'done',
+    INIT: 'init',
+    ELICITATION: 'elicitation',
+    ERROR: 'error',
 }));
 
 vi.mock('../../src/service/StreamService.js', () => ({
@@ -26,6 +33,31 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
 import chatService from '../../src/service/ChatService.js';
 import streamService from '../../src/service/StreamService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
+
+function makeAttachmentTray(overrides = {}) {
+    return {
+        hasPendingUploads: false,
+        commitCaptions: vi.fn().mockResolvedValue([]),
+        clearTray: vi.fn(),
+        restoreTray: vi.fn(),
+        ...overrides,
+    };
+}
+
+function readyEntry(overrides = {}) {
+    return {
+        trayKey: 'tray-1',
+        attachmentId: 'attachment-1',
+        fileName: 'screenshot.png',
+        contentType: 'image/png',
+        fileSizeBytes: 1024,
+        localObjectUrl: 'blob:local-1',
+        uploadedCaption: '',
+        captionCommitFailed: false,
+        status: 'ready',
+        ...overrides,
+    };
+}
 
 describe('useChatStream', () => {
     let options;
@@ -213,6 +245,228 @@ describe('useChatStream', () => {
             setElicitationSubmitting: options.setElicitationSubmitting,
             setElicitationValues: options.setElicitationValues,
             setError: expect.any(Function),
+            adoptMessageId: options.adoptMessageIdForLastUserMessage,
         });
+    });
+});
+
+describe('useChatStream with attachments', () => {
+    let options;
+    let setChatHistory;
+    let chatInputRef;
+
+    function emitInit(chunkOptions) {
+        chunkOptions.onChunk({event: 'init', data: '{"id":"chat-1"}'});
+    }
+
+    beforeEach(() => {
+        setChatHistory = vi.fn();
+        chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
+        useSharedData.mockReturnValue({chatInputRef});
+
+        options = {
+            chatId: null,
+            chatHistory: [],
+            setChatHistory,
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            adoptMessageIdForLastUserMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+            attachmentTray: makeAttachmentTray(),
+        };
+
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+        });
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    async function submitWith(result, messageText) {
+        act(() => {
+            result.current.handleInputChange({target: {value: messageText}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+    }
+
+    it('sends attachmentIds and renders optimistic attachments on the USER message', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry({uploadedCaption: 'the error banner'})]),
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'what is wrong here');
+
+        const payload = chatService.chatStream.mock.calls[0][0];
+        expect(payload.attachmentIds).toEqual(['attachment-1']);
+
+        const nextHistory = setChatHistory.mock.calls[0][0];
+        expect(nextHistory[0].attachments).toEqual([{
+            id: 'attachment-1',
+            fileName: 'screenshot.png',
+            description: 'the error banner',
+            contentType: 'image/png',
+            fileSizeBytes: 1024,
+            localObjectUrl: 'blob:local-1',
+        }]);
+    });
+
+    it('omits attachmentIds entirely when the tray is empty', async () => {
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'plain message');
+
+        const payload = chatService.chatStream.mock.calls[0][0];
+        expect(payload).toEqual({chatMessage: 'plain message'});
+        expect('attachmentIds' in payload).toBe(false);
+    });
+
+    it('blocks the send while an upload is still in flight', async () => {
+        options.attachmentTray = makeAttachmentTray({hasPendingUploads: true});
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'too early');
+
+        expect(chatService.chatStream).not.toHaveBeenCalled();
+        expect(options.attachmentTray.commitCaptions).not.toHaveBeenCalled();
+    });
+
+    it('clears the tray only after init arrives, never before the stream', async () => {
+        const clearTray = vi.fn();
+        options.attachmentTray = makeAttachmentTray({
+            clearTray,
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            expect(clearTray).not.toHaveBeenCalled();
+            emitInit(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(clearTray).toHaveBeenCalledTimes(1);
+        expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
+    });
+
+    it('restores the tray and the typed text when the stream ends without init', async () => {
+        const settledEntries = [readyEntry()];
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue(settledEntries),
+        });
+
+        chatService.chatStream.mockResolvedValue(undefined);
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(options.attachmentTray.restoreTray).toHaveBeenCalledWith(settledEntries);
+        expect(options.attachmentTray.clearTray).not.toHaveBeenCalled();
+        expect(result.current.inputValue).toBe('look at this');
+        expect(result.current.error).toBeInstanceOf(Error);
+
+        const droppedHistory = setChatHistory.mock.calls[setChatHistory.mock.calls.length - 1][0];
+        expect(droppedHistory).toEqual([]);
+    });
+
+    it('mentions the slash command in the failure copy when the send carried one', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+        options.getSelectedCommandRef = {current: vi.fn(() => 'agile')};
+
+        chatService.chatStream.mockResolvedValue(undefined);
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, '/agile look at this');
+
+        expect(result.current.error.message).toContain('re-select the command');
+    });
+
+    it('does not treat a missing init as a failure when nothing was attached', async () => {
+        chatService.chatStream.mockResolvedValue(undefined);
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'plain message');
+
+        expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
+        expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
+        expect(result.current.error).toBeNull();
+    });
+
+    it('still sends a lost-caption image and warns rather than erroring', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry({captionCommitFailed: true})]),
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(chatService.chatStream.mock.calls[0][0].attachmentIds).toEqual(['attachment-1']);
+        expect(result.current.error).toBeNull();
+        expect(result.current.attachmentNotice).toContain('screenshot.png');
+        expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
+    });
+
+    it('seeds one vision step on the AI placeholder when attachments are sent', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([
+                readyEntry(),
+                readyEntry({trayKey: 'tray-2', attachmentId: 'attachment-2', fileName: 'two.png'}),
+            ]),
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at these');
+
+        const aiPlaceholder = setChatHistory.mock.calls[0][0][1];
+        expect(aiPlaceholder.notifications).toEqual(['Reading 2 images…']);
+        expect(aiPlaceholder.hasSeededNotification).toBe(true);
+    });
+
+    it('uses the singular form for one image', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(setChatHistory.mock.calls[0][0][1].notifications).toEqual(['Reading 1 image…']);
+    });
+
+    it('seeds nothing when no attachments were sent', async () => {
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'plain message');
+
+        const aiPlaceholder = setChatHistory.mock.calls[0][0][1];
+        expect(aiPlaceholder.notifications).toEqual([]);
+        expect(aiPlaceholder.hasSeededNotification).toBe(false);
+    });
+
+    it('drops entries whose upload never produced an id', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([
+                readyEntry(),
+                readyEntry({trayKey: 'tray-2', attachmentId: null, fileName: 'failed.png'}),
+            ]),
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(chatService.chatStream.mock.calls[0][0].attachmentIds).toEqual(['attachment-1']);
+        expect(setChatHistory.mock.calls[0][0][0].attachments).toHaveLength(1);
     });
 });

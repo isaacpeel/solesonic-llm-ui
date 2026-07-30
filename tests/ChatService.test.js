@@ -472,4 +472,83 @@ describe('chatStream', () => {
         const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
         expect(JSON.parse(capturedBody)).toEqual({chatMessage: 'from object'});
     });
+
+    it('object message with attachmentIds → passed through unchanged', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: DONE, data: JSON.stringify({id: 'c1'})},
+        ]));
+
+        await chatService.chatStream({chatMessage: 'look', attachmentIds: ['attachment-1', 'attachment-2']}, null, {});
+
+        const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
+        expect(JSON.parse(capturedBody)).toEqual({
+            chatMessage: 'look',
+            attachmentIds: ['attachment-1', 'attachment-2'],
+        });
+    });
+});
+
+describe('handleStreamChunk INIT messageId', () => {
+    function makeHandlers(overrides = {}) {
+        return {
+            activeElicitation: null,
+            chatId: null,
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            setError: vi.fn(),
+            ...overrides,
+        };
+    }
+
+    it('calls adoptMessageId with the messageId from the init frame', () => {
+        const adoptMessageId = vi.fn();
+        const handlers = makeHandlers({adoptMessageId});
+
+        chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({id: 'chat-1', messageId: 'msg-1'})},
+            handlers
+        );
+
+        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalledWith({id: 'chat-1', messageId: 'msg-1'});
+        expect(adoptMessageId).toHaveBeenCalledWith('msg-1');
+    });
+
+    it('passes undefined to adoptMessageId when the init frame carries no messageId', () => {
+        const adoptMessageId = vi.fn();
+
+        chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({id: 'chat-1'})},
+            makeHandlers({adoptMessageId})
+        );
+
+        expect(adoptMessageId).toHaveBeenCalledWith(undefined);
+    });
+
+    it('does not throw when no adoptMessageId handler is supplied', () => {
+        const handlers = makeHandlers();
+
+        expect(() => chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({id: 'chat-1', messageId: 'msg-1'})},
+            handlers
+        )).not.toThrow();
+
+        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalled();
+    });
+
+    it('accepts an init frame carrying chatId instead of id', () => {
+        const handlers = makeHandlers();
+
+        chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({chatId: 'chat-1', messageId: 'msg-1'})},
+            handlers
+        );
+
+        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalledWith({chatId: 'chat-1', messageId: 'msg-1'});
+    });
 });

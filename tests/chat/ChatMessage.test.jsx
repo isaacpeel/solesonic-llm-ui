@@ -195,4 +195,53 @@ describe('ChatMessage', () => {
             expect(anchor.getAttribute('rel')).toBe('noopener noreferrer');
         });
     });
+
+    describe('attachments', () => {
+        it('renders an attachment strip on a USER message', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'look at this',
+                attachments: [{id: 'a1', fileName: 'one.png', localObjectUrl: 'blob:local-1'}],
+            })} />);
+
+            expect(container.querySelector('.message-attachments')).not.toBeNull();
+            expect(screen.getByAltText('one.png')).toBeTruthy();
+        });
+
+        it('renders no strip on an ASSISTANT message even when it carries attachments', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'ASSISTANT',
+                text: 'here is my answer',
+                attachments: [{id: 'a1', fileName: 'one.png', localObjectUrl: 'blob:local-1'}],
+            })} />);
+
+            expect(container.querySelector('.message-attachments')).toBeNull();
+        });
+
+        it('renders no strip for an empty or missing attachments array', () => {
+            const {container: emptyContainer} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'plain',
+                attachments: [],
+            })} />);
+            expect(emptyContainer.querySelector('.message-attachments')).toBeNull();
+
+            const {container: missingContainer} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'plain',
+            })} />);
+            expect(missingContainer.querySelector('.message-attachments')).toBeNull();
+        });
+
+        it('renders the message text alongside its attachments', () => {
+            render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'what is wrong here',
+                attachments: [{id: 'a1', fileName: 'one.png', localObjectUrl: 'blob:local-1'}],
+            })} />);
+
+            expect(screen.getByText('what is wrong here')).toBeTruthy();
+            expect(screen.getByAltText('one.png')).toBeTruthy();
+        });
+    });
 });
