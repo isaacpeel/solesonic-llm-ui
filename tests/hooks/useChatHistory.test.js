@@ -72,7 +72,7 @@ describe('useChatHistory', () => {
             const setHistoryUpdater = sharedState.setChatHistory.mock.calls[0][0];
             const mergedHistory = setHistoryUpdater([]);
             expect(mergedHistory).toEqual([
-                {type: AI, text: 'hello', model: 'model-1', messageId: 'msg-1', attachments: [], _key: 'msg-1'},
+                {type: AI, text: 'hello', model: 'model-1', messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
             ]);
         });
     });
@@ -101,13 +101,14 @@ describe('useChatHistory', () => {
         const mergedHistory = setHistoryUpdater(sharedState.chatHistory);
 
         expect(mergedHistory).toEqual([
-            {type: 'USER', text: 'question', model: undefined, messageId: 'msg-1', attachments: [], _key: 'msg-1'},
+            {type: 'USER', text: 'question', model: undefined, messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
             {
                 type: AI,
                 text: 'answer',
                 model: 'model-1',
                 messageId: 'msg-2',
                 attachments: [],
+                generatedImages: [],
                 _key: 'msg-2',
                 notifications: ['Jira workflow started'],
             },
@@ -353,7 +354,7 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         const result = updater(previousHistory);
 
         expect(result).toEqual([
-            {type: AI, text: 'answer', model: 'gpt-4', messageId: 'msg-1', attachments: [], _key: 'msg-1'},
+            {type: AI, text: 'answer', model: 'gpt-4', messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
         ]);
     });
 

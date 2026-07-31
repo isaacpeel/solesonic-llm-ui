@@ -3,6 +3,7 @@ import { parseSseStream } from '../client/parseSseStream.js';
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import {getProgressNotificationTextFromRawData} from './ProgressNotificationService.js';
+import {normalizeGeneratedImage} from './ImageGenerationService.js';
 
 export const CHUNK = "chunk";
 export const MESSAGE = "message";
@@ -10,6 +11,25 @@ export const DONE = "done";
 export const INIT = "init";
 export const ELICITATION = "elicitation";
 export const ERROR = "error";
+export const IMAGE = "image";
+
+/**
+ * Pulls generated-image references off a stream payload.
+ *
+ * Accepts a dedicated `image` frame carrying one reference, or a `generatedImages` array
+ * hung off any payload — the two shapes the API could reasonably use to attach an image
+ * out-of-band (plan §5 step 4). Anything without an id is dropped rather than rendered as
+ * an empty frame.
+ */
+export function extractGeneratedImages(payload) {
+    const candidates = Array.isArray(payload?.generatedImages)
+        ? payload.generatedImages
+        : (payload?.imageId || payload?.imageUrl) ? [payload] : [];
+
+    return candidates
+        .map((candidate) => normalizeGeneratedImage(candidate))
+        .filter((generatedImage) => !!generatedImage.imageId);
+}
 
 const chatService = {
     // Handle streaming chunks including SSE frames for chunk/done/elicitation
@@ -25,6 +45,7 @@ const chatService = {
         setElicitationValues,
         setError,
         adoptMessageId,
+        attachGeneratedImages,
     }) => {
         const progressNotificationText = getProgressNotificationTextFromRawData(eventPayload?.data);
 
@@ -83,6 +104,14 @@ const chatService = {
                 try {
                     const payloadData = JSON.parse(eventPayload.data);
                     ensureChatIdFromResponse(payloadData);
+
+                    /* The reference can ride on `done` rather than its own frame. */
+                    const doneImages = extractGeneratedImages(payloadData?.message ?? payloadData);
+
+                    if (doneImages.length > 0) {
+                        attachGeneratedImages?.(doneImages);
+                    }
+
                     finalizeLastAIMessage(payloadData);
                 } catch (parseError) {
                     console.error('[ChatService] Failed to parse done payload:', parseError);
@@ -90,6 +119,18 @@ const chatService = {
 
                 setActiveElicitation(null);
                 setElicitationSubmitting(false);
+                break;
+            case IMAGE:
+                try {
+                    const imagePayload = JSON.parse(eventPayload.data);
+                    const streamedImages = extractGeneratedImages(imagePayload);
+
+                    if (streamedImages.length > 0) {
+                        attachGeneratedImages?.(streamedImages);
+                    }
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse image payload:', parseError);
+                }
                 break;
             case ELICITATION:
                 try {

@@ -10,6 +10,7 @@ config.ollamaUri = `${config.apiBaseUri}/ollama`;
 config.atlassianUri = `${config.apiBaseUri}/atlassian`;
 config.slashCommandsUri = `${config.apiBaseUri}/slash/commands`;
 config.attachmentsUri = `${config.apiBaseUri}/attachments`;
+config.imagesUri = `${config.apiBaseUri}/images`;
 config.authFailureUri = `${config.uiBaseUri}/authFailure`;
 
 export default config;

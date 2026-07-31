@@ -77,17 +77,25 @@ function ChatInput({
     return (
         <div className="chat-input-container">
             <div className="textarea-parent">
-                {selectedCommand && !loading && (
-                    <SelectedCommandChip
-                        selectedCommand={selectedCommand}
-                        onDeselect={onDeselect}
+                {/*
+                  * Both popovers live in one absolutely-positioned stack above the composer.
+                  * Previously the chip was an in-flow flex child, so selecting a command
+                  * pushed the textarea out of the row entirely. The chip renders last so it
+                  * sits closest to the input it applies to.
+                  */}
+                <div className="composer-popovers">
+                    <SlashCommandList
+                        commandCandidates={commandCandidates}
+                        selectedIndex={selectedIndex}
+                        onCommandSelect={onCommandSelect}
                     />
-                )}
-                <SlashCommandList
-                    commandCandidates={commandCandidates}
-                    selectedIndex={selectedIndex}
-                    onCommandSelect={onCommandSelect}
-                />
+                    {selectedCommand && !loading && (
+                        <SelectedCommandChip
+                            selectedCommand={selectedCommand}
+                            onDeselect={onDeselect}
+                        />
+                    )}
+                </div>
                 <ComposerAttachments
                     trayEntries={trayEntries}
                     addFiles={addFiles}

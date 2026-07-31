@@ -1,8 +1,10 @@
 import './Header.css';
+import {useNavigate} from "react-router-dom";
 import {useSharedData} from "../context/useSharedData.jsx";
 import UserDialog from "../user/UserDialog.jsx";
 import {ArrowRightEndOnRectangleIcon} from "@heroicons/react/24/solid/index.js";
 import {PencilSquareIcon} from "@heroicons/react/24/solid/index.js";
+import {PhotoIcon} from "@heroicons/react/24/solid/index.js";
 import ChatHistory from "../chat/ChatHistory.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 
@@ -11,12 +13,18 @@ const Header = () => {
     const {setChatId} = useSharedData();
     const {drawerOpen, setDrawerOpen} = useSharedData();
     const sharedRef = useSharedData(SharedDataContext);
+    const navigate = useNavigate();
 
     const handleNewChat = () => {
         setChatHistory([]);
         setChatId(null);
 
-        sharedRef.chatInputRef.current.focus();
+        /*
+         * Reachable from any route, so it has to land on the chat itself — and the input
+         * only exists once ChatScreen has mounted there.
+         */
+        navigate("/");
+        sharedRef.chatInputRef.current?.focus();
     };
 
     const toggleDrawer = () => setDrawerOpen(!drawerOpen);
@@ -43,6 +51,13 @@ const Header = () => {
                     data-dialog="New Chat"
                 >
                     <PencilSquareIcon/>
+                </div>
+                <div
+                    className="icon-wrapper"
+                    onClick={() => navigate("/images")}
+                    data-dialog="Generate Image"
+                >
+                    <PhotoIcon/>
                 </div>
             </div>
             <div>

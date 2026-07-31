@@ -4,6 +4,7 @@ import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "./MessageAttachments.jsx";
+import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -81,6 +82,17 @@ function ChatMessage({message, onExpandAttachment}) {
         />
     ) : null;
 
+    /*
+     * Agentic generation (plan §5 mode 2): the API strips the base64 out of the tool result
+     * and attaches a reference to the assistant message, so this renders from an id exactly
+     * like the explicit generation panel does. Rendered below the text — the model's sentence
+     * introduces the image.
+     */
+    const generatedImageList = Array.isArray(message.generatedImages) ? message.generatedImages : [];
+    const generatedImageFooter = isAIMessage && generatedImageList.length > 0 ? (
+        <MessageGeneratedImages images={generatedImageList}/>
+    ) : null;
+
     return (
         <div className={`chat-message-container ${containerClass}`}>
             {showIcon && (
@@ -97,6 +109,7 @@ function ChatMessage({message, onExpandAttachment}) {
                 isStreaming={!!message.isStreaming}
                 showPlaceholder={showPlaceholder}
                 className={cardClassName}
+                footer={generatedImageFooter}
             >
                 {attachmentChildren}
                 {elicitationChildren}

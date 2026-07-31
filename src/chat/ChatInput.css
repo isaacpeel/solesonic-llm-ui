@@ -42,12 +42,27 @@
 
 /*
  * The attachments wrapper takes the full composer width; the attach button sits beside it.
- * SelectedCommandChip and SlashCommandList remain absolutely positioned against
- * .textarea-parent, so they are unaffected by this becoming a flex container.
+ * The slash-command popovers are lifted out of the flex flow by .composer-popovers below,
+ * so they are unaffected by this being a flex container.
  */
 .textarea-parent > .composer-attachments {
     flex: 1 1 auto;
     min-width: 0;
+}
+
+/*
+ * The stack that holds SlashCommandList and SelectedCommandChip. Absolute, so neither one
+ * can take horizontal space from the textarea; a column, so both can be shown at once
+ * without overlapping when a command is already selected and the user types "/" again.
+ */
+.composer-popovers {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
 }
 
 .dots-loader {

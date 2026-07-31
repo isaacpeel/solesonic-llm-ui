@@ -1,0 +1,6 @@
+.message-generated-images {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 8px;
+}

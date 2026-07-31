@@ -2,6 +2,7 @@ import {createBrowserRouter, Outlet, RouterProvider} from "react-router-dom";
 import './App.css';
 import ChatPage from "./chat/ChatScreen.jsx";
 import UserSettings from "./user/UserSettings.jsx";
+import ImageGenerationPanel from "./image/ImageGenerationPanel.jsx";
 import Header from "./common/Header.jsx";
 import {SharedDataProvider} from "./context/SharedDataContext.jsx";
 import AuthenticationWrapper from "./authorizer/AuthenticationWrapper.jsx";
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
             element: <Layout />,
             children: [
                 { index: true, element: <ChatPage /> },
+                { path: "images", element: <ImageGenerationPanel /> },
                 { path: "settings", element: <UserSettings /> },
             ]
         }

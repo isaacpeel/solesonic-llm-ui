@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from "react";
 import PropTypes from "prop-types";
+import {useNavigate} from "react-router-dom";
 
 import "./ChatHistory.css";
 import {ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid";
@@ -10,6 +11,7 @@ import {SharedDataContext} from "../context/SharedDataContext.jsx";
 function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const {reloadHistoryTrigger, setChatId} = useSharedData();
     const sharedRef = useSharedData(SharedDataContext);
+    const navigate = useNavigate();
 
     const [userChatHistory, setUserChatHistory] = useState([]);
     const drawerRef = useRef(null)
@@ -59,7 +61,14 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const handleChatClick = (chatId) => {
         setChatId(chatId);
         setDrawerOpen(false);
-        sharedRef.chatInputRef.current.focus();
+
+        /*
+         * The drawer is in the header, so a chat can be picked from any route. Without the
+         * navigate the id changes behind a page that cannot render it, and the input ref is
+         * null whenever ChatScreen is not mounted.
+         */
+        navigate("/");
+        sharedRef.chatInputRef.current?.focus();
     };
 
     return (

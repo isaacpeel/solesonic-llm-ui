@@ -19,6 +19,12 @@
 .selected-command-chip-description {
     font-size: 12px;
     opacity: 0.65;
+    /*
+     * Flex items default to min-width:auto, which refuses to shrink below the content
+     * width — without this the nowrap description widened the chip past the composer and
+     * pushed the dismiss button off-screen.
+     */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

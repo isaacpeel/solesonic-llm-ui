@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef} from 'react';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
+import {normalizeGeneratedImage} from '../service/ImageGenerationService.js';
 import {AI, SYSTEM, USER} from '../chat/ChatMessage.jsx';
 
 function useChatHistory() {
@@ -70,6 +71,13 @@ function useChatHistory() {
                     model: message.model,
                     messageId: message.id,
                     attachments: Array.isArray(message.attachments) ? message.attachments : [],
+                    /*
+                     * Only the reference is ever persisted (plan §5), so a reloaded turn
+                     * re-renders the stored image rather than regenerating it.
+                     */
+                    generatedImages: Array.isArray(message.generatedImages)
+                        ? message.generatedImages.map((generatedImage) => normalizeGeneratedImage(generatedImage))
+                        : [],
                     _key: message.id ?? `${chatId || 'new'}-${index}`,
                 };
 
@@ -197,6 +205,39 @@ function useChatHistory() {
      * Only `done` clears the streaming flag on the normal path, so a stream that ends without it
      * would otherwise spin forever. Callers use this when they have decided the turn is over.
      */
+    const attachGeneratedImagesToLastAIMessage = useCallback((generatedImages) => {
+        if (!Array.isArray(generatedImages) || generatedImages.length === 0) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
+                return previousHistory;
+            }
+
+            const lastMessage = previousHistory[lastIndex];
+            const existingImages = Array.isArray(lastMessage.generatedImages) ? lastMessage.generatedImages : [];
+            const knownImageIds = new Set(existingImages.map((existingImage) => existingImage.imageId));
+
+            /* `done` can repeat what an earlier `image` frame already delivered. */
+            const newImages = generatedImages.filter((generatedImage) => !knownImageIds.has(generatedImage.imageId));
+
+            if (newImages.length === 0) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            newHistory[lastIndex] = {
+                ...lastMessage,
+                generatedImages: [...existingImages, ...newImages],
+            };
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
     const stopStreamingLastAIMessage = useCallback(() => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -318,6 +359,7 @@ function useChatHistory() {
         appendToLastAIMessage,
         appendNotificationToLastAIMessage,
         updateSeededNotificationText,
+        attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
