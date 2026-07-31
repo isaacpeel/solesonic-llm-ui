@@ -75,6 +75,8 @@ describe('useChatStream', () => {
             setChatHistory,
             appendToLastAIMessage: vi.fn(),
             appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             activeElicitation: null,
@@ -259,6 +261,10 @@ describe('useChatStream with attachments', () => {
         chunkOptions.onChunk({event: 'init', data: '{"id":"chat-1"}'});
     }
 
+    function emitDone(chunkOptions) {
+        chunkOptions.onChunk({event: 'done', data: '{"id":"chat-1"}'});
+    }
+
     beforeEach(() => {
         setChatHistory = vi.fn();
         chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
@@ -270,6 +276,8 @@ describe('useChatStream with attachments', () => {
             setChatHistory,
             appendToLastAIMessage: vi.fn(),
             appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             adoptMessageIdForLastUserMessage: vi.fn(),
@@ -283,6 +291,7 @@ describe('useChatStream with attachments', () => {
 
         chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
             emitInit(chunkOptions);
+            emitDone(chunkOptions);
         });
     });
 
@@ -351,6 +360,7 @@ describe('useChatStream with attachments', () => {
         chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
             expect(clearTray).not.toHaveBeenCalled();
             emitInit(chunkOptions);
+            emitDone(chunkOptions);
         });
 
         const {result} = renderHook(() => useChatStream(options));
@@ -394,8 +404,11 @@ describe('useChatStream with attachments', () => {
         expect(result.current.error.message).toContain('re-select the command');
     });
 
+    /* The continue-chat PUT path may legitimately never emit `init`; `done` is what matters. */
     it('does not treat a missing init as a failure when nothing was attached', async () => {
-        chatService.chatStream.mockResolvedValue(undefined);
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitDone(chunkOptions);
+        });
 
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'plain message');
@@ -403,6 +416,81 @@ describe('useChatStream with attachments', () => {
         expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
         expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
         expect(result.current.error).toBeNull();
+    });
+
+    it('reports a stream that dies after init, without offering the spent ids for retry', async () => {
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(result.current.error).toBeInstanceOf(Error);
+        expect(result.current.error.message).toContain('stopped before it finished');
+        expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
+        expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
+    });
+
+    /* The turn continues over the elicitation-response endpoint, so this leg ending is normal. */
+    it('treats an elicitation frame as a legitimate end of the stream', async () => {
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+            chunkOptions.onChunk({event: 'elicitation', data: '{"elicitationId":"elicitation-1"}'});
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'plain message');
+
+        expect(result.current.error).toBeNull();
+        expect(options.stopStreamingLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('escalates the seeded step to warm-up copy while the vision pass is silent', async () => {
+        vi.useFakeTimers();
+
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            vi.advanceTimersByTime(20000);
+            emitInit(chunkOptions);
+            emitDone(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(options.updateSeededNotificationText).toHaveBeenCalledWith(
+            expect.stringContaining('warming up')
+        );
+
+        vi.useRealTimers();
+    });
+
+    it('leaves no warm-up timer behind once the stream finishes', async () => {
+        vi.useFakeTimers();
+
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        act(() => {
+            vi.advanceTimersByTime(60000);
+        });
+
+        expect(options.updateSeededNotificationText).not.toHaveBeenCalled();
+
+        vi.useRealTimers();
     });
 
     it('still sends a lost-caption image and warns rather than erroring', async () => {

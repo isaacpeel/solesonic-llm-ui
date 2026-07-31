@@ -1,10 +1,26 @@
 import {useCallback, useRef, useState} from 'react';
 import log from 'loglevel';
 import {useSharedData} from '../context/useSharedData.jsx';
-import chatService, {INIT} from '../service/ChatService.js';
+import chatService, {DONE, ELICITATION, ERROR, INIT} from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
 import {AI, USER} from '../chat/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
+
+/*
+ * Frames that legitimately end this leg of the stream. `elicitation` belongs here because the
+ * turn continues over the elicitation-response endpoint rather than this response body — and
+ * useElicitation pops the AI placeholder when one arrives, so treating it as an unfinished
+ * stream would both error falsely and target the wrong message.
+ */
+const TERMINAL_STREAM_EVENTS = [DONE, ERROR, ELICITATION];
+
+/*
+ * A cold vision model can take tens of seconds to load before it reports anything. One static
+ * line for that whole window reads as a hang, and an abandoned turn is the one outcome that
+ * guarantees the image never gets read.
+ */
+const VISION_WARMUP_NOTICE_DELAY_MILLISECONDS = 20000;
+const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the vision model may be warming up…';
 
 function useChatStream({
     chatId,
@@ -12,6 +28,8 @@ function useChatStream({
     setChatHistory,
     appendToLastAIMessage,
     appendNotificationToLastAIMessage,
+    updateSeededNotificationText,
+    stopStreamingLastAIMessage,
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
     adoptMessageIdForLastUserMessage,
@@ -137,10 +155,18 @@ function useChatStream({
         setAttachmentNotice(null);
 
         let sawInit = false;
+        let sawTerminalFrame = false;
+        let visionWarmupTimeoutId = null;
 
         try {
             controller.current?.abort();
             controller.current = new AbortController();
+
+            if (attachmentIds.length > 0) {
+                visionWarmupTimeoutId = setTimeout(() => {
+                    updateSeededNotificationText?.(VISION_WARMUP_NOTICE_TEXT);
+                }, VISION_WARMUP_NOTICE_DELAY_MILLISECONDS);
+            }
 
             const payload = {chatMessage: submittedMessageText};
 
@@ -157,6 +183,10 @@ function useChatStream({
                 onChunk: (rawEvent) => {
                     if (rawEvent?.event === INIT) {
                         sawInit = true;
+                    }
+
+                    if (TERMINAL_STREAM_EVENTS.includes(rawEvent?.event)) {
+                        sawTerminalFrame = true;
                     }
 
                     handleStreamChunk(rawEvent);
@@ -184,6 +214,20 @@ function useChatStream({
 
             attachmentTray?.clearTray();
 
+            /*
+             * `init` arrived but nothing closed the stream. The turn was bound and the ids are
+             * spent, so the tray must NOT come back — a retry would resend them and §7.2's
+             * all-or-nothing bind would reject the whole message. Only `done` clears the
+             * streaming flag, so without this the placeholder spins forever with no error. A
+             * long cold vision pass behind a proxy read timeout is how this happens in practice.
+             */
+            if (!sawTerminalFrame) {
+                stopStreamingLastAIMessage?.();
+                setError(new Error('The response stopped before it finished. Your message was sent — ask again to see the rest.'));
+
+                return;
+            }
+
             const entriesWithLostCaptions = settledEntries.filter((entry) => entry.captionCommitFailed);
 
             if (entriesWithLostCaptions.length > 0) {
@@ -207,6 +251,10 @@ function useChatStream({
             }
             streamService.handleStreamError(caughtError, setError, setChatHistory);
         } finally {
+            if (visionWarmupTimeoutId) {
+                clearTimeout(visionWarmupTimeoutId);
+            }
+
             setLoading(false);
             setTimeout(() => {
                 chatInputRef.current?.focus();

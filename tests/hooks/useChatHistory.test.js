@@ -653,6 +653,107 @@ describe('attachment-aware chat history', () => {
         });
     });
 
+    describe('unfulfilled vision seed', () => {
+        function finalizeWith(previousHistory) {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.finalizeLastAIMessage({message: {message: 'done', model: 'llama'}});
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+
+            return updater(previousHistory);
+        }
+
+        it('drops a seeded step the backend never replaced, rather than marking it completed', () => {
+            const updatedHistory = finalizeWith([{
+                type: AI,
+                text: '',
+                _key: 'ai-1',
+                notifications: ['Reading 1 image…'],
+                hasSeededNotification: true,
+            }]);
+
+            expect(updatedHistory[0].notifications).toEqual([]);
+            expect(updatedHistory[0].hasSeededNotification).toBe(false);
+            expect(updatedHistory[0].visionStepUnconfirmed).toBe(true);
+        });
+
+        it('keeps real progress steps and does not flag the turn', () => {
+            const updatedHistory = finalizeWith([{
+                type: AI,
+                text: '',
+                _key: 'ai-1',
+                notifications: ['Reading attached image screenshot.png'],
+                hasSeededNotification: false,
+            }]);
+
+            expect(updatedHistory[0].notifications).toEqual(['Reading attached image screenshot.png']);
+            expect(updatedHistory[0].visionStepUnconfirmed).toBe(false);
+        });
+    });
+
+    describe('updateSeededNotificationText', () => {
+        it('rewrites the seeded step while leaving it seeded', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateSeededNotificationText('Still reading…');
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = updater([{
+                type: AI,
+                text: '',
+                _key: 'ai-1',
+                notifications: ['Reading 1 image…'],
+                hasSeededNotification: true,
+            }]);
+
+            expect(updatedHistory[0].notifications).toEqual(['Still reading…']);
+            expect(updatedHistory[0].hasSeededNotification).toBe(true);
+        });
+
+        it('leaves a log the backend already owns alone', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateSeededNotificationText('Still reading…');
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [{
+                type: AI,
+                text: '',
+                _key: 'ai-1',
+                notifications: ['Reading attached image screenshot.png'],
+                hasSeededNotification: false,
+            }];
+
+            expect(updater(previousHistory)).toBe(previousHistory);
+        });
+    });
+
+    describe('stopStreamingLastAIMessage', () => {
+        it('clears the streaming flag on the last AI entry', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.stopStreamingLastAIMessage();
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = updater([{type: AI, text: 'partial', _key: 'ai-1', isStreaming: true}]);
+
+            expect(updatedHistory[0].isStreaming).toBe(false);
+            expect(updatedHistory[0].text).toBe('partial');
+        });
+
+        it('leaves history untouched when the last entry is not an AI message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.stopStreamingLastAIMessage();
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [{type: 'USER', text: 'question', _key: 'u1'}];
+
+            expect(updater(previousHistory)).toBe(previousHistory);
+        });
+    });
+
     describe('adoptMessageIdForLastUserMessage', () => {
         it('sets messageId on the last USER entry without touching its _key', () => {
             const {result} = renderHook(() => useChatHistory());

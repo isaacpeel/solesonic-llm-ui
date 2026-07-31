@@ -62,6 +62,17 @@ function ChatMessage({message, onExpandAttachment}) {
         <MessageAttachments attachments={attachmentList} onExpand={onExpandAttachment}/>
     ) : null;
 
+    /*
+     * The backend cannot tell us a vision pass failed (see
+     * ai-scratch/chat-attachment-vision-signal-request.md), so this stands in: the turn ended
+     * without the backend ever reporting that it read the images.
+     */
+    const visionUnconfirmedChildren = isAIMessage && message.visionStepUnconfirmed ? (
+        <div className="message-vision-unconfirmed" role="status">
+            The assistant may not have been able to read the attached image.
+        </div>
+    ) : null;
+
     const notificationLogChildren = !isElicitation && isAIMessage ? (
         <ChatNotifications
             notifications={notificationLog}
@@ -90,6 +101,7 @@ function ChatMessage({message, onExpandAttachment}) {
                 {attachmentChildren}
                 {elicitationChildren}
                 {notificationLogChildren}
+                {visionUnconfirmedChildren}
             </ChatCard>
         </div>
     );

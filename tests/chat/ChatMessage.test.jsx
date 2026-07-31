@@ -233,6 +233,30 @@ describe('ChatMessage', () => {
             expect(missingContainer.querySelector('.message-attachments')).toBeNull();
         });
 
+        it('warns on an assistant turn whose vision step was never confirmed', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'I am not sure which flowers you mean.',
+                visionStepUnconfirmed: true,
+            })} />);
+
+            expect(container.querySelector('.message-vision-unconfirmed')).not.toBeNull();
+        });
+
+        it('renders no vision warning on a confirmed turn or on a USER message', () => {
+            const {container: confirmedContainer} = render(<ChatMessage message={buildMessage({
+                text: 'Those are hydrangeas.',
+                visionStepUnconfirmed: false,
+            })} />);
+            expect(confirmedContainer.querySelector('.message-vision-unconfirmed')).toBeNull();
+
+            const {container: userContainer} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'what are these',
+                visionStepUnconfirmed: true,
+            })} />);
+            expect(userContainer.querySelector('.message-vision-unconfirmed')).toBeNull();
+        });
+
         it('renders the message text alongside its attachments', () => {
             render(<ChatMessage message={buildMessage({
                 type: 'USER',

@@ -429,6 +429,21 @@
     color: rgba(255, 255, 255, 0.7);
 }
 
+/*
+ * A caveat on an answer that otherwise looks confident, so it sits below the text rather than
+ * competing with it. Deliberately not styled as an error — the turn itself succeeded.
+ */
+.message-vision-unconfirmed {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border-left: 2px solid rgba(242, 201, 76, 0.6);
+    background: rgba(242, 201, 76, 0.08);
+    font-size: 12px;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.75);
+}
+
 @media (max-width: 768px) {
     .message {
         max-width: 100%;

@@ -137,13 +137,76 @@ function useChatHistory() {
                         .replace(/\n{3,}/g, '\n\n');
                 }
 
+                /*
+                 * The backend emits a progress frame for every image it describes, so a seed
+                 * still standing at `done` means no image was read. Rendering it as a completed
+                 * step would put a green checkmark claiming the image was read directly above an
+                 * assistant asking for one — drop it and flag the turn instead.
+                 *
+                 * Errs towards silence: any progress frame at all clears the seed, so an MCP tool
+                 * step arriving first hides a genuine vision failure. A missed warning is a far
+                 * better failure than one fired on a healthy turn.
+                 */
+                const seedWasNeverFulfilled = !!newHistory[lastIndex].hasSeededNotification;
+
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
                     text: finalText,
                     model: response?.message?.model ?? newHistory[lastIndex].model,
                     isStreaming: false,
+                    notifications: seedWasNeverFulfilled ? [] : newHistory[lastIndex].notifications,
+                    hasSeededNotification: false,
+                    visionStepUnconfirmed: seedWasNeverFulfilled,
                 };
             }
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
+    /*
+     * Rewrites the seeded placeholder in place. `hasSeededNotification` deliberately stays set,
+     * so a real progress frame still replaces the text and `finalizeLastAIMessage` can still tell
+     * that none ever arrived.
+     */
+    const updateSeededNotificationText = useCallback((notificationMessageText) => {
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0) {
+                return previousHistory;
+            }
+
+            const lastMessage = previousHistory[lastIndex];
+
+            if (lastMessage.type !== AI || !lastMessage.hasSeededNotification) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            newHistory[lastIndex] = {
+                ...lastMessage,
+                notifications: [notificationMessageText],
+            };
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
+    /*
+     * Only `done` clears the streaming flag on the normal path, so a stream that ends without it
+     * would otherwise spin forever. Callers use this when they have decided the turn is over.
+     */
+    const stopStreamingLastAIMessage = useCallback(() => {
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            newHistory[lastIndex] = {...newHistory[lastIndex], isStreaming: false};
 
             return newHistory;
         });
@@ -254,6 +317,8 @@ function useChatHistory() {
         setChatId,
         appendToLastAIMessage,
         appendNotificationToLastAIMessage,
+        updateSeededNotificationText,
+        stopStreamingLastAIMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
