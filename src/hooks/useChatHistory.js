@@ -27,6 +27,24 @@ function useChatHistory() {
         }
     }, [chatHistory, setChatHistory]);
 
+    /*
+     * Callable form of the hydration below, so stream recovery can pull the server's view of a
+     * turn without going through `chatId` — the id is already set by then, and the
+     * `adoptedChatIdRef` guard would suppress the effect anyway. Rejects on failure; the effect
+     * catches, recovery decides for itself.
+     */
+    const reloadChatHistory = useCallback(async () => {
+        if (!chatId) {
+            return;
+        }
+
+        const formattedMessages = await fetchFormattedChatMessages(chatId);
+
+        setChatHistory((previousHistory) => {
+            return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
+        });
+    }, [chatId, setChatHistory]);
+
     useEffect(() => {
         if (!chatId) {
             return;
@@ -50,62 +68,11 @@ function useChatHistory() {
          */
         adoptedChatIdRef.current = null;
 
-        async function fetchChatDetails() {
-            const response = await chatService.findChatDetails(chatId);
-
-            const formattedMessages = [];
-            let pendingProgressNotifications = [];
-
-            response.chatMessages.forEach((message, index) => {
-                if (message.progressData) {
-                    const notificationText = (message.progressData.message || message.message || '').trim();
-                    if (notificationText) {
-                        pendingProgressNotifications.push(notificationText);
-                    }
-                    return;
-                }
-
-                const base = {
-                    type: message.messageType,
-                    text: message.message,
-                    model: message.model,
-                    messageId: message.id,
-                    attachments: Array.isArray(message.attachments) ? message.attachments : [],
-                    /*
-                     * Only the reference is ever persisted (plan §5), so a reloaded turn
-                     * re-renders the stored image rather than regenerating it.
-                     */
-                    generatedImages: Array.isArray(message.generatedImages)
-                        ? message.generatedImages.map((generatedImage) => normalizeGeneratedImage(generatedImage))
-                        : [],
-                    _key: message.id ?? `${chatId || 'new'}-${index}`,
-                };
-
-                if (message.messageType === SYSTEM && message.elicitationId && message.elicitationResponse) {
-                    base.elicitationResponse = message.elicitationResponse.action;
-                }
-
-                if (message.messageType === AI && pendingProgressNotifications.length > 0) {
-                    base.notifications = pendingProgressNotifications;
-                    pendingProgressNotifications = [];
-                }
-
-                formattedMessages.push(base);
-            });
-
-            return formattedMessages;
-        }
-
-        fetchChatDetails()
-            .then((formattedMessages) => {
-                setChatHistory((previousHistory) => {
-                    return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
-                });
-            })
+        reloadChatHistory()
             .catch((error) => {
                 console.error('[useChatHistory] Failed to load chat details:', error);
             });
-    }, [chatId, setChatHistory]);
+    }, [chatId, reloadChatHistory]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {
         setChatHistory((previousHistory) => {
@@ -247,7 +214,43 @@ function useChatHistory() {
             }
 
             const newHistory = [...previousHistory];
-            newHistory[lastIndex] = {...newHistory[lastIndex], isStreaming: false};
+            /*
+             * Clears the seed too. `finalizeLastAIMessage` infers a failed vision pass from a
+             * seed still standing at `done`, but that inference is only valid when `done`
+             * actually arrived — on every path that ends here it did not, so the turn is left
+             * unflagged rather than accused.
+             */
+            newHistory[lastIndex] = {
+                ...newHistory[lastIndex],
+                isStreaming: false,
+                isReconnecting: false,
+                hasSeededNotification: false,
+            };
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
+    /*
+     * Keeps the bubble streaming but marks why it is quiet. Must not touch `text` or `_key` —
+     * the tokens already on screen stay, and a changed key would remount the bubble.
+     */
+    const markLastAIMessageReconnecting = useCallback((isReconnecting) => {
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
+                return previousHistory;
+            }
+
+            const lastMessage = previousHistory[lastIndex];
+
+            if (!!lastMessage.isReconnecting === !!isReconnecting) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            newHistory[lastIndex] = {...lastMessage, isReconnecting: !!isReconnecting};
 
             return newHistory;
         });
@@ -361,13 +364,61 @@ function useChatHistory() {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
+        markLastAIMessageReconnecting,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
+        reloadChatHistory,
     };
 }
 
 export default useChatHistory;
+
+async function fetchFormattedChatMessages(chatId) {
+    const response = await chatService.findChatDetails(chatId);
+
+    const formattedMessages = [];
+    let pendingProgressNotifications = [];
+
+    response.chatMessages.forEach((message, index) => {
+        if (message.progressData) {
+            const notificationText = (message.progressData.message || message.message || '').trim();
+            if (notificationText) {
+                pendingProgressNotifications.push(notificationText);
+            }
+            return;
+        }
+
+        const base = {
+            type: message.messageType,
+            text: message.message,
+            model: message.model,
+            messageId: message.id,
+            attachments: Array.isArray(message.attachments) ? message.attachments : [],
+            /*
+             * Only the reference is ever persisted (plan §5), so a reloaded turn
+             * re-renders the stored image rather than regenerating it.
+             */
+            generatedImages: Array.isArray(message.generatedImages)
+                ? message.generatedImages.map((generatedImage) => normalizeGeneratedImage(generatedImage))
+                : [],
+            _key: message.id ?? `${chatId || 'new'}-${index}`,
+        };
+
+        if (message.messageType === SYSTEM && message.elicitationId && message.elicitationResponse) {
+            base.elicitationResponse = message.elicitationResponse.action;
+        }
+
+        if (message.messageType === AI && pendingProgressNotifications.length > 0) {
+            base.notifications = pendingProgressNotifications;
+            pendingProgressNotifications = [];
+        }
+
+        formattedMessages.push(base);
+    });
+
+    return formattedMessages;
+}
 
 function mergeFetchedChatHistoryWithLocalNotifications(fetchedHistory, previousHistory) {
     if (!Array.isArray(fetchedHistory)) {

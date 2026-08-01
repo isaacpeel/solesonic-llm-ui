@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {renderHook, act} from '@testing-library/react';
+import {renderHook, act, waitFor} from '@testing-library/react';
 import useChatStream from '../../src/hooks/useChatStream.js';
 
 vi.mock('../../src/service/AuthService.js', () => ({
@@ -10,6 +10,9 @@ vi.mock('../../src/service/ChatService.js', () => ({
     default: {
         handleStreamChunk: vi.fn(),
         chatStream: vi.fn().mockResolvedValue(undefined),
+        /* Reached only through useStreamRecovery; default to a chat with no reply yet. */
+        findChatDetails: vi.fn().mockResolvedValue({chatMessages: []}),
+        chatStreamResume: vi.fn().mockResolvedValue('unavailable'),
     },
     /* useChatStream imports these constants directly; the mock must carry them. */
     CHUNK: 'chunk',
@@ -18,11 +21,16 @@ vi.mock('../../src/service/ChatService.js', () => ({
     INIT: 'init',
     ELICITATION: 'elicitation',
     ERROR: 'error',
+    RESUME_STREAMED: 'streamed',
+    RESUME_ALREADY_COMPLETE: 'alreadyComplete',
+    RESUME_UNAVAILABLE: 'unavailable',
+    RESUME_REJECTED: 'rejected',
 }));
 
 vi.mock('../../src/service/StreamService.js', () => ({
     default: {
         handleStreamError: vi.fn(),
+        isTransientStreamDisconnect: vi.fn().mockReturnValue(false),
     },
 }));
 
@@ -30,9 +38,20 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
     useSharedData: vi.fn(),
 }));
 
+/*
+ * Recovery keys off page visibility, which the runner does not reliably provide. Stubbing the
+ * module keeps these tests deciding for themselves whether the page was backgrounded.
+ */
+vi.mock('../../src/util/pageLifecycle.js', () => ({
+    isPageHidden: vi.fn().mockReturnValue(false),
+    observePageHidden: vi.fn().mockReturnValue(() => {}),
+    observePageResumed: vi.fn().mockReturnValue(() => {}),
+}));
+
 import chatService from '../../src/service/ChatService.js';
 import streamService from '../../src/service/StreamService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
+import {isPageHidden, observePageHidden} from '../../src/util/pageLifecycle.js';
 
 function makeAttachmentTray(overrides = {}) {
     return {
@@ -556,5 +575,197 @@ describe('useChatStream with attachments', () => {
 
         expect(chatService.chatStream.mock.calls[0][0].attachmentIds).toEqual(['attachment-1']);
         expect(setChatHistory.mock.calls[0][0][0].attachments).toHaveLength(1);
+    });
+});
+
+/* Name deliberately avoids the "useChatStream" prefix, so that suite stays runnable alone. */
+describe('backgrounded disconnect recovery', () => {
+    let options;
+    let setChatHistory;
+    let chatInputRef;
+
+    function emitInit(chunkOptions) {
+        chunkOptions.onChunk({event: 'init', data: '{"chatId":"chat-1","messageId":"user-message-1"}'});
+    }
+
+    /* The page went into the background at some point during the turn and is back now. */
+    function simulateBackgroundedDuringTurn() {
+        observePageHidden.mockImplementation((callback) => {
+            callback();
+
+            return () => {};
+        });
+        isPageHidden.mockReturnValue(false);
+    }
+
+    beforeEach(() => {
+        setChatHistory = vi.fn();
+        chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
+        useSharedData.mockReturnValue({chatInputRef});
+
+        isPageHidden.mockReturnValue(false);
+        observePageHidden.mockImplementation(() => () => {});
+        streamService.isTransientStreamDisconnect.mockReturnValue(false);
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+        chatService.chatStreamResume.mockResolvedValue('unavailable');
+
+        options = {
+            chatId: null,
+            chatHistory: [],
+            setChatHistory,
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            markLastAIMessageReconnecting: vi.fn(),
+            reloadChatHistory: vi.fn().mockResolvedValue(undefined),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            adoptMessageIdForLastUserMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+            attachmentTray: makeAttachmentTray(),
+        };
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    async function submitWith(result, messageText) {
+        act(() => {
+            result.current.handleInputChange({target: {value: messageText}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+    }
+
+    it('recovers instead of surfacing a network error when the stream throws while backgrounded', async () => {
+        simulateBackgroundedDuringTurn();
+        streamService.isTransientStreamDisconnect.mockReturnValue(true);
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+            throw new TypeError('Load failed');
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+        expect(result.current.error).toBeNull();
+        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
+        /* The turn is bound, so the ids are spent and the tray must not come back. */
+        expect(options.attachmentTray.clearTray).toHaveBeenCalled();
+    });
+
+    it('recovers instead of the stopped-early error when the stream ends with no terminal frame', async () => {
+        simulateBackgroundedDuringTurn();
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(result.current.error).toBeNull();
+        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
+    });
+
+    it('reconciles the turn from the server once the reply is persisted', async () => {
+        simulateBackgroundedDuringTurn();
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'user-message-1', messageType: 'USER', message: 'tell me about the thing'},
+                {id: 'ai-message-1', messageType: 'ASSISTANT', message: 'Here is the answer.'},
+            ],
+        });
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        await waitFor(() => {
+            expect(options.reloadChatHistory).toHaveBeenCalled();
+        });
+
+        expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+        /* Cleared before the reload, so the merge lets the server's text win. */
+        expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
+        expect(result.current.error).toBeNull();
+    });
+
+    it('resumes from the last event id it saw, verbatim', async () => {
+        simulateBackgroundedDuringTurn();
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            chunkOptions.onChunk({
+                event: 'init',
+                id: '1754062831234-0',
+                data: '{"chatId":"chat-1","messageId":"user-message-1"}',
+            });
+            chunkOptions.onChunk({event: 'chunk', id: '1754062831251-1', data: '{"content":"partial"}'});
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        await waitFor(() => {
+            expect(chatService.chatStreamResume).toHaveBeenCalled();
+        });
+
+        const [resumedChatId, resumedCursor] = chatService.chatStreamResume.mock.calls[0];
+        expect(resumedChatId).toBe('chat-1');
+        expect(resumedCursor).toBe('1754062831251-1');
+    });
+
+    it('still reports a genuine network failure when the page was never backgrounded', async () => {
+        streamService.isTransientStreamDisconnect.mockReturnValue(true);
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+            throw new TypeError('Failed to fetch');
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(streamService.handleStreamError).toHaveBeenCalled();
+        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
+    });
+
+    it('does not recover an attachment turn that never saw init', async () => {
+        simulateBackgroundedDuringTurn();
+        options.attachmentTray = makeAttachmentTray({
+            commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
+        });
+        chatService.chatStream.mockImplementation(async () => {});
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'look at this');
+
+        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
+        expect(options.attachmentTray.restoreTray).toHaveBeenCalled();
+        expect(result.current.error).not.toBeNull();
+    });
+
+    it('leaves an aborted stream alone', async () => {
+        simulateBackgroundedDuringTurn();
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+            const abortError = new Error('aborted');
+            abortError.name = 'AbortError';
+            throw abortError;
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
     });
 });

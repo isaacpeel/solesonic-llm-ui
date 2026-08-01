@@ -793,3 +793,123 @@ describe('attachment-aware chat history', () => {
         });
     });
 });
+
+/* Name deliberately avoids the "useChatHistory" prefix, so that suite stays runnable alone. */
+describe('chat history support for stream recovery', () => {
+    let sharedState;
+
+    beforeEach(() => {
+        sharedState = {
+            chatId: 'chat-1',
+            setChatId: vi.fn(),
+            chatHistory: [{type: AI, text: 'existing', _key: 'existing'}],
+            setChatHistory: vi.fn(),
+        };
+        useSharedData.mockReturnValue(sharedState);
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    describe('reloadChatHistory', () => {
+        it('fetches even for an id this client adopted from its own stream', async () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            await waitFor(() => {
+                expect(chatService.findChatDetails).toHaveBeenCalled();
+            });
+
+            /* Exactly the state that makes the hydration effect skip. */
+            result.current.ensureChatIdFromResponse({chatId: 'chat-1'});
+            chatService.findChatDetails.mockClear();
+
+            await result.current.reloadChatHistory();
+
+            expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+        });
+
+        it('does nothing without a chat id', async () => {
+            sharedState.chatId = null;
+
+            const {result} = renderHook(() => useChatHistory());
+            chatService.findChatDetails.mockClear();
+
+            await result.current.reloadChatHistory();
+
+            expect(chatService.findChatDetails).not.toHaveBeenCalled();
+        });
+
+        it('rejects so the caller can decide what a failed reload means', async () => {
+            const {result} = renderHook(() => useChatHistory());
+            chatService.findChatDetails.mockRejectedValue(new Error('offline'));
+
+            await expect(result.current.reloadChatHistory()).rejects.toThrow('offline');
+        });
+    });
+
+    describe('stopStreamingLastAIMessage', () => {
+        it('clears the reconnecting and seeded flags along with the streaming one', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.stopStreamingLastAIMessage();
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = historyUpdater([
+                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true, isReconnecting: true, hasSeededNotification: true},
+            ]);
+
+            expect(updatedHistory[0]).toMatchObject({
+                isStreaming: false,
+                isReconnecting: false,
+                hasSeededNotification: false,
+                text: 'partial',
+                _key: 'ai1',
+            });
+        });
+    });
+
+    describe('markLastAIMessageReconnecting', () => {
+        it('flags the trailing AI message without disturbing it', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.markLastAIMessageReconnecting(true);
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = historyUpdater([
+                {type: 'USER', text: 'question', _key: 'u1'},
+                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true},
+            ]);
+
+            expect(updatedHistory[1]).toMatchObject({
+                isReconnecting: true,
+                isStreaming: true,
+                text: 'partial',
+                _key: 'ai1',
+            });
+        });
+
+        it('does not churn history when the flag is already set', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.markLastAIMessageReconnecting(true);
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [{type: AI, text: 'partial', _key: 'ai1', isReconnecting: true}];
+
+            expect(historyUpdater(previousHistory)).toBe(previousHistory);
+        });
+
+        it('leaves history untouched when the last entry is not an AI message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.markLastAIMessageReconnecting(true);
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [{type: 'USER', text: 'question', _key: 'u1'}];
+
+            expect(historyUpdater(previousHistory)).toBe(previousHistory);
+        });
+    });
+});

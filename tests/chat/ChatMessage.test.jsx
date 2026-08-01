@@ -268,4 +268,37 @@ describe('ChatMessage', () => {
             expect(screen.getByAltText('one.png')).toBeTruthy();
         });
     });
+
+    describe('reconnecting notice', () => {
+        it('renders on an AI message whose stream is being recovered', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'partial answer',
+                isStreaming: true,
+                isReconnecting: true,
+            })} />);
+
+            expect(container.querySelector('.message-reconnecting')).not.toBeNull();
+            /* The tokens already on screen must survive the disconnect. */
+            expect(screen.getByText('partial answer')).toBeTruthy();
+        });
+
+        it('renders nothing once recovery has cleared the flag', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'complete answer',
+                isReconnecting: false,
+            })} />);
+
+            expect(container.querySelector('.message-reconnecting')).toBeNull();
+        });
+
+        it('renders nothing on a USER message', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'question',
+                isReconnecting: true,
+            })} />);
+
+            expect(container.querySelector('.message-reconnecting')).toBeNull();
+        });
+    });
 });

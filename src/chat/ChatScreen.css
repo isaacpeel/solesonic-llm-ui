@@ -55,8 +55,45 @@
     border: 1px solid var(--border-color);
 }
 
+/*
+ * Recovery ran out of patience. Still a notice rather than an error — the turn very likely
+ * completed server-side, so the useful affordance is "look again", not a stack trace.
+ */
+.chat-recovery-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 45%;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 1.4;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+}
+
+.chat-recovery-notice-retry {
+    padding: 3px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.chat-recovery-notice-retry:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 @media (max-width: 768px) {
     .chat-attachment-notice {
+        width: 85%;
+    }
+
+    .chat-recovery-notice {
         width: 85%;
     }
 }

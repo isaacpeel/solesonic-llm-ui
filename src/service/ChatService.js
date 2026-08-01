@@ -13,6 +13,18 @@ export const ELICITATION = "elicitation";
 export const ERROR = "error";
 export const IMAGE = "image";
 
+/* Outcomes of a resume attempt, mapped from the status codes the resume endpoint decides up front. */
+export const RESUME_STREAMED = "streamed";
+export const RESUME_ALREADY_COMPLETE = "alreadyComplete";
+export const RESUME_UNAVAILABLE = "unavailable";
+export const RESUME_REJECTED = "rejected";
+
+/*
+ * Replays the whole retained stream. The API documents `0` as the from-the-beginning sentinel and
+ * never emits it as a frame id, so there is no ambiguity with a real cursor.
+ */
+const RESUME_FROM_BEGINNING = "0";
+
 /**
  * Pulls generated-image references off a stream payload.
  *
@@ -60,7 +72,14 @@ const chatService = {
             case ERROR:
                 try {
                     const errorData = JSON.parse(eventPayload.data);
-                    const content = errorData?.content;
+
+                    /*
+                     * Chat errors carry `content`; image-generation failures carry `code` plus
+                     * `message`. Reading only `content` surfaced those as an empty error.
+                     */
+                    const content = typeof errorData?.content === 'string' && errorData.content.length > 0
+                        ? errorData.content
+                        : errorData?.message;
 
                     if (typeof content === 'string' && content.length > 0) {
                         setError(new Error(content));
@@ -191,6 +210,69 @@ const chatService = {
                 break;
             }
         }
+    },
+
+    /*
+     * Picks a turn back up where a dropped connection left off. `lastEventId` is an opaque Redis
+     * stream entry id (`<milliseconds>-<sequence>`) — it is stored and echoed verbatim, never
+     * parsed. `parseInt` on one silently drops the sequence half, which would collapse two frames
+     * emitted in the same millisecond onto one cursor and lose a frame on replay.
+     */
+    async chatStreamResume(chatId, lastEventId, { onChunk, signal } = {}) {
+        const token = await authService.getAccessToken();
+        const userId = await authService.getUserId();
+        const uri = `${config.streamingChatsUri}/${chatId}/users/${userId}/stream`;
+
+        const requestHeaders = {
+            Accept: 'text/event-stream',
+            'Last-Event-ID': lastEventId || RESUME_FROM_BEGINNING,
+        };
+
+        if (token) {
+            requestHeaders.Authorization = `Bearer ${token}`;
+        }
+
+        const response = await fetch(uri, {
+            method: 'GET',
+            signal,
+            headers: requestHeaders,
+        });
+
+        /* The turn finished and we already hold every frame, `done` included. */
+        if (response.status === 204) {
+            return RESUME_ALREADY_COMPLETE;
+        }
+
+        /* Our cursor was not something the server ever sent — recoverable, but log it as our bug. */
+        if (response.status === 400) {
+            console.error('[ChatService] Stream resume rejected an invalid cursor:', lastEventId);
+            return RESUME_UNAVAILABLE;
+        }
+
+        /* Not our chat. Reconciling against it would fail the same way. */
+        if (response.status === 403) {
+            console.error('[ChatService] Stream resume forbidden for chat:', chatId);
+            return RESUME_REJECTED;
+        }
+
+        /* Buffer aged out, cursor trimmed away, or no such chat — reconcile from history instead. */
+        if (response.status === 404 || response.status === 410) {
+            return RESUME_UNAVAILABLE;
+        }
+
+        if (!response.ok) {
+            throw new Error(`Stream resume failed: ${response.status} ${response.statusText}`);
+        }
+
+        for await (const event of parseSseStream(response.body)) {
+            onChunk?.(event);
+
+            if (event.event === DONE || event.event === ERROR) {
+                break;
+            }
+        }
+
+        return RESUME_STREAMED;
     },
 
     findChatDetails: async (chatId) => {

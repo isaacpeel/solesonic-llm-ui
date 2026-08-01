@@ -37,7 +37,7 @@ function ChatScreen() {
         document.addEventListener('copy', handleCopy);
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, markLastAIMessageReconnecting, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
@@ -64,7 +64,7 @@ function ChatScreen() {
         lightboxInvokerRef.current = null;
     }, []);
 
-    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, attachmentNotice} = useChatStream({
+    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, attachmentNotice, recoveryFailed, retryRecovery} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
@@ -73,6 +73,8 @@ function ChatScreen() {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
+        markLastAIMessageReconnecting,
+        reloadChatHistory,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
@@ -123,6 +125,15 @@ function ChatScreen() {
 
                 {attachmentNotice && (
                     <div className="chat-attachment-notice" role="status">{attachmentNotice}</div>
+                )}
+
+                {recoveryFailed && (
+                    <div className="chat-recovery-notice" role="status">
+                        <span>Lost connection while the assistant was replying.</span>
+                        <button type="button" className="chat-recovery-notice-retry" onClick={retryRecovery}>
+                            Reload
+                        </button>
+                    </div>
                 )}
 
                 {lightboxAttachment && (
