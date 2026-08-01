@@ -12,7 +12,7 @@ vi.mock('../../src/properties/ApplicationProperties', () => ({
     },
 }));
 
-vi.mock('../../src/chat/ChatMessage.jsx', () => ({
+vi.mock('../../src/chat/message/ChatMessage.jsx', () => ({
     AI: 'AI',
 }));
 
@@ -27,7 +27,7 @@ vi.mock('../../src/client/parseSseStream.js', () => ({
 
 import streamService from '../../src/service/StreamService.js';
 import { parseSseStream } from '../../src/client/parseSseStream.js';
-import {AI} from '../../src/chat/ChatMessage.jsx';
+import {AI} from '../../src/chat/message/ChatMessage.jsx';
 
 function makeSseAsyncGenerator(events) {
     return async function* () {

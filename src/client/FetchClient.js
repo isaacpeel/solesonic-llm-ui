@@ -1,4 +1,4 @@
-import {SYSTEM} from "../chat/ChatMessage.jsx";
+import {SYSTEM} from "../chat/message/ChatMessage.jsx";
 import authService from '../service/AuthService.js';
 
 class FetchClientError extends Error {

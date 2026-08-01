@@ -1,10 +1,10 @@
 import {useEffect} from 'react';
 import PropTypes from 'prop-types';
 import './ChatInput.css';
-import SlashCommandList from './SlashCommandList.jsx';
-import SelectedCommandChip from './SelectedCommandChip.jsx';
+import SlashCommandList from '../command/SlashCommandList.jsx';
+import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
-import {ACCEPTED_IMAGE_CONTENT_TYPES} from '../util/imageValidation.js';
+import {ACCEPTED_IMAGE_CONTENT_TYPES} from '../../util/imageValidation.js';
 
 function ChatInput({
     loading,

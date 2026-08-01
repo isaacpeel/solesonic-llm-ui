@@ -1,4 +1,4 @@
-import GeneratedImage from '../image/GeneratedImage.jsx';
+import GeneratedImage from '../../image/GeneratedImage.jsx';
 import './MessageGeneratedImages.css';
 
 /*

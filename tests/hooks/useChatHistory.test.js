@@ -18,7 +18,7 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
 
 import chatService from '../../src/service/ChatService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
-import {AI} from '../../src/chat/ChatMessage.jsx';
+import {AI} from '../../src/chat/message/ChatMessage.jsx';
 
 describe('useChatHistory', () => {
     let sharedState;

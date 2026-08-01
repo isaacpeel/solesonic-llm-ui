@@ -1,7 +1,7 @@
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import { parseSseStream } from '../client/parseSseStream.js';
-import {AI} from "../chat/ChatMessage.jsx"
+import {AI} from "../chat/message/ChatMessage.jsx"
 import {DONE, ERROR} from './ChatService.js';
 
 const streamService = {

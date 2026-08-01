@@ -4,10 +4,10 @@ import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
 
-import ChatMessage from "./ChatMessage.jsx";
-import ChatInput from "./ChatInput.jsx";
+import ChatMessage from "./message/ChatMessage.jsx";
+import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
-import AttachmentLightbox from "./AttachmentLightbox.jsx";
+import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
 import useChatHistory from '../hooks/useChatHistory.js';
 import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';

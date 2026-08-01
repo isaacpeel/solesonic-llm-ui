@@ -1,6 +1,6 @@
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import AttachmentTray from '../../src/chat/AttachmentTray.jsx';
+import AttachmentTray from '../../src/chat/attachment/AttachmentTray.jsx';
 
 function trayEntry(overrides = {}) {
     return {

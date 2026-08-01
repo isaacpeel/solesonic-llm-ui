@@ -97,7 +97,7 @@ For production deployment using Docker and Nginx, see [README.docker.md](README.
 ## Project Structure
 
 - `src/` — Source code
-  - `chat/` — Chat interface components and slash command UI
+  - `chat/` — Chat interface: screen shell and history sidebar, plus `message/`, `composer/`, `command/`, and `attachment/` subdirectories
   - `elicitation/` — Elicitation UI components (dynamic prompts/forms)
   - `user/` — User settings, preferences, and model configuration UI
   - `train/` — RAG management for custom training/knowledge base

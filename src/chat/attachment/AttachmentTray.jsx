@@ -1,5 +1,5 @@
 import AttachmentThumbnail from './AttachmentThumbnail.jsx';
-import useAttachmentUrl from '../hooks/useAttachmentUrl.js';
+import useAttachmentUrl from '../../hooks/useAttachmentUrl.js';
 import './AttachmentTray.css';
 
 const READY = 'ready';

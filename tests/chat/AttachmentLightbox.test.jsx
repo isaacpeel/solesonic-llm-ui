@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, afterEach} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import AttachmentLightbox from '../../src/chat/AttachmentLightbox.jsx';
+import AttachmentLightbox from '../../src/chat/attachment/AttachmentLightbox.jsx';
 
 function renderLightbox(overrides = {}, onClose = vi.fn()) {
     const attachment = {

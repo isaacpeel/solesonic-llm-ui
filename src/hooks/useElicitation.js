@@ -1,6 +1,6 @@
 import {useEffect} from 'react';
 import elicitationService from '../service/ElicitationService.js';
-import {AI} from '../chat/ChatMessage.jsx';
+import {AI} from '../chat/message/ChatMessage.jsx';
 
 function useElicitation({
     chatHistory,

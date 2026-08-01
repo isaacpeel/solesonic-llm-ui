@@ -1,6 +1,6 @@
 import {describe, it, expect} from 'vitest';
 import {render, screen} from '@testing-library/react';
-import ChatMessage from '../../src/chat/ChatMessage.jsx';
+import ChatMessage from '../../src/chat/message/ChatMessage.jsx';
 
 function buildMessage(overrides) {
     return {

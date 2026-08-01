@@ -3,7 +3,7 @@ import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
-import MessageAttachments from "./MessageAttachments.jsx";
+import MessageAttachments from "../attachment/MessageAttachments.jsx";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);

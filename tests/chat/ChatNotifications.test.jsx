@@ -1,6 +1,6 @@
 import {describe, it, expect} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import ChatNotifications from '../../src/chat/ChatNotifications.jsx';
+import ChatNotifications from '../../src/chat/message/ChatNotifications.jsx';
 
 const MESSAGE_KEY = 'msg-1';
 

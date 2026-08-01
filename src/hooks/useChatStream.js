@@ -3,7 +3,7 @@ import log from 'loglevel';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService, {DONE, ELICITATION, ERROR, INIT} from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
-import {AI, USER} from '../chat/ChatMessage.jsx';
+import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
 
 /*

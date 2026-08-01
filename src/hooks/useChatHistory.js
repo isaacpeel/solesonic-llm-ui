@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef} from 'react';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
 import {normalizeGeneratedImage} from '../service/ImageGenerationService.js';
-import {AI, SYSTEM, USER} from '../chat/ChatMessage.jsx';
+import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 
 function useChatHistory() {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();

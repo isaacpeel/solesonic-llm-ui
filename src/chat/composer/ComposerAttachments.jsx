@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {PaperClipIcon} from '@heroicons/react/20/solid';
-import AttachmentTray from './AttachmentTray.jsx';
-import {ACCEPTED_IMAGE_ACCEPT_ATTRIBUTE, MAX_ATTACHMENTS_PER_MESSAGE} from '../util/imageValidation.js';
+import AttachmentTray from '../attachment/AttachmentTray.jsx';
+import {ACCEPTED_IMAGE_ACCEPT_ATTRIBUTE, MAX_ATTACHMENTS_PER_MESSAGE} from '../../util/imageValidation.js';
 import './ComposerAttachments.css';
 
 function ComposerAttachments({

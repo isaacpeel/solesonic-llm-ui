@@ -5,7 +5,7 @@ vi.mock('../../src/hooks/useAttachmentUrl.js', () => ({
     default: vi.fn(),
 }));
 
-import MessageAttachments from '../../src/chat/MessageAttachments.jsx';
+import MessageAttachments from '../../src/chat/attachment/MessageAttachments.jsx';
 import useAttachmentUrl from '../../src/hooks/useAttachmentUrl.js';
 
 function resolved(objectUrl) {
