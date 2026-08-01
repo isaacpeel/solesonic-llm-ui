@@ -4,7 +4,6 @@ import {useSharedData} from "../context/useSharedData.jsx";
 import UserDialog from "../user/UserDialog.jsx";
 import {ArrowRightEndOnRectangleIcon} from "@heroicons/react/24/solid/index.js";
 import {PencilSquareIcon} from "@heroicons/react/24/solid/index.js";
-import {PhotoIcon} from "@heroicons/react/24/solid/index.js";
 import ChatHistory from "../chat/ChatHistory.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 
@@ -51,13 +50,6 @@ const Header = () => {
                     data-dialog="New Chat"
                 >
                     <PencilSquareIcon/>
-                </div>
-                <div
-                    className="icon-wrapper"
-                    onClick={() => navigate("/images")}
-                    data-dialog="Generate Image"
-                >
-                    <PhotoIcon/>
                 </div>
             </div>
             <div>
