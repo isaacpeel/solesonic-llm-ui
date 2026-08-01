@@ -88,57 +88,60 @@ function ComposerAttachments({
     };
 
     return (
-        <>
-            <div
-                className={`composer-attachments${isDragOver ? ' composer-attachments--drag-over' : ''}`}
-                onDragEnter={handleDragEnter}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-            >
-                <AttachmentTray
-                    trayEntries={entries}
-                    openCaptionTrayKey={openCaptionTrayKey}
-                    onToggleCaption={handleToggleCaption}
-                    onRemoveEntry={handleRemoveEntry}
-                    onRetryEntry={retryEntry}
-                />
+        <div
+            className={`composer-attachments${isDragOver ? ' composer-attachments--drag-over' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
+            <AttachmentTray
+                trayEntries={entries}
+                openCaptionTrayKey={openCaptionTrayKey}
+                onToggleCaption={handleToggleCaption}
+                onRemoveEntry={handleRemoveEntry}
+                onRetryEntry={retryEntry}
+            />
 
-                {openCaptionEntry && (
-                    <div className="composer-attachment-caption-row">
-                        <label className="composer-attachment-caption-label" htmlFor="composer-attachment-caption-input">
-                            {openCaptionEntry.fileName}
-                        </label>
-                        <input
-                            id="composer-attachment-caption-input"
-                            className="composer-attachment-caption-input"
-                            type="text"
-                            value={openCaptionEntry.caption}
-                            placeholder="What should the assistant look for?"
-                            onChange={(event) => setEntryCaption(openCaptionEntry.trayKey, event.target.value)}
-                        />
-                    </div>
-                )}
-
-                {trayError && (
-                    <div className="composer-attachment-tray-error" role="status">{trayError}</div>
-                )}
-
-                <div className="chat-input-row">
-                    {children}
+            {openCaptionEntry && (
+                <div className="composer-attachment-caption-row">
+                    <label className="composer-attachment-caption-label" htmlFor="composer-attachment-caption-input">
+                        {openCaptionEntry.fileName}
+                    </label>
+                    <input
+                        id="composer-attachment-caption-input"
+                        className="composer-attachment-caption-input"
+                        type="text"
+                        value={openCaptionEntry.caption}
+                        placeholder="What should the assistant look for?"
+                        onChange={(event) => setEntryCaption(openCaptionEntry.trayKey, event.target.value)}
+                    />
                 </div>
-            </div>
+            )}
 
-            <button
-                type="button"
-                className="composer-attach-button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading || isAtCap}
-                aria-label={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} images reached` : 'Attach an image'}
-                title={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} images reached` : 'Attach an image'}
-            >
-                <PaperClipIcon/>
-            </button>
+            {trayError && (
+                <div className="composer-attachment-tray-error" role="status">{trayError}</div>
+            )}
+
+            {/*
+              * The pill itself: attach on the left, the textarea (and the send button, passed in
+              * as the last child) filling the rest. The attach button used to sit outside this
+              * row, which left the composer looking like two unrelated controls.
+              */}
+            <div className="chat-input-row">
+                <button
+                    type="button"
+                    className="composer-attach-button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={loading || isAtCap}
+                    aria-label={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} images reached` : 'Attach an image'}
+                    title={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} images reached` : 'Attach an image'}
+                >
+                    <PaperClipIcon/>
+                </button>
+
+                {children}
+            </div>
 
             <input
                 ref={fileInputRef}
@@ -150,7 +153,7 @@ function ComposerAttachments({
                 tabIndex={-1}
                 aria-hidden="true"
             />
-        </>
+        </div>
     );
 }
 

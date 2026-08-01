@@ -9,45 +9,43 @@
     right: 0;
 }
 
+/*
+ * Borderless and transparent: the surrounding .chat-input-row is the visible field, so the
+ * textarea, the attach button and the send button read as one control.
+ */
 .chat-text-input {
-    width: 100%;
-    padding: 2px 15px;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 4px;
     max-height: 15rem;
-    overflow: hidden;
+    overflow-y: auto;
     resize: none;
-    border-radius: 4px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 16px;
     line-height: 1.5;
     box-sizing: border-box;
 
-    background-color: var(--primary-color);
+    background-color: transparent;
     color: var(--text-color);
-    border: 1px solid var(--border-color);
+    border: none;
     position: relative;
     z-index: 1;
 }
 
 .chat-text-input:focus {
     outline: none;
-    box-shadow: 0 0 0 1px #cccccc;
+}
+
+.chat-text-input::placeholder {
+    color: var(--text-color);
+    opacity: 0.45;
 }
 
 .textarea-parent {
     position: relative;
     width: 45%;
     display: flex;
-    align-items: flex-end;
-}
-
-/*
- * The attachments wrapper takes the full composer width; the attach button sits beside it.
- * The slash-command popovers are lifted out of the flex flow by .composer-popovers below,
- * so they are unaffected by this being a flex container.
- */
-.textarea-parent > .composer-attachments {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex-direction: column;
 }
 
 /*
@@ -65,6 +63,43 @@
     flex-direction: column;
 }
 
+/* Circular, at the trailing edge of the field — the one affordance that sends the message. */
+.composer-send-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    cursor: pointer;
+    transition: background-color var(--transition-speed), opacity var(--transition-speed);
+}
+
+.composer-send-button svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text-color);
+}
+
+.composer-send-button:hover:not(:disabled) {
+    background-color: var(--icon-hover-bg);
+}
+
+.composer-send-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.composer-send-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
 .dots-loader {
     display: flex;
     gap: 5px;
@@ -73,13 +108,12 @@
     top: 50%;
     transform: translate(-50%, -50%);
     padding: 10px 0;
-    background-color: var(--primary-color);
 }
 
 .dot {
     width: 6px;
     height: 6px;
-    background-color: #000;
+    background-color: var(--text-color);
     border-radius: 50%;
     animation: blink 1.5s infinite;
 }

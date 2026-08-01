@@ -135,7 +135,8 @@ describe('ComposerAttachments', () => {
 
         const captionInputs = container.querySelectorAll('.composer-attachment-caption-input');
         expect(captionInputs).toHaveLength(1);
-        expect(screen.getByText('screenshot.png')).toBeTruthy();
+        /* The tray chip names the file too, so this has to target the caption label itself. */
+        expect(container.querySelector('.composer-attachment-caption-label').textContent).toBe('screenshot.png');
         expect(onCaptionOpenChange).toHaveBeenLastCalledWith(true);
 
         fireEvent.change(captionInputs[0], {target: {value: 'the error banner'}});

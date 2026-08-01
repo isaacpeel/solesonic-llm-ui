@@ -1,3 +1,4 @@
+import {ExclamationTriangleIcon, PencilSquareIcon, XMarkIcon} from '@heroicons/react/20/solid';
 import AttachmentThumbnail from './AttachmentThumbnail.jsx';
 import useAttachmentUrl from '../../hooks/useAttachmentUrl.js';
 import './AttachmentTray.css';
@@ -6,8 +7,9 @@ const READY = 'ready';
 const UPLOADING = 'uploading';
 
 /*
- * One tray entry. A freshly-picked entry has its bytes locally and short-circuits the hook;
- * an entry restored from a sessionStorage draft has only an id and resolves like history.
+ * One tray entry, rendered as a chip: preview, file name, then its own controls. A freshly-picked
+ * entry has its bytes locally and short-circuits the hook; an entry restored from a
+ * sessionStorage draft has only an id and resolves like history.
  */
 function AttachmentTrayItem({
     entry,
@@ -24,28 +26,53 @@ function AttachmentTrayItem({
 
     return (
         <div className="composer-attachment-tray-item">
-            <AttachmentThumbnail
-                objectUrl={objectUrl}
-                fileName={entry.fileName}
-                description={entry.caption}
-                status={thumbnailStatus}
-                warning={entry.warning}
-                onRemove={() => onRemoveEntry(entry.trayKey)}
-                onRetry={() => onRetryEntry(entry.trayKey)}
-            />
+            <div className="composer-attachment-chip">
+                {/*
+                  * The chip owns removal so the control sits at the chip's trailing edge rather
+                  * than floating over a 22px preview; the thumbnail keeps the upload and retry
+                  * states, which do belong on the image.
+                  */}
+                <AttachmentThumbnail
+                    objectUrl={objectUrl}
+                    fileName={entry.fileName}
+                    description={entry.caption}
+                    status={thumbnailStatus}
+                    onRetry={() => onRetryEntry(entry.trayKey)}
+                />
 
-            {/* A restored draft entry has no retained File, so its caption cannot be re-staged. */}
-            {entry.status === READY && !entry.restoredFromDraft && (
+                <span className="composer-attachment-chip-name" title={entry.fileName}>
+                    {entry.fileName}
+                </span>
+
+                {entry.warning && (
+                    <span className="composer-attachment-chip-warning" title={entry.warning} aria-label={entry.warning}>
+                        <ExclamationTriangleIcon/>
+                    </span>
+                )}
+
+                {/* A restored draft entry has no retained File, so its caption cannot be re-staged. */}
+                {entry.status === READY && !entry.restoredFromDraft && (
+                    <button
+                        type="button"
+                        className={`composer-attachment-note-toggle${isCaptionOpen ? ' composer-attachment-note-toggle--open' : ''}`}
+                        onClick={() => onToggleCaption(entry.trayKey)}
+                        aria-expanded={isCaptionOpen}
+                        aria-label={`Add a note to ${entry.fileName}`}
+                        title={entry.caption ? 'Edit note' : 'Add a note'}
+                    >
+                        <PencilSquareIcon/>
+                    </button>
+                )}
+
                 <button
                     type="button"
-                    className={`composer-attachment-note-toggle${isCaptionOpen ? ' composer-attachment-note-toggle--open' : ''}`}
-                    onClick={() => onToggleCaption(entry.trayKey)}
-                    aria-expanded={isCaptionOpen}
-                    aria-label={`Add a note to ${entry.fileName}`}
+                    className="composer-attachment-chip-remove"
+                    onClick={() => onRemoveEntry(entry.trayKey)}
+                    aria-label={`Remove ${entry.fileName}`}
                 >
-                    {entry.caption ? '✎ note' : '＋ note'}
+                    <XMarkIcon/>
                 </button>
-            )}
+            </div>
 
             {entry.errorMessage && (
                 <span className="composer-attachment-error">{entry.errorMessage}</span>

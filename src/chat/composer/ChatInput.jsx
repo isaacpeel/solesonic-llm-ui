@@ -1,5 +1,5 @@
 import {useEffect} from 'react';
-import PropTypes from 'prop-types';
+import {ArrowUpIcon} from '@heroicons/react/20/solid';
 import './ChatInput.css';
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
@@ -44,6 +44,19 @@ function ChatInput({
     }, [chatInputRef, inputValue]);
 
     const hasCandidates = commandCandidates.length > 0;
+
+    /* Mirrors the guard in useChatStream.handleSubmit — attachments alone are not a message. */
+    const canSubmit = !loading && inputValue.trim().length > 0;
+
+    const submitMessage = () => {
+        handleSubmit().then(() => {
+            if (chatInputRef.current) {
+                chatInputRef.current.style.height = "auto";
+            }
+
+            onDeselect();
+        });
+    };
 
     /*
      * Pasting is the primary attach path, and it is the one handler that cannot move into
@@ -156,13 +169,11 @@ function ChatInput({
                                 }
 
                                 event.preventDefault();
-                                handleSubmit().then(() => {
-                                    chatInputRef.current.style.height = "auto";
-                                    onDeselect();
-                                });
+                                submitMessage();
                             }
                         }}
                     />
+
                     {loading && (
                         <div className="dots-loader">
                             <div className="dot"></div>
@@ -170,33 +181,21 @@ function ChatInput({
                             <div className="dot"></div>
                         </div>
                     )}
+
+                    <button
+                        type="button"
+                        className="composer-send-button"
+                        onClick={submitMessage}
+                        disabled={!canSubmit}
+                        aria-label="Send message"
+                        title="Send message"
+                    >
+                        <ArrowUpIcon/>
+                    </button>
                 </ComposerAttachments>
             </div>
         </div>
     );
 }
-
-ChatInput.propTypes = {
-    loading: PropTypes.bool.isRequired,
-    inputValue: PropTypes.string.isRequired,
-    handleInputChange: PropTypes.func.isRequired,
-    handleSubmit: PropTypes.func.isRequired,
-    chatInputRef: PropTypes.object.isRequired,
-    commandCandidates: PropTypes.array.isRequired,
-    selectedIndex: PropTypes.number.isRequired,
-    selectedCommand: PropTypes.object,
-    onCommandSelect: PropTypes.func.isRequired,
-    onArrowUp: PropTypes.func.isRequired,
-    onArrowDown: PropTypes.func.isRequired,
-    onDismiss: PropTypes.func.isRequired,
-    onDeselect: PropTypes.func.isRequired,
-    trayEntries: PropTypes.array,
-    addFiles: PropTypes.func,
-    removeEntry: PropTypes.func,
-    retryEntry: PropTypes.func,
-    setEntryCaption: PropTypes.func,
-    trayError: PropTypes.string,
-    onCaptionOpenChange: PropTypes.func,
-};
 
 export default ChatInput;
