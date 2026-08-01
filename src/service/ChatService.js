@@ -25,6 +25,49 @@ export const RESUME_REJECTED = "rejected";
  */
 const RESUME_FROM_BEGINNING = "0";
 
+/* One drawer-height of rows plus enough slack that the sentinel starts below the fold. */
+export const DEFAULT_CHAT_HISTORY_PAGE_SIZE = 20;
+
+/**
+ * Flattens a Spring Data `Page` of chats into the shape the history drawer pages through.
+ *
+ * `last` is what drives "stop asking for more", so it is derived rather than trusted blindly:
+ * an omitted flag falls back to the page counters, and an empty page always terminates so a
+ * miscounted total cannot turn into an endless fetch loop.
+ */
+export function normalizeChatHistoryPage(response, requestedPage = 0) {
+    const chats = Array.isArray(response?.content) ? response.content : [];
+
+    /*
+     * Spring serializes the counters either at the root (`Page`) or nested under `page`
+     * (`PagedModel`, what the backend actually returns). Both are read so the drawer sees real
+     * totals instead of silently falling back to "stop once a page comes back empty".
+     */
+    const metadata = typeof response?.page === 'object' && response.page !== null ? response.page : response;
+
+    const pageNumber = Number.isInteger(metadata?.number) ? metadata.number : requestedPage;
+    const totalPages = Number.isInteger(metadata?.totalPages) ? metadata.totalPages : null;
+    const totalElements = Number.isInteger(metadata?.totalElements) ? metadata.totalElements : null;
+
+    let last;
+
+    if (typeof response?.last === 'boolean') {
+        last = response.last;
+    } else if (totalPages !== null) {
+        last = pageNumber + 1 >= totalPages;
+    } else {
+        last = chats.length === 0;
+    }
+
+    return {
+        chats,
+        page: pageNumber,
+        last: last || chats.length === 0,
+        totalPages,
+        totalElements,
+    };
+}
+
 /**
  * Pulls generated-image references off a stream payload.
  *
@@ -279,9 +322,17 @@ const chatService = {
         return await apiClient.get(`${config.chatsUri}/${chatId}`);
     },
 
-    findChatHistory: async () => {
+    /*
+     * One page of the user's chats, newest first. The endpoint is a Spring `Pageable` one, so the
+     * cursor is the page index — built with `URLSearchParams` rather than `buildUrl` so the service
+     * stays callable without a `window`.
+     */
+    findChatHistory: async ({page = 0, size = DEFAULT_CHAT_HISTORY_PAGE_SIZE} = {}) => {
         const userId = await authService.getUserId();
-        return await apiClient.get(`${config.chatsUri}/users/${userId}`);
+        const queryString = new URLSearchParams({page: String(page), size: String(size)}).toString();
+        const response = await apiClient.get(`${config.chatsUri}/users/${userId}?${queryString}`);
+
+        return normalizeChatHistoryPage(response, page);
     },
 }
 

@@ -1,8 +1,19 @@
+/*
+ * The panel between .drawer and .chat-drawer. It carries the flex chain down so the list can
+ * claim every pixel the fixed drawer leaves under the toggle icon.
+ */
+.chat-drawer-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
 .chat-drawer {
+    flex: 1;
+    min-height: 0; /* Without this a flex item refuses to shrink below its content height. */
     padding: 20px;
     background-color: var(--primary-color); /* Matches primary sections */
-    border-radius: 8px;
-    max-height: 80vh;
     overflow-y: auto;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
     z-index: 1000;
@@ -50,6 +61,44 @@
     background-color: var(--secondary-color); /* Slight highlight on hover */
 }
 
+/*
+ * Infinite-scroll sentinel. It must always occupy a little height, otherwise a zero-height element
+ * at the very end of the scroll box never registers as intersecting.
+ */
+.chat-history-sentinel {
+    min-height: 1px;
+    padding: 4px 0;
+}
+
+.chat-history-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+.chat-history-error {
+    opacity: 1;
+}
+
+.chat-history-retry {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.chat-history-retry:hover {
+    background-color: var(--primary-color);
+}
+
 /* Close drawer icon */
 .close-drawer {
     cursor: pointer;
@@ -86,13 +135,15 @@
     position: fixed;
     top: 0;
     left: 0;
+    bottom: 0;
     width: 250px;
-    height: 100%;
+    display: flex;
+    flex-direction: column;
     background-color: var(--primary-color); /* Matches primary sections */
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
     transform: translateX(-100%);
     transition: transform 0.3s ease-in-out;
-    overflow-y: auto;
+    overflow: hidden; /* .chat-drawer is the only scroll box, so the drawer itself never scrolls. */
 }
 
 .drawer.open {

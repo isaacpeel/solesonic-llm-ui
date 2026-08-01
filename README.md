@@ -193,7 +193,7 @@ Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:
 - `chatStream(message, chatId, { onChunk, onDone, signal })` — initiates or continues a chat stream via SSE
 - `handleStreamChunk(event, handlers)` — processes server events: `init`, `chunk`/`message`, `elicitation`, and `done`
 - `findChatDetails(chatId)` — retrieves chat metadata
-- `findChatHistory()` — fetches recent chats for the authenticated user
+- `findChatHistory({ page, size })` — fetches one page of the authenticated user's chats (newest first) from the Spring `Pageable` endpoint, flattened to `{ chats, page, last, totalPages, totalElements }`. The history drawer pages through it with `usePagedChatHistory`, which loads the next page as an infinite-scroll sentinel comes into view.
 
 Server events include `ELICITATION`, which triggers the elicitation form UI with a JSON schema and message.
 
