@@ -4,7 +4,6 @@ import {useVirtualizer} from "@tanstack/react-virtual";
 
 import "./ChatHistory.css";
 import {useSharedData} from "../context/useSharedData.jsx";
-import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import usePagedChatHistory from "../hooks/usePagedChatHistory.js";
 import {groupChatsByDay} from "../util/chatHistoryGrouping.js";
 import {
@@ -14,7 +13,7 @@ import {
 } from "../util/chatHistoryRows.js";
 
 /* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
-const OVERSCAN_ROWS = 8;
+const OVERSCAN_ROWS = 4;
 
 /* Starts the next fetch while the tail is still below the fold, so scrolling stays smooth. */
 const LOAD_MORE_ROW_THRESHOLD = 5;
@@ -27,8 +26,7 @@ const LOAD_MORE_ROW_THRESHOLD = 5;
 const INITIAL_SCROLL_RECT = {width: 250, height: 600};
 
 function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
-    const {reloadHistoryTrigger, setChatId} = useSharedData();
-    const sharedRef = useSharedData(SharedDataContext);
+    const {reloadHistoryTrigger, setChatId, chatInputRef} = useSharedData();
     const navigate = useNavigate();
 
     const drawerRef = useRef(null);
@@ -60,8 +58,13 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
     const virtualRows = rowVirtualizer.getVirtualItems();
 
-    // Close drawer when clicking outside of it
+    /* Close on a click outside the drawer. Subscribed only while open, so the rest of the app is
+     * not paying for a document-level listener the drawer cannot act on. */
     useEffect(() => {
+        if (!drawerOpen) {
+            return;
+        }
+
         function handleClickOutside(event) {
             if (drawerRef.current && !drawerRef.current.contains(event.target)) {
                 setDrawerOpen(false);
@@ -72,7 +75,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         return () => {
             document.removeEventListener("mouseup", handleClickOutside);
         };
-    }, [setDrawerOpen, sharedRef.chatInputRef]);
+    }, [drawerOpen, setDrawerOpen]);
 
     /*
      * Infinite scroll: the virtualizer already knows how close the window is to the end of the
@@ -102,7 +105,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
          * null whenever ChatScreen is not mounted.
          */
         navigate("/");
-        sharedRef.chatInputRef.current?.focus();
+        chatInputRef.current?.focus();
     };
 
     return (
@@ -145,24 +148,33 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                         })}
                     </div>
 
-                    <div className="chat-history-status-area">
-                        {loading && (
-                            <div className="chat-history-status">Loading…</div>
-                        )}
+                    {/* In the scroll box, not the footer: an empty list stands in for the rows
+                      * under the title rather than sitting pinned to the drawer's foot. It can
+                      * never coexist with a scrollbar, so it cannot disturb one. */}
+                    {!loading && !error && chats.length === 0 && (
+                        <div className="chat-history-status">No chats yet.</div>
+                    )}
+                </div>
 
-                        {!loading && error && (
-                            <div className="chat-history-status chat-history-error">
-                                <span>Could not load chat history.</span>
-                                <button type="button" className="chat-history-retry" onClick={retry}>
-                                    Retry
-                                </button>
-                            </div>
-                        )}
+                {/*
+                  * Paging feedback in a fixed-height footer below the scroll box. Statuses toggling
+                  * while pages load change neither the scrollable height nor the scroll viewport,
+                  * so the scrollbar holds still — and the retry button is always reachable without
+                  * scrolling to the end of the list.
+                  */}
+                <div className="chat-history-status-area">
+                    {loading && (
+                        <div className="chat-history-status">Loading…</div>
+                    )}
 
-                        {!loading && !error && chats.length === 0 && (
-                            <div className="chat-history-status">No chats yet.</div>
-                        )}
-                    </div>
+                    {!loading && error && (
+                        <div className="chat-history-status chat-history-error">
+                            <span>Could not load chat history.</span>
+                            <button type="button" className="chat-history-retry" onClick={retry}>
+                                Retry
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

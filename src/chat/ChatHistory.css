@@ -97,11 +97,17 @@
 }
 
 /*
- * Paging feedback, kept outside the virtualized window so the retry button is always reachable.
- * The bottom padding replaces the trailing gap the last .date-group used to leave.
+ * Paging feedback footer, a sibling of the scroll box rather than content inside it. min-height
+ * covers the loading row, so the routine case — "Loading…" toggling on every page fetch — changes
+ * neither the scrollable height nor the scroll viewport, and the scrollbar holds still. While
+ * empty it doubles as the trailing gap the last .date-group used to leave.
  */
 .chat-history-status-area {
-    padding: 4px 0 20px;
+    flex-shrink: 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .chat-history-status {

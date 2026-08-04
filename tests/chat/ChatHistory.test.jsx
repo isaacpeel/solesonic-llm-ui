@@ -23,42 +23,41 @@ const VIEWPORT_HEIGHT = 600;
 const ROW_HEIGHT = 41;
 
 /*
- * jsdom lays nothing out, so every element reports a zero-sized rect and the virtualizer would
- * window against a zero-height viewport. Feeding the scroll box and the rows real numbers is what
- * makes the windowing observable at all.
+ * jsdom lays nothing out, so every element reports zero for the metrics @tanstack/virtual-core
+ * actually reads — `offsetWidth`/`offsetHeight` (its ResizeObserver path never fires under test;
+ * vitest.setup.js stubs the observer as a no-op). Feeding the scroll box and the rows real
+ * numbers through those getters is what makes the windowing observable at all.
  */
 function stubLayout() {
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
 
-    /** @this {Element} */
-    Element.prototype.getBoundingClientRect = function stubbedGetBoundingClientRect() {
-        if (this.classList.contains('chat-history-scroll')) {
-            return rectOf(250, VIEWPORT_HEIGHT);
-        }
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        get: function stubbedOffsetWidth() {
+            return 250;
+        },
+    });
 
-        if (this.classList.contains('chat-history-row')) {
-            return rectOf(250, ROW_HEIGHT);
-        }
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+        configurable: true,
+        /** @this {HTMLElement} */
+        get: function stubbedOffsetHeight() {
+            if (this.classList.contains('chat-history-scroll')) {
+                return VIEWPORT_HEIGHT;
+            }
 
-        return rectOf(0, 0);
-    };
+            if (this.classList.contains('chat-history-row')) {
+                return ROW_HEIGHT;
+            }
+
+            return 0;
+        },
+    });
 
     return () => {
-        Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    };
-}
-
-function rectOf(width, height) {
-    return {
-        width,
-        height,
-        top: 0,
-        left: 0,
-        right: width,
-        bottom: height,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
+        Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
     };
 }
 

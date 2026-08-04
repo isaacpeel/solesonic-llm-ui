@@ -21,6 +21,11 @@ const NO_MESSAGES_LABEL = "No messages yet";
  */
 const ESTIMATED_HEADER_ROW_HEIGHT = 62;
 
+/* Matches `.chat-history-header-row-spaced`'s padding-top — every header but the first carries
+ * this, and omitting it here left every one of them under-measured, so the virtualizer corrected
+ * the total size on every header scrolled past and the correction compounded further into the list. */
+const ESTIMATED_HEADER_ROW_SPACING = 20;
+
 const ESTIMATED_CHAT_ROW_HEIGHT = 41;
 
 /* The row's whole visible content, so the row stays one line and its height stays predictable. */
@@ -73,7 +78,9 @@ export function flattenChatGroupsToRows(groupedChats) {
 
 export function estimateChatHistoryRowSize(row) {
     if (row?.type === CHAT_HISTORY_HEADER_ROW) {
-        return ESTIMATED_HEADER_ROW_HEIGHT;
+        return row.firstInList
+            ? ESTIMATED_HEADER_ROW_HEIGHT
+            : ESTIMATED_HEADER_ROW_HEIGHT + ESTIMATED_HEADER_ROW_SPACING;
     }
 
     return ESTIMATED_CHAT_ROW_HEIGHT;
