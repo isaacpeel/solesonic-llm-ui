@@ -157,10 +157,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                 </div>
 
                 {/*
-                  * Paging feedback in a fixed-height footer below the scroll box. Statuses toggling
-                  * while pages load change neither the scrollable height nor the scroll viewport,
-                  * so the scrollbar holds still — and the retry button is always reachable without
-                  * scrolling to the end of the list.
+                  * Paging feedback overlaid on the foot of the scroll box. It takes no layout
+                  * height, so the list runs to the bottom of the drawer and the scroll viewport
+                  * never changes size as statuses toggle — and the retry button is always
+                  * reachable without scrolling to the end of the list.
                   */}
                 <div className="chat-history-status-area">
                     {loading && (

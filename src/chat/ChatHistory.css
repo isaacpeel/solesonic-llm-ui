@@ -19,7 +19,8 @@
     min-height: 0; /* Without this a flex item refuses to shrink below its content height. */
     display: flex;
     flex-direction: column;
-    padding: 20px;
+    position: relative; /* Anchors the status overlay to the drawer's foot. */
+    padding: 20px 20px 0; /* No bottom padding: the list runs all the way to the bottom of the screen. */
     overflow: hidden; /* .chat-history-scroll is the only scroll box. */
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
     z-index: 1000;
@@ -97,17 +98,22 @@
 }
 
 /*
- * Paging feedback footer, a sibling of the scroll box rather than content inside it. min-height
- * covers the loading row, so the routine case — "Loading…" toggling on every page fetch — changes
- * neither the scrollable height nor the scroll viewport, and the scrollbar holds still. While
- * empty it doubles as the trailing gap the last .date-group used to leave.
+ * Paging feedback, laid over the foot of the scroll box rather than taking layout height from it.
+ * The scroll viewport therefore keeps one height for the drawer's whole life — "Loading…" toggling
+ * on every page fetch changes neither the scrollable height nor the viewport, so the scrollbar
+ * holds still — and the list reaches the bottom of the screen instead of stopping above a
+ * permanently reserved footer.
  */
 .chat-history-status-area {
-    flex-shrink: 0;
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    bottom: 0;
     min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
+    pointer-events: none; /* While empty it sits over rows that still have to be clickable. */
 }
 
 .chat-history-status {
@@ -119,6 +125,9 @@
     font-size: 0.9rem;
     color: var(--text-color);
     opacity: 0.7;
+    pointer-events: auto; /* Restores clicks for the one child that is actually rendered. */
+    background-color: var(--primary-color); /* Opaque, so a status reads over the rows it covers. */
+    border-radius: 4px;
 }
 
 .chat-history-error {
