@@ -1,11 +1,11 @@
 import {useState, useEffect, useRef} from "react";
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
 
 import "./UserSettings.css";
 import RagManagement from "../train/RagManagement.jsx";
 import ModelSettings from "./ModelSettings.jsx";
 import OllamaModelSettings from "./OllamaModelSettings.jsx";
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
 import { SiAtlassian } from 'react-icons/si';

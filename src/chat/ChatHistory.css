@@ -9,26 +9,66 @@
     min-height: 0;
 }
 
+/*
+ * Holds the pinned title above the scroll box rather than scrolling itself. The virtualizer
+ * positions rows from the top of its scroll element, so anything scrolling above the rows — the
+ * title — would offset every row by its own height.
+ */
 .chat-drawer {
     flex: 1;
     min-height: 0; /* Without this a flex item refuses to shrink below its content height. */
+    display: flex;
+    flex-direction: column;
     padding: 20px;
-    background-color: var(--primary-color); /* Matches primary sections */
-    overflow-y: auto;
+    overflow: hidden; /* .chat-history-scroll is the only scroll box. */
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
     z-index: 1000;
 }
 
 /* Title style */
 .chat-drawer h2 {
+    flex-shrink: 0;
     font-size: 1.5rem;
     margin-bottom: 15px;
     color: var(--text-color); /* Matches overall text color */
 }
 
-/* Date Grouping */
-.date-group {
-    margin-bottom: 20px;
+/* The scroll box the virtualizer observes, and the element rows are positioned against. */
+.chat-history-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/*
+ * Stands in for the full height of every loaded row, mounted or not, so the scrollbar reflects
+ * the whole list while only the visible window exists in the DOM.
+ */
+.chat-history-spacer {
+    position: relative;
+    width: 100%;
+}
+
+/*
+ * Rows are taken out of flow and placed by transform, which means their vertical margins would be
+ * invisible to the virtualizer's measurement and rows would overlap. Every gap in this list is
+ * therefore expressed as padding.
+ */
+.chat-history-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+}
+
+/* Replaces the margin that used to sit under .date-header. */
+.chat-history-header-row {
+    padding-bottom: 10px;
+}
+
+/* Replaces the margin that used to separate one .date-group from the next. */
+.chat-history-header-row-spaced {
+    padding-top: 20px;
 }
 
 .date-header {
@@ -37,23 +77,18 @@
     color: var(--text-color); /* Softer text */
     border-bottom: 2px solid var(--border-color);
     padding-bottom: 8px;
-    margin-bottom: 10px;
 }
 
-/* Styling for the chat list */
-.chat-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-/* Chat item styling */
+/* Chat item styling. One line, truncated, so its measured height stays uniform. */
 .chat-item {
     padding: 10px;
     border-bottom: 1px solid var(--border-color); /* Subtle separator */
     cursor: pointer;
     transition: background-color 0.3s ease;
     color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Hover effect on chat items */
@@ -62,12 +97,11 @@
 }
 
 /*
- * Infinite-scroll sentinel. It must always occupy a little height, otherwise a zero-height element
- * at the very end of the scroll box never registers as intersecting.
+ * Paging feedback, kept outside the virtualized window so the retry button is always reachable.
+ * The bottom padding replaces the trailing gap the last .date-group used to leave.
  */
-.chat-history-sentinel {
-    min-height: 1px;
-    padding: 4px 0;
+.chat-history-status-area {
+    padding: 4px 0 20px;
 }
 
 .chat-history-status {
@@ -99,37 +133,6 @@
     background-color: var(--primary-color);
 }
 
-/* Close drawer icon */
-.close-drawer {
-    cursor: pointer;
-    position: absolute;
-    top: -10px;
-    left: 200px;
-    padding: 8px 12px;
-    height: 26px;
-    width: 26px;
-    color: var(--text-color);
-    background-color: var(--primary-color);
-    border: 1px solid var(--border-color);
-    border-radius: 50%;
-    text-align: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* Optional: Truncate long message text */
-.chat-item {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* On hover, adjust background to emphasize interaction */
-.chat-item:hover {
-    background-color: var(--secondary-color); /* Light gray hover */
-}
-
 /* Drawer styles */
 .drawer {
     position: fixed;
@@ -143,7 +146,7 @@
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
     transform: translateX(-100%);
     transition: transform 0.3s ease-in-out;
-    overflow: hidden; /* .chat-drawer is the only scroll box, so the drawer itself never scrolls. */
+    overflow: hidden; /* .chat-history-scroll is the only scroll box, so the drawer never scrolls. */
 }
 
 .drawer.open {

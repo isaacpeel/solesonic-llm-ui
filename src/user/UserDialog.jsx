@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
 import {UserCircleIcon, Cog6ToothIcon, ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid";
 import {useKeycloak} from '../providers/KeycloakProvider.jsx';
 import authService from '../service/AuthService.js';

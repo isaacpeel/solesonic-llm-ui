@@ -1,15 +1,30 @@
-import {useEffect, useRef} from "react";
-import {useNavigate} from "react-router-dom";
+import {useEffect, useMemo, useRef} from "react";
+import {useNavigate} from "react-router";
+import {useVirtualizer} from "@tanstack/react-virtual";
 
 import "./ChatHistory.css";
-import {ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid";
 import {useSharedData} from "../context/useSharedData.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import usePagedChatHistory from "../hooks/usePagedChatHistory.js";
 import {groupChatsByDay} from "../util/chatHistoryGrouping.js";
+import {
+    CHAT_HISTORY_HEADER_ROW,
+    estimateChatHistoryRowSize,
+    flattenChatGroupsToRows,
+} from "../util/chatHistoryRows.js";
 
-/* Starts the next fetch while the sentinel is still below the fold, so scrolling stays smooth. */
-const SENTINEL_ROOT_MARGIN = "200px";
+/* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
+const OVERSCAN_ROWS = 8;
+
+/* Starts the next fetch while the tail is still below the fold, so scrolling stays smooth. */
+const LOAD_MORE_ROW_THRESHOLD = 5;
+
+/*
+ * Seeds the virtualizer before the first ResizeObserver callback. `.drawer` is a fixed 250px column
+ * spanning the viewport, so this is the real geometry rather than a placeholder — without it the
+ * first paint windows against a zero-height box and mounts a single row.
+ */
+const INITIAL_SCROLL_RECT = {width: 250, height: 600};
 
 function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const {reloadHistoryTrigger, setChatId} = useSharedData();
@@ -18,14 +33,32 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
     const drawerRef = useRef(null);
     const scrollContainerRef = useRef(null);
-    const sentinelRef = useRef(null);
-    const toggleDrawer = () => setDrawerOpen(!drawerOpen);
 
     const {chats, loading, error, hasMore, loadMore, retry} = usePagedChatHistory({
         active: drawerOpen,
         reloadTrigger: reloadHistoryTrigger,
         userId,
     });
+
+    /*
+     * Both are memoized on the accumulated pages rather than recomputed per render: grouping sorts
+     * every bucket and then the buckets themselves, and the drawer re-renders on every parent
+     * state change, not just when a page lands.
+     */
+    const groupedChats = useMemo(() => groupChatsByDay(chats), [chats]);
+    const rows = useMemo(() => flattenChatGroupsToRows(groupedChats), [groupedChats]);
+
+    const rowVirtualizer = useVirtualizer({
+        count: rows.length,
+        getScrollElement: () => scrollContainerRef.current,
+        estimateSize: (index) => estimateChatHistoryRowSize(rows[index]),
+        /* Keyed by chat id, so measurements survive a page append shifting every index. */
+        getItemKey: (index) => rows[index]?.key ?? index,
+        overscan: OVERSCAN_ROWS,
+        initialRect: INITIAL_SCROLL_RECT,
+    });
+
+    const virtualRows = rowVirtualizer.getVirtualItems();
 
     // Close drawer when clicking outside of it
     useEffect(() => {
@@ -42,39 +75,22 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     }, [setDrawerOpen, sharedRef.chatInputRef]);
 
     /*
-     * Infinite scroll: a sentinel at the end of the list pulls the next page as it comes into view
-     * inside the drawer's own scroll box. The observer is rebuilt as rows arrive so a page that is
-     * too short to push the sentinel out of view immediately asks for the following one.
+     * Infinite scroll: the virtualizer already knows how close the window is to the end of the
+     * list, so nearing the last row pulls the next page. Re-running as rows arrive means a page
+     * too short to fill the drawer immediately asks for the following one. Repeat calls are
+     * harmless — `usePagedChatHistory` drops them while a request is in flight.
      */
     useEffect(() => {
         if (!drawerOpen || !hasMore) {
             return;
         }
 
-        const sentinel = sentinelRef.current;
+        const lastVirtualRow = virtualRows[virtualRows.length - 1];
 
-        if (!sentinel || typeof IntersectionObserver === "undefined") {
-            return;
+        if (lastVirtualRow && lastVirtualRow.index >= rows.length - LOAD_MORE_ROW_THRESHOLD) {
+            loadMore();
         }
-
-        const observer = new IntersectionObserver((entries) => {
-            if (entries.some(entry => entry.isIntersecting)) {
-                loadMore();
-            }
-        }, {root: scrollContainerRef.current, rootMargin: SENTINEL_ROOT_MARGIN});
-
-        observer.observe(sentinel);
-
-        return () => {
-            observer.disconnect();
-        };
-    }, [drawerOpen, hasMore, loadMore, chats.length]);
-
-    // Truncate long messages
-    const truncateMessage = (message, length = 25) =>
-        message.length > length ? message.slice(0, length) + '...' : message;
-
-    const groupedChats = groupChatsByDay(chats);
+    }, [drawerOpen, hasMore, loadMore, rows.length, virtualRows]);
 
     const handleChatClick = (chatId) => {
         setChatId(chatId);
@@ -90,60 +106,79 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     };
 
     return (
-        <div ref={drawerRef} className="chat-drawer-container">
-            <div
-                className="drawer-open icon-wrapper"
-                onClick={toggleDrawer}
-                data-dialog="Close Chat History"
-                data-edge-left=""
-            >
-                <ArrowLeftEndOnRectangleIcon onClick={toggleDrawer}/>
-            </div>
-            <div className="chat-drawer" ref={scrollContainerRef}>
+        <div ref={drawerRef} className="chat-drawer-container bg-primary">
+            <div className="chat-drawer mt-7!">
                 <h2>Chat History</h2>
-                <div className="chat-history-groups">
-                    {groupedChats.map((group) => (
-                        <div key={group.key} className="date-group">
-                            <div className="date-header">{group.label}</div>
-                            <div className="chat-list">
-                                {group.chats.map((chat) => {
-                                    const firstMessage = chat.chatMessages?.[0]?.message || 'No messages yet';
-                                    return (
+                <div className="chat-history-scroll" ref={scrollContainerRef}>
+                    <div
+                        className="chat-history-spacer"
+                        style={{height: `${rowVirtualizer.getTotalSize()}px`}}
+                    >
+                        {virtualRows.map((virtualRow) => {
+                            const row = rows[virtualRow.index];
+
+                            if (!row) {
+                                return null;
+                            }
+
+                            return (
+                                <div
+                                    key={virtualRow.key}
+                                    /* measureElement reads this to know which row it measured. */
+                                    data-index={virtualRow.index}
+                                    ref={rowVirtualizer.measureElement}
+                                    className={rowClassName(row)}
+                                    style={{transform: `translateY(${virtualRow.start}px)`}}
+                                >
+                                    {row.type === CHAT_HISTORY_HEADER_ROW ? (
+                                        <div className="date-header">{row.label}</div>
+                                    ) : (
                                         <div
-                                            key={chat.id}
                                             className="chat-item"
-                                            onClick={() => handleChatClick(chat.id)}
+                                            onClick={() => handleChatClick(row.chatId)}
                                         >
-                                            {truncateMessage(firstMessage)}
+                                            {row.label}
                                         </div>
-                                    );
-                                })}
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="chat-history-status-area">
+                        {loading && (
+                            <div className="chat-history-status">Loading…</div>
+                        )}
+
+                        {!loading && error && (
+                            <div className="chat-history-status chat-history-error">
+                                <span>Could not load chat history.</span>
+                                <button type="button" className="chat-history-retry" onClick={retry}>
+                                    Retry
+                                </button>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        )}
 
-                <div ref={sentinelRef} className="chat-history-sentinel">
-                    {loading && (
-                        <div className="chat-history-status">Loading…</div>
-                    )}
-
-                    {!loading && error && (
-                        <div className="chat-history-status chat-history-error">
-                            <span>Could not load chat history.</span>
-                            <button type="button" className="chat-history-retry" onClick={retry}>
-                                Retry
-                            </button>
-                        </div>
-                    )}
-
-                    {!loading && !error && chats.length === 0 && (
-                        <div className="chat-history-status">No chats yet.</div>
-                    )}
+                        {!loading && !error && chats.length === 0 && (
+                            <div className="chat-history-status">No chats yet.</div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
     );
+}
+
+function rowClassName(row) {
+    if (row.type !== CHAT_HISTORY_HEADER_ROW) {
+        return "chat-history-row";
+    }
+
+    if (row.firstInList) {
+        return "chat-history-row chat-history-header-row";
+    }
+
+    return "chat-history-row chat-history-header-row chat-history-header-row-spaced";
 }
 
 export default ChatHistory;

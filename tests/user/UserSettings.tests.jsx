@@ -1,10 +1,9 @@
 import {render, waitFor, fireEvent} from '@testing-library/react';
-import {MemoryRouter, Routes, Route} from 'react-router-dom';
+import {MemoryRouter, Routes, Route} from 'react-router';
 import UserSettings from '../../src/user/UserSettings.jsx';
 import {describe, it, vi, expect, beforeEach, afterEach} from 'vitest';
 import AtlassianAuthService from "../../src/service/AtlassianAuthService.js";
 import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
-import { SETTINGS_CONFIG } from '../../src/user/settingsConfig.js';
 import { ROLES } from '../../src/authorizer/roles.js';
 
 vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({

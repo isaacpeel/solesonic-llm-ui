@@ -1,4 +1,5 @@
-import {createBrowserRouter, Outlet, RouterProvider} from "react-router-dom";
+import {createBrowserRouter, Outlet} from "react-router";
+import {RouterProvider} from "react-router/dom";
 import './App.css';
 import ChatPage from "./chat/ChatScreen.jsx";
 import UserSettings from "./user/UserSettings.jsx";
@@ -16,32 +17,21 @@ const Layout = () => (
 );
 
 const router = createBrowserRouter([
-        {
-            path: "/",
-            element: <Layout />,
-            children: [
-                { index: true, element: <ChatPage /> },
-                { path: "settings", element: <UserSettings /> },
-            ]
-        }
-
-    ],
     {
-        future: {
-            v7_fetcherPersist: true
-        },
-    });
+        path: "/",
+        element: <Layout />,
+        children: [
+            { index: true, element: <ChatPage /> },
+            { path: "settings", element: <UserSettings /> },
+        ]
+    }
+]);
 
 const App = () => {
     return (
         <AuthenticationWrapper>
             <SharedDataProvider>
-                <RouterProvider
-                    router={router}
-                    future={{
-                        v7_startTransition: true,
-                        v7_relativeSplatPath: true,
-                    }}/>
+                <RouterProvider router={router} />
             </SharedDataProvider>
         </AuthenticationWrapper>
     );
