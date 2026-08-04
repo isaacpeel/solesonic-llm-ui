@@ -128,6 +128,12 @@ function useChatHistory() {
                     ...newHistory[lastIndex],
                     text: finalText,
                     model: response?.message?.model ?? newHistory[lastIndex].model,
+                    /*
+                     * The turn is only stamped here, not when the placeholder is pushed — a long
+                     * answer would otherwise land already reading "2 minutes ago". Prefers the
+                     * server's own stamp so a reload does not shift the label.
+                     */
+                    timestamp: response?.message?.timestamp ?? newHistory[lastIndex].timestamp ?? new Date().toISOString(),
                     isStreaming: false,
                     notifications: seedWasNeverFulfilled ? [] : newHistory[lastIndex].notifications,
                     hasSeededNotification: false,
@@ -394,6 +400,8 @@ async function fetchFormattedChatMessages(chatId) {
             text: message.message,
             model: message.model,
             messageId: message.id,
+            /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
+            timestamp: message.timestamp,
             attachments: Array.isArray(message.attachments) ? message.attachments : [],
             /*
              * Only the reference is ever persisted (plan §5), so a reloaded turn

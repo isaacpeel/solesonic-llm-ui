@@ -1,3 +1,4 @@
+import {useState} from "react";
 import PropTypes from "prop-types";
 import "./ChatMessage.css";
 import {InformationCircleIcon} from "@heroicons/react/20/solid";
@@ -5,6 +6,8 @@ import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "../attachment/MessageAttachments.jsx";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
+import MessageCopyButton from "./MessageCopyButton.jsx";
+import MessageTimestamp from "./MessageTimestamp.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -20,6 +23,13 @@ const TYPE_COLORS = {
 };
 
 function ChatMessage({message, onExpandAttachment}) {
+    const [isActionRowRevealed, setIsActionRowRevealed] = useState(false);
+    /*
+     * The relative label is computed during render, but the row is revealed by CSS hover, which
+     * does not re-render — a transcript left open would keep claiming "just now". Re-reading the
+     * clock as the pointer arrives refreshes it at exactly the moment it becomes readable.
+     */
+    const [nowMilliseconds, setNowMilliseconds] = useState(() => Date.now());
     const isElicitation = !!message.elicitationResponse;
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const isAIMessage = message.type === AI;
@@ -104,6 +114,37 @@ function ChatMessage({message, onExpandAttachment}) {
         <MessageGeneratedImages images={generatedImageList}/>
     ) : null;
 
+    /*
+     * Withheld while the answer streams — a half-written message is not worth copying, and the
+     * button would otherwise sit there for the length of the turn with nothing useful behind it.
+     */
+    const showCopyButton = isAIMessage && !isElicitation && hasText && !message.isStreaming;
+
+    const revealActionRow = () => {
+        setIsActionRowRevealed(true);
+        setNowMilliseconds(Date.now());
+    };
+
+    const messageCard = (
+        <ChatCard
+            text={isElicitation ? '' : message.text}
+            bgColor={typeColors.bgColor}
+            textColor={typeColors.textColor}
+            isInfo={isElicitation || message.type === SYSTEM}
+            isError={!!message.isError}
+            isStreaming={!!message.isStreaming}
+            showPlaceholder={showPlaceholder}
+            className={cardClassName}
+            footer={generatedImageFooter}
+        >
+            {attachmentChildren}
+            {elicitationChildren}
+            {notificationLogChildren}
+            {reconnectingChildren}
+            {visionUnconfirmedChildren}
+        </ChatCard>
+    );
+
     return (
         <div className={`chat-message-container ${containerClass}`}>
             {showIcon && (
@@ -111,23 +152,31 @@ function ChatMessage({message, onExpandAttachment}) {
                     <InformationCircleIcon />
                 </div>
             )}
-            <ChatCard
-                text={isElicitation ? '' : message.text}
-                bgColor={typeColors.bgColor}
-                textColor={typeColors.textColor}
-                isInfo={isElicitation || message.type === SYSTEM}
-                isError={!!message.isError}
-                isStreaming={!!message.isStreaming}
-                showPlaceholder={showPlaceholder}
-                className={cardClassName}
-                footer={generatedImageFooter}
-            >
-                {attachmentChildren}
-                {elicitationChildren}
-                {notificationLogChildren}
-                {reconnectingChildren}
-                {visionUnconfirmedChildren}
-            </ChatCard>
+
+            {/*
+              * The action row needs its own column beneath the card, but .chat-message-container
+              * is a row (info icon beside card), so the card gets wrapped. Only wrapped when
+              * there is an action to show, to leave every other message type's layout untouched.
+              *
+              * Hover reveals it on a pointer device; a tap does the same where there is no hover
+              * to give, which is why the click handler sets a flag rather than leaning on :hover.
+              * The pointer leaving clears that flag again, so a click on a mouse-driven browser
+              * does not leave the row pinned open behind the cursor.
+              */}
+            {showCopyButton ? (
+                <div
+                    className={`message-with-actions${isActionRowRevealed ? ' message-with-actions--revealed' : ''}`}
+                    onClick={revealActionRow}
+                    onMouseEnter={revealActionRow}
+                    onMouseLeave={() => setIsActionRowRevealed(false)}
+                >
+                    {messageCard}
+                    <div className="message-actions">
+                        <MessageCopyButton text={message.text}/>
+                        <MessageTimestamp timestamp={message.timestamp} nowMilliseconds={nowMilliseconds}/>
+                    </div>
+                </div>
+            ) : messageCard}
         </div>
     );
 }

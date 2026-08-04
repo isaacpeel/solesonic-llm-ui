@@ -1,5 +1,5 @@
-import {describe, it, expect} from 'vitest';
-import {render, screen} from '@testing-library/react';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import ChatMessage from '../../src/chat/message/ChatMessage.jsx';
 
 function buildMessage(overrides) {
@@ -299,6 +299,165 @@ describe('ChatMessage', () => {
             })} />);
 
             expect(container.querySelector('.message-reconnecting')).toBeNull();
+        });
+    });
+
+    describe('copy button', () => {
+        let writeText;
+        let originalClipboardDescriptor;
+
+        beforeEach(() => {
+            writeText = vi.fn().mockResolvedValue(undefined);
+            originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+            Object.defineProperty(navigator, 'clipboard', {value: {writeText}, configurable: true});
+        });
+
+        afterEach(() => {
+            if (originalClipboardDescriptor) {
+                Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+                return;
+            }
+
+            delete navigator.clipboard;
+        });
+
+        it('renders on a finished ASSISTANT message', () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            expect(container.querySelector('.message-copy-button')).not.toBeNull();
+        });
+
+        it('renders in an action row beneath the card', () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+
+            const wrapper = container.querySelector('.message-with-actions');
+            expect(wrapper).not.toBeNull();
+            expect(wrapper.querySelector('.message-actions .message-copy-button')).not.toBeNull();
+            /* The row must follow the card, not precede it. */
+            expect(wrapper.children[0].classList.contains('message')).toBe(true);
+            expect(wrapper.children[1].classList.contains('message-actions')).toBe(true);
+        });
+
+        /* Touch devices have no hover to reveal with, so a tap on the message stands in. */
+        it('marks the action row revealed once the message is clicked', () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+
+            const wrapper = container.querySelector('.message-with-actions');
+            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
+
+            fireEvent.click(wrapper);
+
+            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(true);
+        });
+
+        /* The row goes back to being hover-driven the moment the pointer leaves, copied or not. */
+        it('clears the revealed flag when the pointer leaves a message it just copied', async () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+
+            const wrapper = container.querySelector('.message-with-actions');
+            fireEvent.click(wrapper.querySelector('.message-copy-button'));
+
+            await waitFor(() => expect(wrapper.querySelector('.message-copy-button--copied')).not.toBeNull());
+            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(true);
+
+            fireEvent.mouseLeave(wrapper);
+
+            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
+        });
+
+        it('renders a relative timestamp beside the copy button', () => {
+            const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                timestamp: twoDaysAgo,
+            })} />);
+
+            const timestamp = container.querySelector('.message-actions .message-timestamp');
+            expect(timestamp).not.toBeNull();
+            expect(timestamp.textContent).toBe('2 days ago');
+        });
+
+        /* An unparseable or absent stamp must leave the copy button alone, not print "Invalid Date". */
+        it('renders no timestamp when the message carries none', () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+
+            expect(container.querySelector('.message-timestamp')).toBeNull();
+            expect(container.querySelector('.message-copy-button')).not.toBeNull();
+        });
+
+        it('leaves messages with no copy action unwrapped', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'my question',
+            })} />);
+
+            expect(container.querySelector('.message-with-actions')).toBeNull();
+            expect(container.querySelector('.message')).not.toBeNull();
+        });
+
+        it('does not render while the answer is still streaming', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'partial',
+                isStreaming: true,
+            })} />);
+
+            expect(container.querySelector('.message-copy-button')).toBeNull();
+        });
+
+        it('does not render on USER, SYSTEM or elicitation messages', () => {
+            const {container: userContainer} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'my question',
+            })} />);
+            expect(userContainer.querySelector('.message-copy-button')).toBeNull();
+
+            const {container: systemContainer} = render(<ChatMessage message={buildMessage({
+                type: 'SYSTEM',
+                text: 'system info',
+            })} />);
+            expect(systemContainer.querySelector('.message-copy-button')).toBeNull();
+
+            const {container: elicitationContainer} = render(<ChatMessage message={buildMessage({
+                text: 'Do you accept?',
+                elicitationResponse: 'accept',
+            })} />);
+            expect(elicitationContainer.querySelector('.message-copy-button')).toBeNull();
+        });
+
+        it('does not render on an answer with no text', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: '   ',
+                notifications: ['Step 1'],
+            })} />);
+
+            expect(container.querySelector('.message-copy-button')).toBeNull();
+        });
+
+        /* The bubble shows rendered HTML; the clipboard must get the markdown behind it. */
+        it('copies the raw markdown rather than the rendered text', async () => {
+            const markdown = '## Heading\n\n- one\n- two\n\n`code`';
+            const {container} = render(<ChatMessage message={buildMessage({text: markdown})} />);
+
+            fireEvent.click(container.querySelector('.message-copy-button'));
+
+            await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdown));
+        });
+
+        it('confirms on the button once the copy resolves', async () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+
+            fireEvent.click(container.querySelector('.message-copy-button'));
+
+            await waitFor(() => expect(container.querySelector('.message-copy-button--copied')).not.toBeNull());
+        });
+
+        it('leaves the button unconfirmed when the clipboard write rejects', async () => {
+            writeText.mockRejectedValue(new Error('denied'));
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+
+            fireEvent.click(container.querySelector('.message-copy-button'));
+
+            await waitFor(() => expect(writeText).toHaveBeenCalled());
+            expect(container.querySelector('.message-copy-button--copied')).toBeNull();
         });
     });
 });

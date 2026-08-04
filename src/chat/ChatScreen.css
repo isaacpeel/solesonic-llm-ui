@@ -39,6 +39,54 @@
 }
 
 /*
+ * Vertically it rides the same clearance the transcript uses, so it clears the composer
+ * whether or not the attachment tray is open. Horizontally it sits in the page gutter
+ * right of the message column: .chat-content's 15px padding plus the layout's 20px leaves
+ * 35px of empty page, so a 32px button at 12px stays clear of the widest bubble at every
+ * breakpoint — including the 768px one, where .message drops its 70% cap and runs full
+ * width. Fixed rather than absolute because the composer it sits above is fixed too.
+ */
+.chat-scroll-to-bottom {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--composer-clearance, 70px) + 10px);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: background-color var(--transition-speed);
+}
+
+.chat-scroll-to-bottom svg {
+    width: 10px;
+    height: 18px;
+    color: var(--text-color);
+    opacity: 0.85;
+}
+
+.chat-scroll-to-bottom:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.chat-scroll-to-bottom:hover svg {
+    opacity: 1;
+}
+
+.chat-scroll-to-bottom:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+/*
  * A lost caption degrades the answer; it never looks like a lost image, so this is a notice
  * rather than an error.
  */

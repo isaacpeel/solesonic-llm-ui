@@ -1,0 +1,11 @@
+/*
+ * Sits beside the copy button in .message-actions, which owns the reveal. Muted and small — it
+ * is context for the answer above it, not part of the answer.
+ */
+.message-timestamp {
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--text-color);
+    opacity: 0.55;
+}

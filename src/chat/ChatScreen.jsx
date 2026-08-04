@@ -1,4 +1,5 @@
 import {useCallback, useRef, useState, useEffect} from 'react';
+import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -14,6 +15,7 @@ import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
 import useAttachmentTray from '../hooks/useAttachmentTray.js';
+import useScrollToBottom from '../hooks/useScrollToBottom.js';
 
 
 function ChatScreen() {
@@ -87,6 +89,8 @@ function ChatScreen() {
         attachmentTray,
     });
 
+    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory);
+
     const {commandCandidates} = useSlashCommands({inputValue});
 
     const {selectedIndex, selectedCommand, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss} = useSlashCommandSelection({
@@ -118,7 +122,7 @@ function ChatScreen() {
         <div className={`chat-app${trayStateClassName}`}>
             {error && <ConsoleErrors error={error}/>}
 
-            <div className="chat-content">
+            <div className="chat-content" ref={scrollContainerRef}>
                 {chatHistory.map((entry) => (
                     <ChatMessage key={entry._key} message={entry} onExpandAttachment={openLightbox}/>
                 ))}
@@ -176,6 +180,22 @@ function ChatScreen() {
                     onCaptionOpenChange={setIsCaptionRowOpen}
                 />
             </div>
+
+            {/*
+              * Sits outside the scroll container so it stays pinned above the composer while
+              * the transcript scrolls underneath it.
+              */}
+            {isScrolledAwayFromBottom && (
+                <button
+                    type="button"
+                    className="chat-scroll-to-bottom"
+                    onClick={scrollToBottom}
+                    aria-label="Scroll to latest message"
+                    title="Scroll to latest message"
+                >
+                    <ArrowDownIcon/>
+                </button>
+            )}
         </div>
     );
 }
