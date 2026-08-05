@@ -1,10 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import log from 'loglevel';
-import {ArrowDownTrayIcon, ArrowPathIcon, ArrowsPointingOutIcon, ClipboardIcon} from '@heroicons/react/20/solid';
+import {ArrowsPointingOutIcon} from '@heroicons/react/20/solid';
 import useGeneratedImageUrl from '../hooks/useGeneratedImageUrl.js';
 import './GeneratedImage.css';
-
-const COPY_CONFIRMATION_MILLISECONDS = 2000;
 
 /*
  * Output is always square, so the frame reserves its final aspect ratio up front and the
@@ -26,24 +23,16 @@ function buildDownloadFileName(prompt, imageId) {
     return idSuffix ? `${promptSlug}-${idSuffix}.png` : `${promptSlug}.png`;
 }
 
-function canCopyImagesToClipboard() {
-    return typeof ClipboardItem !== 'undefined' && !!navigator.clipboard?.write;
-}
-
 /**
  * The single rendering path for a generated image — used by the explicit generation panel
  * today and by assistant turns once agentic generation ships, so both look identical.
  *
- * `onRegenerate` is optional: an image sitting in chat scrollback has no prompt box to
- * re-run, and the action is hidden rather than shown disabled.
- *
- * `onExpand` is optional in the same way — the "Full size" action only appears when a caller
- * can host the lightbox it hands the loaded bytes to.
+ * `onExpand` is optional: the "Full size" action only appears when a caller can host the
+ * lightbox it hands the loaded bytes to.
  */
-function GeneratedImage({image, onRegenerate, regenerating = false, onExpand}) {
+function GeneratedImage({image, onExpand}) {
     const [isVisible, setIsVisible] = useState(typeof IntersectionObserver === 'undefined');
     const [isMetadataOpen, setIsMetadataOpen] = useState(false);
-    const [copyState, setCopyState] = useState(null);
     const frameRef = useRef(null);
 
     const {objectUrl, loading, error} = useGeneratedImageUrl(image?.imageId, {deferred: !isVisible});
@@ -64,48 +53,6 @@ function GeneratedImage({image, onRegenerate, regenerating = false, onExpand}) {
 
         return () => observer.disconnect();
     }, [isVisible]);
-
-    useEffect(() => {
-        if (!copyState) {
-            return undefined;
-        }
-
-        const timeoutId = setTimeout(() => setCopyState(null), COPY_CONFIRMATION_MILLISECONDS);
-
-        return () => clearTimeout(timeoutId);
-    }, [copyState]);
-
-    const handleDownload = useCallback(() => {
-        if (!objectUrl) {
-            return;
-        }
-
-        const downloadAnchor = document.createElement('a');
-        downloadAnchor.href = objectUrl;
-        downloadAnchor.download = buildDownloadFileName(image?.prompt, image?.imageId);
-
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        document.body.removeChild(downloadAnchor);
-    }, [image?.imageId, image?.prompt, objectUrl]);
-
-    const handleCopy = useCallback(async () => {
-        if (!objectUrl) {
-            return;
-        }
-
-        try {
-            /* The blob URL is same-origin, so this re-reads the cached bytes without a network call. */
-            const blobResponse = await fetch(objectUrl);
-            const imageBlob = await blobResponse.blob();
-
-            await navigator.clipboard.write([new ClipboardItem({[imageBlob.type || 'image/png']: imageBlob})]);
-            setCopyState('copied');
-        } catch (caughtError) {
-            log.error('[GeneratedImage] Failed to copy image:', caughtError);
-            setCopyState('failed');
-        }
-    }, [objectUrl]);
 
     const handleExpand = useCallback(() => {
         if (!objectUrl || !onExpand) {
@@ -159,28 +106,6 @@ function GeneratedImage({image, onRegenerate, regenerating = false, onExpand}) {
             </div>
 
             <div className="generated-image-actions">
-                <button
-                    type="button"
-                    className="generated-image-action"
-                    onClick={handleDownload}
-                    disabled={!objectUrl}
-                >
-                    <ArrowDownTrayIcon aria-hidden="true"/>
-                    Download
-                </button>
-
-                {canCopyImagesToClipboard() && (
-                    <button
-                        type="button"
-                        className="generated-image-action"
-                        onClick={handleCopy}
-                        disabled={!objectUrl}
-                    >
-                        <ClipboardIcon aria-hidden="true"/>
-                        {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
-                    </button>
-                )}
-
                 {onExpand && (
                     <button
                         type="button"
@@ -193,22 +118,10 @@ function GeneratedImage({image, onRegenerate, regenerating = false, onExpand}) {
                     </button>
                 )}
 
-                {onRegenerate && (
-                    <button
-                        type="button"
-                        className="generated-image-action"
-                        onClick={onRegenerate}
-                        disabled={regenerating}
-                    >
-                        <ArrowPathIcon aria-hidden="true"/>
-                        Regenerate
-                    </button>
-                )}
-
                 {hasMetadata && (
                     <button
                         type="button"
-                        className="generated-image-action generated-image-action--metadata"
+                        className="generated-image-action"
                         onClick={() => setIsMetadataOpen((previousValue) => !previousValue)}
                         aria-expanded={isMetadataOpen}
                         aria-controls={`generated-image-metadata-${image.imageId}`}

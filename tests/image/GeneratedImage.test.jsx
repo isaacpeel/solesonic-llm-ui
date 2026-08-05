@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {act, render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent} from '@testing-library/react';
 
 vi.mock('../../src/hooks/useGeneratedImageUrl.js', () => ({
     default: vi.fn(),
@@ -91,74 +91,13 @@ describe('GeneratedImage', () => {
         expect(screen.queryByText('Details')).toBeNull();
     });
 
-    it('downloads through an anchor named after the prompt', () => {
-        const clickSpy = vi.fn();
-        const originalCreateElement = document.createElement.bind(document);
-        vi.spyOn(document, 'createElement').mockImplementation((tagName) => {
-            const element = originalCreateElement(tagName);
+    it('leaves full size and details as the only footer actions', () => {
+        const {container} = render(<GeneratedImage image={COMPLETED_IMAGE} onExpand={vi.fn()}/>);
 
-            if (tagName === 'a') {
-                element.click = clickSpy;
-            }
+        const actionLabels = Array.from(container.querySelectorAll('.generated-image-action'))
+            .map((actionButton) => actionButton.textContent.replace(/\s+/g, ' ').trim());
 
-            return element;
-        });
-
-        render(<GeneratedImage image={COMPLETED_IMAGE}/>);
-
-        fireEvent.click(screen.getByText('Download'));
-
-        expect(clickSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('disables the download while the bytes are still loading', () => {
-        useGeneratedImageUrl.mockReturnValue({objectUrl: null, loading: true, error: null});
-
-        render(<GeneratedImage image={COMPLETED_IMAGE}/>);
-
-        expect(screen.getByText('Download').closest('button').disabled).toBe(true);
-    });
-
-    it('hides the copy action where the clipboard cannot take an image', () => {
-        render(<GeneratedImage image={COMPLETED_IMAGE}/>);
-
-        expect(screen.queryByText('Copy')).toBeNull();
-    });
-
-    it('copies the image bytes when the clipboard supports it', async () => {
-        const writeMock = vi.fn().mockResolvedValue(undefined);
-        const imageBlob = {type: 'image/png'};
-
-        vi.stubGlobal('ClipboardItem', class {
-            constructor(items) {
-                this.items = items;
-            }
-        });
-        vi.stubGlobal('navigator', {clipboard: {write: writeMock}});
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({blob: async () => imageBlob}));
-
-        render(<GeneratedImage image={COMPLETED_IMAGE}/>);
-
-        await act(async () => {
-            fireEvent.click(screen.getByText('Copy'));
-        });
-
-        expect(writeMock).toHaveBeenCalledTimes(1);
-        expect(writeMock.mock.calls[0][0][0].items['image/png']).toBe(imageBlob);
-        expect(screen.getByText('Copied')).toBeTruthy();
-    });
-
-    it('offers regenerate only when the caller can handle it', () => {
-        const {rerender} = render(<GeneratedImage image={COMPLETED_IMAGE}/>);
-
-        expect(screen.queryByText('Regenerate')).toBeNull();
-
-        const onRegenerate = vi.fn();
-        rerender(<GeneratedImage image={COMPLETED_IMAGE} onRegenerate={onRegenerate}/>);
-
-        fireEvent.click(screen.getByText('Regenerate'));
-
-        expect(onRegenerate).toHaveBeenCalledTimes(1);
+        expect(actionLabels).toEqual(['Full size', 'Details▾']);
     });
 
     it('offers full size only when the caller can host a lightbox', () => {

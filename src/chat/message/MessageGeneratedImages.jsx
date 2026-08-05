@@ -2,8 +2,8 @@ import GeneratedImage from '../../image/GeneratedImage.jsx';
 import './MessageGeneratedImages.css';
 
 /*
- * Images attached to an assistant turn. No regenerate action here — there is no prompt box
- * to re-run, and the turn is already persisted.
+ * Images attached to an assistant turn. The turn is already persisted, so the only actions
+ * are the ones GeneratedImage renders for itself.
  */
 function MessageGeneratedImages({images, onExpand}) {
     const imageList = Array.isArray(images) ? images : [];
