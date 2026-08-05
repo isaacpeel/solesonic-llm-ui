@@ -117,8 +117,10 @@ function ChatMessage({message, onExpandAttachment}) {
     /*
      * Withheld while the answer streams — a half-written message is not worth copying, and the
      * button would otherwise sit there for the length of the turn with nothing useful behind it.
+     * Also withheld from ephemeral messages (the welcome greeting): they are client-side filler
+     * with no timestamp and nothing worth copying, and they vanish on the next submit.
      */
-    const showCopyButton = isAIMessage && !isElicitation && hasText && !message.isStreaming;
+    const showCopyButton = isAIMessage && !isElicitation && hasText && !message.isStreaming && !message.ephemeral;
 
     const revealActionRow = () => {
         setIsActionRowRevealed(true);

@@ -432,6 +432,18 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.message-copy-button')).toBeNull();
         });
 
+        /* The welcome greeting is client-side filler with no timestamp — no action row at all. */
+        it('does not render the action row on an ephemeral message', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'Hi! How can I assist you today?',
+                ephemeral: true,
+            })} />);
+
+            expect(container.querySelector('.message-with-actions')).toBeNull();
+            expect(container.querySelector('.message-actions')).toBeNull();
+            expect(container.querySelector('.message-copy-button')).toBeNull();
+        });
+
         /* The bubble shows rendered HTML; the clipboard must get the markdown behind it. */
         it('copies the raw markdown rather than the rendered text', async () => {
             const markdown = '## Heading\n\n- one\n- two\n\n`code`';
