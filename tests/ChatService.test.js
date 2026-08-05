@@ -335,7 +335,7 @@ describe('handleStreamChunk — progress notification', () => {
 
         chatService.handleStreamChunk(payload, callbacks);
 
-        expect(callbacks.appendNotificationMessage).toHaveBeenCalledWith('Step 1 done');
+        expect(callbacks.appendNotificationMessage).toHaveBeenCalledWith('Step 1 done 33%');
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });

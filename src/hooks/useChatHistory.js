@@ -2,6 +2,10 @@ import {useCallback, useEffect, useRef} from 'react';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService from '../service/ChatService.js';
 import {normalizeGeneratedImage} from '../service/ImageGenerationService.js';
+import {
+    appendProgressNotificationText,
+    formatProgressNotificationText
+} from '../service/ProgressNotificationService.js';
 import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 
 function useChatHistory() {
@@ -353,7 +357,7 @@ function useChatHistory() {
 
             newHistory[lastMessageIndex] = {
                 ...lastMessage,
-                notifications: [...existingNotifications, trimmedNotificationMessageText],
+                notifications: appendProgressNotificationText(existingNotifications, trimmedNotificationMessageText),
             };
 
             return newHistory;
@@ -388,10 +392,19 @@ async function fetchFormattedChatMessages(chatId) {
 
     response.chatMessages.forEach((message, index) => {
         if (message.progressData) {
-            const notificationText = (message.progressData.message || message.message || '').trim();
+            /*
+             * The persisted frame carries the same progress/total the live one did, so a
+             * reloaded turn shows the same percentages the user watched count up.
+             */
+            const notificationText = formatProgressNotificationText({
+                ...message.progressData,
+                message: message.progressData.message || message.message,
+            });
+
             if (notificationText) {
-                pendingProgressNotifications.push(notificationText);
+                pendingProgressNotifications = appendProgressNotificationText(pendingProgressNotifications, notificationText);
             }
+
             return;
         }
 
