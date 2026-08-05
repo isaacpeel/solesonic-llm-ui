@@ -22,7 +22,7 @@ const TYPE_COLORS = {
     [SYSTEM]: {bgColor: '#3b4d61', textColor: '#ffffff'},
 };
 
-function ChatMessage({message, onExpandAttachment}) {
+function ChatMessage({message, onExpandImage}) {
     const [isActionRowRevealed, setIsActionRowRevealed] = useState(false);
     /*
      * The relative label is computed during render, but the row is revealed by CSS hover, which
@@ -70,7 +70,7 @@ function ChatMessage({message, onExpandAttachment}) {
      */
     const attachmentList = Array.isArray(message.attachments) ? message.attachments : [];
     const attachmentChildren = message.type === USER && attachmentList.length > 0 ? (
-        <MessageAttachments attachments={attachmentList} onExpand={onExpandAttachment}/>
+        <MessageAttachments attachments={attachmentList} onExpand={onExpandImage}/>
     ) : null;
 
     /*
@@ -111,7 +111,7 @@ function ChatMessage({message, onExpandAttachment}) {
      */
     const generatedImageList = Array.isArray(message.generatedImages) ? message.generatedImages : [];
     const generatedImageFooter = isAIMessage && generatedImageList.length > 0 ? (
-        <MessageGeneratedImages images={generatedImageList}/>
+        <MessageGeneratedImages images={generatedImageList} onExpand={onExpandImage}/>
     ) : null;
 
     /*
@@ -185,7 +185,7 @@ function ChatMessage({message, onExpandAttachment}) {
 
 ChatMessage.propTypes = {
     message: PropTypes.object.isRequired,
-    onExpandAttachment: PropTypes.func,
+    onExpandImage: PropTypes.func,
 };
 
 export default ChatMessage;

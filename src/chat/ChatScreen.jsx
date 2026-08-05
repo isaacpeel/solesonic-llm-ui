@@ -124,7 +124,7 @@ function ChatScreen() {
 
             <div className="chat-content" ref={scrollContainerRef}>
                 {chatHistory.map((entry) => (
-                    <ChatMessage key={entry._key} message={entry} onExpandAttachment={openLightbox}/>
+                    <ChatMessage key={entry._key} message={entry} onExpandImage={openLightbox}/>
                 ))}
 
                 {attachmentNotice && (

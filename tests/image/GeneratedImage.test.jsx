@@ -160,4 +160,27 @@ describe('GeneratedImage', () => {
 
         expect(onRegenerate).toHaveBeenCalledTimes(1);
     });
+
+    it('offers full size only when the caller can host a lightbox', () => {
+        const onExpand = vi.fn();
+        const {rerender} = render(<GeneratedImage image={COMPLETED_IMAGE}/>);
+
+        expect(screen.queryByText('Full size')).toBeNull();
+
+        rerender(<GeneratedImage image={COMPLETED_IMAGE} onExpand={onExpand}/>);
+
+        fireEvent.click(screen.getByText('Full size'));
+
+        expect(onExpand).toHaveBeenCalledTimes(1);
+        expect(onExpand.mock.calls[0][0].objectUrl).toBe('blob:image-1');
+        expect(onExpand.mock.calls[0][0].description).toBe('a lighthouse on a cliff in a storm');
+    });
+
+    it('disables full size while the bytes are still loading', () => {
+        useGeneratedImageUrl.mockReturnValue({objectUrl: null, loading: true, error: null});
+
+        render(<GeneratedImage image={COMPLETED_IMAGE} onExpand={vi.fn()}/>);
+
+        expect(screen.getByText('Full size').closest('button').disabled).toBe(true);
+    });
 });

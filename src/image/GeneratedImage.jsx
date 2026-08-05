@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import log from 'loglevel';
-import {ArrowDownTrayIcon, ArrowPathIcon, ClipboardIcon} from '@heroicons/react/20/solid';
+import {ArrowDownTrayIcon, ArrowPathIcon, ArrowsPointingOutIcon, ClipboardIcon} from '@heroicons/react/20/solid';
 import useGeneratedImageUrl from '../hooks/useGeneratedImageUrl.js';
 import './GeneratedImage.css';
 
@@ -36,8 +36,11 @@ function canCopyImagesToClipboard() {
  *
  * `onRegenerate` is optional: an image sitting in chat scrollback has no prompt box to
  * re-run, and the action is hidden rather than shown disabled.
+ *
+ * `onExpand` is optional in the same way — the "Full size" action only appears when a caller
+ * can host the lightbox it hands the loaded bytes to.
  */
-function GeneratedImage({image, onRegenerate, regenerating = false}) {
+function GeneratedImage({image, onRegenerate, regenerating = false, onExpand}) {
     const [isVisible, setIsVisible] = useState(typeof IntersectionObserver === 'undefined');
     const [isMetadataOpen, setIsMetadataOpen] = useState(false);
     const [copyState, setCopyState] = useState(null);
@@ -104,6 +107,22 @@ function GeneratedImage({image, onRegenerate, regenerating = false}) {
         }
     }, [objectUrl]);
 
+    const handleExpand = useCallback(() => {
+        if (!objectUrl || !onExpand) {
+            return;
+        }
+
+        /*
+         * The lightbox is shared with chat attachments, so the image is handed over in that
+         * shape — the prompt reads as the caption there.
+         */
+        onExpand({
+            objectUrl,
+            description: image?.prompt,
+            fileName: buildDownloadFileName(image?.prompt, image?.imageId),
+        });
+    }, [image?.imageId, image?.prompt, objectUrl, onExpand]);
+
     if (!image?.imageId) {
         return null;
     }
@@ -159,6 +178,18 @@ function GeneratedImage({image, onRegenerate, regenerating = false}) {
                     >
                         <ClipboardIcon aria-hidden="true"/>
                         {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
+                    </button>
+                )}
+
+                {onExpand && (
+                    <button
+                        type="button"
+                        className="generated-image-action"
+                        onClick={handleExpand}
+                        disabled={!objectUrl}
+                    >
+                        <ArrowsPointingOutIcon aria-hidden="true"/>
+                        Full size
                     </button>
                 )}
 
