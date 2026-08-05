@@ -1,10 +1,10 @@
 :root {
     --background-color: #1e1e1e; /* Slightly lighter dark gray */
-    --primary-color: #2c2c2c;   /* Lighter dark gray for primary sections */
+    --primary-color: #2c2c2c; /* Lighter dark gray for primary sections */
     --secondary-color: #3a3a3a; /* Lighter gray for content sections */
-    --text-color: #e0e0e0;      /* Softer white text */
-    --accent-color: #4a4a4a;    /* Accent color remains the same */
-    --border-color: #4a4a4a;    /* Slightly lighter border */
+    --text-color: #e0e0e0; /* Softer white text */
+    --accent-color: #4a4a4a; /* Accent color remains the same */
+    --border-color: #4a4a4a; /* Slightly lighter border */
 
     --background-dark: #1e1e2f;
     --background-darker: #14141f;
@@ -12,20 +12,20 @@
     --logo-size: 100px;
 
     /* Button colors */
-    --icon-bg: transparent;         /* Transparent background (since it's an icon) */
-    --icon-color: #fff;             /* Default white icon color */
-    --icon-hover-bg: #4a4a4a;       /* Light gray background on hover */
-    --icon-hover-color: #d3d3d3;       /* Black icon color on hover */
+    --icon-bg: transparent; /* Transparent background (since it's an icon) */
+    --icon-color: #fff; /* Default white icon color */
+    --icon-hover-bg: #4a4a4a; /* Light gray background on hover */
+    --icon-hover-color: #d3d3d3; /* Black icon color on hover */
 
     /* Tooltip colors */
-    --dialog-bg: #000;              /* Black dialog background */
-    --dialog-text-color: #fff;      /* White text in the dialog */
+    --dialog-bg: #000; /* Black dialog background */
+    --dialog-text-color: #fff; /* White text in the dialog */
 
     /* Optional additional styling */
-    --border-radius: 6px;           /* Border radius for icons */
-    --icon-size: 1.5rem;            /* Icon size */
-    --transition-speed: 0.3s;       /* Transition speed for hover effects */
-    --padding: 10px;                /* Padding for icon */
+    --border-radius: 6px; /* Border radius for icons */
+    --icon-size: 1.5rem; /* Icon size */
+    --transition-speed: 0.3s; /* Transition speed for hover effects */
+    --padding: 10px; /* Padding for icon */
 }
 
 body {
@@ -47,29 +47,21 @@ code {
 /* Basic icon wrapper styling */
 .icon-wrapper {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
     cursor: pointer;
     padding: var(--padding);
     border-radius: var(--border-radius);
     transition: background-color var(--transition-speed), color var(--transition-speed);
     position: relative; /* Needed for positioning the tooltip */
-    background-color: var(--background-color);
 }
 
 /* Hover effect on icons */
 .icon-wrapper:hover {
-    background-color: var(--icon-hover-bg);
-    color: var(--icon-hover-color);
+    color: darkgray;
+    cursor: pointer;
 }
 
 .drawer-open.icon-wrapper {
     background-color: var(--primary-color); /* Replace with your drawer background color */
-}
-
-.drawer-open.icon-wrapper:hover {
-    background-color: var(--icon-hover-bg);
-    color: var(--icon-hover-color);
 }
 
 /* Tooltip (dialog) styling */
@@ -101,7 +93,7 @@ code {
 .icon-wrapper svg {
     width: var(--icon-size);
     height: var(--icon-size);
-    fill: currentColor;  /* Ensures the icon inherits the color */
+    fill: currentColor; /* Ensures the icon inherits the color */
 }
 
 /* Icon color on hover */

@@ -13,7 +13,7 @@
 .chat-content {
     flex: 1;
     overflow-y: auto;
-    margin-bottom: 65px;
+    margin-bottom: var(--composer-clearance, 70px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -23,6 +23,127 @@
     border-radius: 8px;
     padding: 15px;
     width: 100%;
+}
+
+/*
+ * The composer is position: fixed, so .chat-content clears it manually. A non-empty tray
+ * grows the composer upward past the default clearance. Static values are sound here
+ * because the tray is capped at 4 images and never wraps to a second row.
+ */
+.chat-app--tray-open {
+    --composer-clearance: 110px;
+}
+
+.chat-app--caption-open {
+    --composer-clearance: 165px;
+}
+
+/*
+ * Vertically it rides the same clearance the transcript uses, so it clears the composer
+ * whether or not the attachment tray is open. Horizontally it sits in the page gutter
+ * right of the message column: .chat-content's 15px padding plus the layout's 20px leaves
+ * 35px of empty page, so a 32px button at 12px stays clear of the widest bubble at every
+ * breakpoint — including the 768px one, where .message drops its 70% cap and runs full
+ * width. Fixed rather than absolute because the composer it sits above is fixed too.
+ */
+.chat-scroll-to-bottom {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--composer-clearance, 70px) + 10px);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: background-color var(--transition-speed);
+}
+
+.chat-scroll-to-bottom svg {
+    width: 10px;
+    height: 18px;
+    color: var(--text-color);
+    opacity: 0.85;
+}
+
+.chat-scroll-to-bottom:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.chat-scroll-to-bottom:hover svg {
+    opacity: 1;
+}
+
+.chat-scroll-to-bottom:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+/*
+ * A lost caption degrades the answer; it never looks like a lost image, so this is a notice
+ * rather than an error.
+ */
+.chat-attachment-notice {
+    width: 45%;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 1.4;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+/*
+ * Recovery ran out of patience. Still a notice rather than an error — the turn very likely
+ * completed server-side, so the useful affordance is "look again", not a stack trace.
+ */
+.chat-recovery-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 45%;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 1.4;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+}
+
+.chat-recovery-notice-retry {
+    padding: 3px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.chat-recovery-notice-retry:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+    .chat-attachment-notice {
+        width: 85%;
+    }
+
+    .chat-recovery-notice {
+        width: 85%;
+    }
 }
 
 .jira-issue-link {

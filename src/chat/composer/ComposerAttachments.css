@@ -1,0 +1,119 @@
+.composer-attachments {
+    display: flex;
+    flex-direction: column;
+    border-radius: 22px;
+}
+
+/* An outline rather than a border, so nothing shifts when the drag state toggles. */
+.composer-attachments--drag-over {
+    outline: 1px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+/*
+ * The composer field itself — one rounded pill holding the attach button, the textarea and the
+ * send button. Also the positioning context for .dots-loader, so the loader keeps centering on
+ * the input alone rather than on tray-plus-textarea.
+ */
+.chat-input-row {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 6px 6px 6px 8px;
+    border-radius: 22px;
+    box-sizing: border-box;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    transition: border-color var(--transition-speed);
+}
+
+.chat-input-row:focus-within {
+    border-color: #6f6f6f;
+}
+
+.composer-attachment-caption-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 8px 8px;
+}
+
+.composer-attachment-caption-label {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.75;
+}
+
+.composer-attachment-caption-input {
+    width: 100%;
+    padding: 5px 12px;
+    border-radius: 14px;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.composer-attachment-caption-input:focus {
+    outline: none;
+    border-color: #6f6f6f;
+}
+
+.composer-attachment-tray-error {
+    padding: 0 8px 6px;
+    font-size: 11px;
+    line-height: 1.3;
+    color: #e06c62;
+}
+
+.composer-attach-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.composer-attach-button svg {
+    width: 20px;
+    height: 20px;
+    color: var(--text-color);
+    opacity: 0.75;
+}
+
+.composer-attach-button:hover:not(:disabled) {
+    background-color: var(--icon-hover-bg);
+}
+
+.composer-attach-button:hover:not(:disabled) svg {
+    opacity: 1;
+}
+
+.composer-attach-button:disabled {
+    cursor: not-allowed;
+}
+
+.composer-attach-button:disabled svg {
+    opacity: 0.35;
+}
+
+.composer-attach-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.composer-attachment-file-input {
+    display: none;
+}

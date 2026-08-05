@@ -21,6 +21,7 @@ function makeResponse(status, body, contentType = 'application/json') {
             get: (name) => name.toLowerCase() === 'content-type' ? contentType : null,
         },
         json: () => Promise.resolve(JSON.parse(bodyString)),
+        blob: () => Promise.resolve({size: bodyString.length, type: contentType}),
     };
 }
 
@@ -133,6 +134,39 @@ describe('ApiClient', () => {
 
         const callHeaders = vi.mocked(fetch).mock.calls[0][1].headers;
         expect(callHeaders['Content-Type']).toBeUndefined();
+    });
+
+    it('getBlob returns the response blob rather than null for a non-JSON content type', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(200, 'binary', 'image/png'));
+
+        const result = await apiClient.getBlob('/api/attachments/1');
+
+        expect(result).toEqual({size: 'binary'.length, type: 'image/png'});
+    });
+
+    it('getBlob still returns null on 204 before reaching the blob branch', async () => {
+        const response = makeResponse(204, '', 'image/png');
+        response.blob = vi.fn();
+        vi.mocked(fetch).mockResolvedValue(response);
+
+        const result = await apiClient.getBlob('/api/attachments/1');
+
+        expect(result).toBeNull();
+        expect(response.blob).not.toHaveBeenCalled();
+    });
+
+    it('getBlob with noOp returns null on error instead of throwing', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(404, {message: 'Not found'}));
+
+        const result = await apiClient.getBlob('/api/attachments/1', {noOp: true});
+
+        expect(result).toBeNull();
+    });
+
+    it('default responseType still parses JSON', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(200, {id: 7}));
+
+        await expect(apiClient.get('/api/test')).resolves.toEqual({id: 7});
     });
 
     it('JSON body — sets Content-Type application/json', async () => {

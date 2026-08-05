@@ -1,7 +1,7 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {renderHook, act} from '@testing-library/react';
 import useElicitation from '../../src/hooks/useElicitation.js';
-import {AI} from '../../src/chat/ChatMessage.jsx';
+import {AI} from '../../src/chat/message/ChatMessage.jsx';
 
 vi.mock('../../src/service/AuthService.js', () => ({
     default: {},

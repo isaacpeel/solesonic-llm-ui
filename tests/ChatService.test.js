@@ -1,5 +1,16 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import chatService, {CHUNK, DONE, ELICITATION, ERROR, INIT, MESSAGE} from '../src/service/ChatService.js';
+import chatService, {
+    CHUNK,
+    DONE,
+    ELICITATION,
+    ERROR,
+    INIT,
+    MESSAGE,
+    RESUME_ALREADY_COMPLETE,
+    RESUME_REJECTED,
+    RESUME_STREAMED,
+    RESUME_UNAVAILABLE,
+} from '../src/service/ChatService.js';
 import authClient from "../src/service/AuthService.js";
 
 vi.mock('../src/client/ApiClient.js', () => ({
@@ -324,7 +335,7 @@ describe('handleStreamChunk — progress notification', () => {
 
         chatService.handleStreamChunk(payload, callbacks);
 
-        expect(callbacks.appendNotificationMessage).toHaveBeenCalledWith('Step 1 done');
+        expect(callbacks.appendNotificationMessage).toHaveBeenCalledWith('Step 1 done 33%');
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });
@@ -471,5 +482,249 @@ describe('chatStream', () => {
 
         const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
         expect(JSON.parse(capturedBody)).toEqual({chatMessage: 'from object'});
+    });
+
+    it('object message with attachmentIds → passed through unchanged', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: DONE, data: JSON.stringify({id: 'c1'})},
+        ]));
+
+        await chatService.chatStream({chatMessage: 'look', attachmentIds: ['attachment-1', 'attachment-2']}, null, {});
+
+        const capturedBody = vi.mocked(fetch).mock.calls[0][1].body;
+        expect(JSON.parse(capturedBody)).toEqual({
+            chatMessage: 'look',
+            attachmentIds: ['attachment-1', 'attachment-2'],
+        });
+    });
+});
+
+describe('handleStreamChunk INIT messageId', () => {
+    function makeHandlers(overrides = {}) {
+        return {
+            activeElicitation: null,
+            chatId: null,
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            setError: vi.fn(),
+            ...overrides,
+        };
+    }
+
+    it('calls adoptMessageId with the messageId from the init frame', () => {
+        const adoptMessageId = vi.fn();
+        const handlers = makeHandlers({adoptMessageId});
+
+        chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({id: 'chat-1', messageId: 'msg-1'})},
+            handlers
+        );
+
+        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalledWith({id: 'chat-1', messageId: 'msg-1'});
+        expect(adoptMessageId).toHaveBeenCalledWith('msg-1');
+    });
+
+    it('passes undefined to adoptMessageId when the init frame carries no messageId', () => {
+        const adoptMessageId = vi.fn();
+
+        chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({id: 'chat-1'})},
+            makeHandlers({adoptMessageId})
+        );
+
+        expect(adoptMessageId).toHaveBeenCalledWith(undefined);
+    });
+
+    it('does not throw when no adoptMessageId handler is supplied', () => {
+        const handlers = makeHandlers();
+
+        expect(() => chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({id: 'chat-1', messageId: 'msg-1'})},
+            handlers
+        )).not.toThrow();
+
+        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalled();
+    });
+
+    it('accepts an init frame carrying chatId instead of id', () => {
+        const handlers = makeHandlers();
+
+        chatService.handleStreamChunk(
+            {event: INIT, data: JSON.stringify({chatId: 'chat-1', messageId: 'msg-1'})},
+            handlers
+        );
+
+        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalledWith({chatId: 'chat-1', messageId: 'msg-1'});
+    });
+});
+
+describe('error frame shapes', () => {
+    function makeHandlers(overrides = {}) {
+        return {
+            appendNotificationMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            appendToLastAIMessage: vi.fn(),
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            setError: vi.fn(),
+            ...overrides,
+        };
+    }
+
+    it('surfaces a chat error carrying content', () => {
+        const handlers = makeHandlers();
+
+        chatService.handleStreamChunk(
+            {event: ERROR, data: JSON.stringify({content: 'the model refused'})},
+            handlers
+        );
+
+        expect(handlers.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the model refused'}));
+    });
+
+    it('surfaces an image-generation failure carrying code and message', () => {
+        const handlers = makeHandlers();
+
+        chatService.handleStreamChunk(
+            {event: ERROR, data: JSON.stringify({code: 'GENERATION_TIMEOUT', message: 'image generation timed out'})},
+            handlers
+        );
+
+        expect(handlers.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'image generation timed out'}));
+    });
+
+    it('prefers content when a frame somehow carries both', () => {
+        const handlers = makeHandlers();
+
+        chatService.handleStreamChunk(
+            {event: ERROR, data: JSON.stringify({content: 'the real one', message: 'the other one'})},
+            handlers
+        );
+
+        expect(handlers.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the real one'}));
+    });
+
+    it('stays quiet when neither field carries text', () => {
+        const handlers = makeHandlers();
+
+        chatService.handleStreamChunk(
+            {event: ERROR, data: JSON.stringify({code: 'GENERATION_TIMEOUT'})},
+            handlers
+        );
+
+        expect(handlers.setError).not.toHaveBeenCalled();
+    });
+});
+
+describe('chatStreamResume', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function makeResponse(status, overrides = {}) {
+        return {
+            status,
+            ok: status >= 200 && status < 300,
+            statusText: `status ${status}`,
+            body: {},
+            ...overrides,
+        };
+    }
+
+    it('requests the resume endpoint with the cursor as an opaque header', async () => {
+        parseSseStream.mockImplementation(async function* () {
+            yield {event: DONE, id: '1754062831270-0', data: '{}'};
+        });
+        fetch.mockResolvedValue(makeResponse(200));
+
+        const outcome = await chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk: vi.fn()});
+
+        expect(outcome).toBe(RESUME_STREAMED);
+
+        const [requestedUri, requestInit] = fetch.mock.calls[0];
+        expect(requestedUri).toBe('https://api.example.com/stream/chat-1/users/mock-user-id/stream');
+        expect(requestInit.method).toBe('GET');
+        expect(requestInit.headers['Last-Event-ID']).toBe('1754062831251-1');
+        expect(requestInit.headers.Accept).toBe('text/event-stream');
+        expect(requestInit.headers.Authorization).toBe('Bearer mock-access-token');
+    });
+
+    it('sends the from-the-beginning sentinel when there is no cursor', async () => {
+        parseSseStream.mockImplementation(async function* () {
+            yield {event: DONE, id: '1754062831270-0', data: '{}'};
+        });
+        fetch.mockResolvedValue(makeResponse(200));
+
+        await chatService.chatStreamResume('chat-1', null, {onChunk: vi.fn()});
+
+        expect(fetch.mock.calls[0][1].headers['Last-Event-ID']).toBe('0');
+    });
+
+    it('routes replayed frames through onChunk and stops at the terminal frame', async () => {
+        parseSseStream.mockImplementation(async function* () {
+            yield {event: CHUNK, id: '1754062831260-0', data: '{"content":"rest"}'};
+            yield {event: DONE, id: '1754062831270-0', data: '{}'};
+            yield {event: CHUNK, id: '1754062831280-0', data: '{"content":"never"}'};
+        });
+        fetch.mockResolvedValue(makeResponse(200));
+
+        const onChunk = vi.fn();
+        await chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(2);
+        expect(onChunk.mock.calls[1][0].event).toBe(DONE);
+    });
+
+    it('reports 204 as nothing left to replay', async () => {
+        fetch.mockResolvedValue(makeResponse(204, {body: null}));
+
+        await expect(chatService.chatStreamResume('chat-1', '1754062831251-1', {}))
+            .resolves.toBe(RESUME_ALREADY_COMPLETE);
+    });
+
+    it('reports an aged-out buffer and an unknown chat as unavailable', async () => {
+        fetch.mockResolvedValue(makeResponse(410, {body: null}));
+        await expect(chatService.chatStreamResume('chat-1', 'x', {})).resolves.toBe(RESUME_UNAVAILABLE);
+
+        fetch.mockResolvedValue(makeResponse(404, {body: null}));
+        await expect(chatService.chatStreamResume('chat-1', 'x', {})).resolves.toBe(RESUME_UNAVAILABLE);
+    });
+
+    it('treats a rejected cursor as recoverable but logs it as a client bug', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        fetch.mockResolvedValue(makeResponse(400, {body: null}));
+
+        await expect(chatService.chatStreamResume('chat-1', 'not-a-cursor', {}))
+            .resolves.toBe(RESUME_UNAVAILABLE);
+
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('reports a forbidden chat as rejected so recovery does not keep asking', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        fetch.mockResolvedValue(makeResponse(403, {body: null}));
+
+        await expect(chatService.chatStreamResume('chat-1', 'x', {})).resolves.toBe(RESUME_REJECTED);
+
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('throws on an unexpected server failure', async () => {
+        fetch.mockResolvedValue(makeResponse(500, {body: null}));
+
+        await expect(chatService.chatStreamResume('chat-1', 'x', {})).rejects.toThrow('Stream resume failed');
     });
 });

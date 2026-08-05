@@ -1,0 +1,48 @@
+/*
+ * Lives in .message-actions below the card, which owns the reveal-on-hover behaviour — this is
+ * just the control. Transparent, because nothing sits behind it to mask.
+ */
+.message-copy-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.message-copy-button svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-color);
+    opacity: 0.6;
+    transition: opacity var(--transition-speed);
+}
+
+.message-copy-button:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.message-copy-button:hover svg {
+    opacity: 1;
+}
+
+.message-copy-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.message-copy-button:focus-visible svg {
+    opacity: 1;
+}
+
+/* Confirmation reads on the icon itself; a toast would be louder than the action deserves. */
+.message-copy-button--copied svg {
+    color: #6fcf97;
+    opacity: 1;
+}

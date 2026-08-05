@@ -7,14 +7,14 @@ vi.mock('../../src/service/StreamService.js', () => ({
     },
 }));
 
-vi.mock('../../src/chat/ChatMessage.jsx', () => ({
+vi.mock('../../src/chat/message/ChatMessage.jsx', () => ({
     AI: 'AI',
     SYSTEM: 'SYSTEM',
 }));
 
 import elicitationService from '../../src/service/ElicitationService.js';
 import streamService from '../../src/service/StreamService.js';
-import {AI, SYSTEM} from '../../src/chat/ChatMessage.jsx';
+import {AI, SYSTEM} from '../../src/chat/message/ChatMessage.jsx';
 
 afterEach(() => {
     vi.clearAllMocks();

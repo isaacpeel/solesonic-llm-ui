@@ -1,4 +1,4 @@
-import {AI, SYSTEM} from "../chat/ChatMessage.jsx";
+import {AI, SYSTEM} from "../chat/message/ChatMessage.jsx";
 import streamService from "./StreamService.js"
 
 

@@ -1,17 +1,21 @@
-import {useRef, useState, useEffect} from 'react';
+import {useCallback, useRef, useState, useEffect} from 'react';
+import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
 
-import ChatMessage from "./ChatMessage.jsx";
-import ChatInput from "./ChatInput.jsx";
+import ChatMessage from "./message/ChatMessage.jsx";
+import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
+import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
 import useChatHistory from '../hooks/useChatHistory.js';
 import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
+import useAttachmentTray from '../hooks/useAttachmentTray.js';
+import useScrollToBottom from '../hooks/useScrollToBottom.js';
 
 
 function ChatScreen() {
@@ -35,28 +39,57 @@ function ChatScreen() {
         document.addEventListener('copy', handleCopy);
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, finalizeLastAIMessage, ensureChatIdFromResponse} = useChatHistory();
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, markLastAIMessageReconnecting, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
     const getSelectedCommandRef = useRef(null);
     const getMessageTextRef = useRef(null);
+    const [isCaptionRowOpen, setIsCaptionRowOpen] = useState(false);
+    const [lightboxAttachment, setLightboxAttachment] = useState(null);
+    const lightboxInvokerRef = useRef(null);
 
-    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk} = useChatStream({
+    const attachmentTray = useAttachmentTray({chatId});
+
+    /*
+     * State is hoisted here, so the single lightbox instance cannot know which thumbnail
+     * opened it. Capture the invoking element on the way in and restore focus on close.
+     */
+    const openLightbox = useCallback((attachment) => {
+        lightboxInvokerRef.current = document.activeElement;
+        setLightboxAttachment(attachment);
+    }, []);
+
+    const closeLightbox = useCallback(() => {
+        setLightboxAttachment(null);
+        lightboxInvokerRef.current?.focus?.();
+        lightboxInvokerRef.current = null;
+    }, []);
+
+    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, attachmentNotice, recoveryFailed, retryRecovery} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
         appendToLastAIMessage,
         appendNotificationToLastAIMessage,
+        updateSeededNotificationText,
+        attachGeneratedImagesToLastAIMessage,
+        stopStreamingLastAIMessage,
+        markLastAIMessageReconnecting,
+        reloadChatHistory,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
+        adoptMessageIdForLastUserMessage,
         activeElicitation,
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
         getSelectedCommandRef,
         getMessageTextRef,
+        attachmentTray,
     });
+
+    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory);
 
     const {commandCandidates} = useSlashCommands({inputValue});
 
@@ -81,14 +114,38 @@ function ChatScreen() {
         setError,
     });
 
+    const trayStateClassName = attachmentTray.trayEntries.length > 0
+        ? (isCaptionRowOpen ? ' chat-app--caption-open' : ' chat-app--tray-open')
+        : '';
+
     return (
-        <div className="chat-app">
+        <div className={`chat-app${trayStateClassName}`}>
             {error && <ConsoleErrors error={error}/>}
 
-            <div className="chat-content">
+            <div className="chat-content" ref={scrollContainerRef}>
                 {chatHistory.map((entry) => (
-                    <ChatMessage key={entry._key} message={entry}/>
+                    <ChatMessage key={entry._key} message={entry} onExpandImage={openLightbox}/>
                 ))}
+
+                {attachmentNotice && (
+                    <div className="chat-attachment-notice" role="status">{attachmentNotice}</div>
+                )}
+
+                {recoveryFailed && (
+                    <div className="chat-recovery-notice" role="status">
+                        <span>Lost connection while the assistant was replying.</span>
+                        <button type="button" className="chat-recovery-notice-retry" onClick={retryRecovery}>
+                            Reload
+                        </button>
+                    </div>
+                )}
+
+                {lightboxAttachment && (
+                    <AttachmentLightbox
+                        attachment={lightboxAttachment}
+                        onClose={closeLightbox}
+                    />
+                )}
 
                 {activeElicitation && (
                     <ElicitationPrompt
@@ -114,8 +171,31 @@ function ChatScreen() {
                     onArrowDown={handleArrowDown}
                     onDismiss={handleDismiss}
                     onDeselect={handleDismiss}
+                    trayEntries={attachmentTray.trayEntries}
+                    addFiles={attachmentTray.addFiles}
+                    removeEntry={attachmentTray.removeEntry}
+                    retryEntry={attachmentTray.retryEntry}
+                    setEntryCaption={attachmentTray.setEntryCaption}
+                    trayError={attachmentTray.trayError}
+                    onCaptionOpenChange={setIsCaptionRowOpen}
                 />
             </div>
+
+            {/*
+              * Sits outside the scroll container so it stays pinned above the composer while
+              * the transcript scrolls underneath it.
+              */}
+            {isScrolledAwayFromBottom && (
+                <button
+                    type="button"
+                    className="chat-scroll-to-bottom"
+                    onClick={scrollToBottom}
+                    aria-label="Scroll to latest message"
+                    title="Scroll to latest message"
+                >
+                    <ArrowDownIcon/>
+                </button>
+            )}
         </div>
     );
 }

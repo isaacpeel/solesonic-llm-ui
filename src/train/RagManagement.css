@@ -1,46 +1,249 @@
 .rag-container {
     position: relative;
-    max-width: 600px;
+    max-width: clamp(600px, 55vw, 880px);
     margin: 0 auto;
-    padding: 20px;
-    border: 1px solid #ccc;
+    padding: 32px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.rag-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.rag-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.rag-dropzone {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 160px;
+    padding: 24px;
+    border: 1.5px dashed rgba(255, 255, 255, 0.25);
     border-radius: 8px;
-}
-
-.rag-file-input {
-    width: 100%;
-    padding: 8px;
-    border-radius: 4px;
-    border: 1px solid #ccc;
     cursor: pointer;
+    text-align: center;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.rag-file-input-name {
-    display: inline;
-    margin-left: 4px;
+.rag-dropzone:hover,
+.rag-dropzone:focus-visible {
+    border-color: #0074D9;
+    background-color: rgba(0, 116, 217, 0.06);
+    outline: none;
+}
+
+.rag-dropzone-dragging {
+    border-color: #0074D9;
+    background-color: rgba(0, 116, 217, 0.1);
+}
+
+.rag-dropzone-has-file {
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.rag-dropzone-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.rag-dropzone-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: #b0b0b0;
+}
+
+.rag-dropzone-icon {
+    font-size: 32px;
+    color: #808080;
+}
+
+.rag-dropzone-text {
+    font-size: 15px;
+}
+
+.rag-dropzone-text-touch {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    .rag-dropzone-text-pointer {
+        display: none;
+    }
+
+    .rag-dropzone-text-touch {
+        display: block;
+    }
+}
+
+.rag-dropzone-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.rag-dropzone-file-icon {
+    font-size: 18px;
+    color: #0074D9;
+    flex-shrink: 0;
+}
+
+.rag-dropzone-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 480px;
+}
+
+.rag-dropzone-clear-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #b0b0b0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.rag-dropzone-clear-button:hover {
+    color: red;
+    background-color: rgba(255, 0, 0, 0.1);
 }
 
 .rag-upload-file-button {
     display: block;
     width: 100%;
-    padding: 10px;
+    padding: 13px;
     border-radius: 4px;
-    background-color: #3a3a3a;
+    background-color: #0074D9;
     color: #fff;
     border: none;
     cursor: pointer;
-    margin-top: 20px
+    margin-top: 24px;
+    font-weight: 600;
+    font-size: 15px;
+    transition: background-color 0.2s ease;
+}
+
+.rag-upload-file-button:hover:not(:disabled) {
+    background-color: #005fb2;
+}
+
+.rag-upload-file-button:disabled {
+    background-color: #3a3a3a;
+    color: #808080;
+    cursor: not-allowed;
+}
+
+.rag-process-queue-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background-color: transparent;
+    color: #b0b0b0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.rag-process-queue-button:hover {
+    color: #0074D9;
+    border-color: #0074D9;
+    background-color: rgba(0, 116, 217, 0.1);
+}
+
+.rag-process-queue-button::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background-color: #000;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 400;
+    white-space: nowrap;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+    pointer-events: none;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.rag-process-queue-button:hover::after,
+.rag-process-queue-button:focus-visible::after {
+    visibility: visible;
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .rag-process-queue-button::after {
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
 }
 
 .rag-file-upload-status-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     margin-top: 20px;
-    padding: 10px;
-    border-radius: 4px;
-    background-color: #e0e0e0;
-    color: #000;
+    padding: 10px 12px;
+    border-radius: 6px;
     text-align: center;
+    font-size: 14px;
     -webkit-font-smoothing: subpixel-antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+.rag-file-upload-status-message-success {
+    background-color: rgba(46, 160, 67, 0.12);
+    color: #3fb950;
+    border: 1px solid rgba(46, 160, 67, 0.3);
+}
+
+.rag-file-upload-status-message-error {
+    background-color: rgba(248, 81, 73, 0.12);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.3);
 }
 
 .rag-file-processing-container {
@@ -51,7 +254,8 @@
 }
 
 .rag-file-processing-files-container {
-    width: 80%;
+    width: 100%;
+    max-width: clamp(600px, 55vw, 880px);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -76,6 +280,76 @@
     -moz-osx-font-smoothing: grayscale;
 }
 
+.rag-file-processing-files-header-actions {
+    width: 90px;
+    text-align: right;
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.rag-file-processing-row-meta {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 12px;
+}
+
+.rag-file-processing-row-status {
+    flex-shrink: 0;
+    width: 150px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rag-file-processing-row-actions {
+    width: 90px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+}
+
+.rag-file-refresh-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #b0b0b0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 16px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.rag-file-refresh-button:hover {
+    color: #0074D9;
+    background-color: rgba(0, 116, 217, 0.1);
+}
+
+.rag-file-delete-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #b0b0b0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 16px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.rag-file-delete-button:hover {
+    color: red;
+    background-color: rgba(255, 0, 0, 0.1);
+}
+
 .rag-file-processing-in-progress {
     color: #FFB347;
     font-weight: bold;
@@ -86,6 +360,8 @@
 
 .rag-file-processing-row-container {
     display: flex;
+    align-items: center;
+    gap: 12px;
     border-bottom: 1px solid #ccc;
     padding: 8px;
 }
@@ -166,5 +442,52 @@
     }
     50% {
         opacity: 0.3;
+    }
+}
+
+@media (max-width: 560px) {
+    .rag-container {
+        padding: 16px;
+    }
+
+    .rag-card-header {
+        flex-wrap: wrap;
+    }
+
+    .rag-title {
+        flex: 1 1 100%;
+        font-size: 17px;
+    }
+
+    .rag-process-queue-button {
+        margin-left: auto;
+    }
+
+    .rag-dropzone {
+        padding: 16px;
+    }
+
+    .rag-file-processing-files-header {
+        display: none;
+    }
+
+    .rag-file-processing-row-container {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+
+    .rag-file-processing-row-filename {
+        flex: none;
+        width: 100%;
+    }
+
+    .rag-file-processing-row-meta {
+        justify-content: space-between;
+        flex-shrink: 1;
+    }
+
+    .rag-file-processing-row-status {
+        width: auto;
     }
 }

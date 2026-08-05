@@ -3,10 +3,10 @@ import {useMemo} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
-import {buildStreamingMarkdownDisplay} from "../util/streamingMarkdown.js";
+import {buildStreamingMarkdownDisplay} from "../../util/streamingMarkdown.js";
 import "./ChatMessage.css";
 
-function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, isStreaming = false, showPlaceholder = false, className, children}) {
+function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, isStreaming = false, showPlaceholder = false, className, children, footer}) {
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
@@ -57,6 +57,7 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
                         </ReactMarkdown>
                     </div>
                 )}
+                {footer}
             </div>
         </div>
     );
@@ -72,6 +73,7 @@ ChatCard.propTypes = {
     showPlaceholder: PropTypes.bool,
     className: PropTypes.string,
     children: PropTypes.node,
+    footer: PropTypes.node,
 };
 
 export default ChatCard;

@@ -1,21 +1,23 @@
 import {useState, useEffect, useRef} from "react";
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
 
 import "./UserSettings.css";
 import RagManagement from "../train/RagManagement.jsx";
 import ModelSettings from "./ModelSettings.jsx";
 import OllamaModelSettings from "./OllamaModelSettings.jsx";
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
-import { AtlassianIcon } from '@atlaskit/logo';
+import { SiAtlassian } from 'react-icons/si';
 
 import atlassianAuthService from "../service/AtlassianAuthService.js";
 import AtlassianSettings from "./AtlassianSettings.jsx";
 import GeneralUserSettings from "./GeneralUserSettings.jsx";
+import RoleGuard from '../authorizer/RoleGuard.jsx';
+import { ROLES } from '../authorizer/roles.js';
 
 const UserSettings = () => {
-    const [selectedSetting, setSelectedSetting] = useState("modelSettings");
+    const [selectedSetting, setSelectedSetting] = useState("generalUserSettings");
     const navigate = useNavigate();
     const location = useLocation();
     const useCallback = useRef(true);
@@ -29,22 +31,32 @@ const UserSettings = () => {
         };
 
         if (code && useCallback) {
-
-            callback(code).then( () => {
-                    useCallback.current = false;
-                }
-            );
+            callback(code).then(() => {
+                useCallback.current = false;
+            });
         }
     }, [location.search, useCallback]);
 
     const renderContent = () => {
         switch (selectedSetting) {
             case "ragManagement":
-                return <RagManagement/>;
+                return (
+                    <RoleGuard role={ROLES.RAG_ADMIN} fallback={<p>You do not have permission to view this setting.</p>}>
+                        <RagManagement/>
+                    </RoleGuard>
+                );
             case "modelSettings":
-                return <ModelSettings/>;
+                return (
+                    <RoleGuard role={ROLES.MODEL_SELECT} fallback={<p>You do not have permission to view this setting.</p>}>
+                        <ModelSettings/>
+                    </RoleGuard>
+                );
             case "ollamaModelSettings":
-                return <OllamaModelSettings/>;
+                return (
+                    <RoleGuard role={ROLES.MODEL_ADMIN} fallback={<p>You do not have permission to view this setting.</p>}>
+                        <OllamaModelSettings/>
+                    </RoleGuard>
+                );
             case "atlassianSettings":
                 return <AtlassianSettings/>;
             case "generalUserSettings":
@@ -61,22 +73,26 @@ const UserSettings = () => {
                     <div className="settings-sidebar-header">
                         Settings
                     </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "modelSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("modelSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <Cog6ToothIcon/>
+                    <RoleGuard role={ROLES.MODEL_SELECT}>
+                        <div
+                            className={`settings-sidebar-item ${selectedSetting === "modelSettings" ? "selected" : ""}`}
+                            onClick={() => setSelectedSetting("modelSettings")}>
+                            <div className="settings-sidebar-icon">
+                                <Cog6ToothIcon/>
+                            </div>
+                            <div className="settings-sidebar-item-label">Chat Model</div>
                         </div>
-                        <div className="settings-sidebar-item-label">Chat Model</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "ollamaModelSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("ollamaModelSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <ServerIcon/>
+                    </RoleGuard>
+                    <RoleGuard role={ROLES.MODEL_ADMIN}>
+                        <div
+                            className={`settings-sidebar-item ${selectedSetting === "ollamaModelSettings" ? "selected" : ""}`}
+                            onClick={() => setSelectedSetting("ollamaModelSettings")}>
+                            <div className="settings-sidebar-icon">
+                                <ServerIcon/>
+                            </div>
+                            <div className="settings-sidebar-item-label">Ollama Models</div>
                         </div>
-                        <div className="settings-sidebar-item-label">Ollama Models</div>
-                    </div>
+                    </RoleGuard>
                     <div
                         className={`settings-sidebar-item ${selectedSetting === "generalUserSettings" ? "selected" : ""}`}
                         onClick={() => setSelectedSetting("generalUserSettings")}>
@@ -89,19 +105,21 @@ const UserSettings = () => {
                         className={`settings-sidebar-item ${selectedSetting === "atlassianSettings" ? "selected" : ""}`}
                         onClick={() => setSelectedSetting("atlassianSettings")}>
                         <div className="settings-sidebar-icon">
-                            <AtlassianIcon size="small" appearance="brand"/>
+                            <SiAtlassian size={20} color="#0052CC"/>
                         </div>
                         <div className="settings-sidebar-item-label">Atlassian</div>
                     </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "ragManagement" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("ragManagement")}
-                    >
-                        <div className="settings-sidebar-icon">
-                            <CubeTransparentIcon/>
+                    <RoleGuard role={ROLES.RAG_ADMIN}>
+                        <div
+                            className={`settings-sidebar-item ${selectedSetting === "ragManagement" ? "selected" : ""}`}
+                            onClick={() => setSelectedSetting("ragManagement")}
+                        >
+                            <div className="settings-sidebar-icon">
+                                <CubeTransparentIcon/>
+                            </div>
+                            <div className="settings-sidebar-item-label">RAG</div>
                         </div>
-                        <div className="settings-sidebar-item-label">RAG</div>
-                    </div>
+                    </RoleGuard>
                     <div
                         className="settings-sidebar-mobile settings-sidebar-item"
                         onClick={() => navigate("/")}

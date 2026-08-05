@@ -8,6 +8,15 @@ const documentService = {
     uploadDocument: async (file) => {
         return await apiClient.post(`${config.apiBaseUri}/documents/data/upload`, file, { noOp: true });
     },
+    deleteTrainingDocument: async (id) => {
+        return await apiClient.delete(`${config.apiBaseUri}/trainingdocuments/${id}`);
+    },
+    refreshTrainingDocument: async (id) => {
+        return await apiClient.post(`${config.apiBaseUri}/trainingdocuments/${id}/refresh`);
+    },
+    processDocumentQueue: async () => {
+        return await apiClient.post(`${config.apiBaseUri}/trainingdocuments/processQueue`);
+    },
 };
 
 export default documentService;

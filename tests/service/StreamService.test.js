@@ -12,7 +12,7 @@ vi.mock('../../src/properties/ApplicationProperties', () => ({
     },
 }));
 
-vi.mock('../../src/chat/ChatMessage.jsx', () => ({
+vi.mock('../../src/chat/message/ChatMessage.jsx', () => ({
     AI: 'AI',
 }));
 
@@ -27,7 +27,7 @@ vi.mock('../../src/client/parseSseStream.js', () => ({
 
 import streamService from '../../src/service/StreamService.js';
 import { parseSseStream } from '../../src/client/parseSseStream.js';
-import {AI} from '../../src/chat/ChatMessage.jsx';
+import {AI} from '../../src/chat/message/ChatMessage.jsx';
 
 function makeSseAsyncGenerator(events) {
     return async function* () {
@@ -221,5 +221,34 @@ describe('handleStreamError', () => {
 
         expect(result).toEqual([]);
         consoleErrorSpy.mockRestore();
+    });
+});
+
+describe('isTransientStreamDisconnect', () => {
+    it('recognizes the fetch teardown each engine throws', () => {
+        expect(streamService.isTransientStreamDisconnect(new TypeError('Failed to fetch'))).toBe(true);
+        expect(streamService.isTransientStreamDisconnect(new TypeError('Load failed'))).toBe(true);
+        expect(streamService.isTransientStreamDisconnect(new TypeError('NetworkError when attempting to fetch resource.'))).toBe(true);
+    });
+
+    it('recognizes a connection failure reported as a plain Error', () => {
+        expect(streamService.isTransientStreamDisconnect(new Error('The network connection was lost.'))).toBe(true);
+        expect(streamService.isTransientStreamDisconnect(new Error('connection reset by peer'))).toBe(true);
+    });
+
+    it('is false for our own abort', () => {
+        const abortError = new Error('aborted');
+        abortError.name = 'AbortError';
+
+        expect(streamService.isTransientStreamDisconnect(abortError)).toBe(false);
+    });
+
+    it('is false for a server-side failure', () => {
+        expect(streamService.isTransientStreamDisconnect(new Error('Streaming failed: 500 Internal Server Error'))).toBe(false);
+    });
+
+    it('is false for nothing at all', () => {
+        expect(streamService.isTransientStreamDisconnect(null)).toBe(false);
+        expect(streamService.isTransientStreamDisconnect(undefined)).toBe(false);
     });
 });

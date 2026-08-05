@@ -1,0 +1,121 @@
+.composer-attachment-tray {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 0 4px 8px;
+}
+
+.composer-attachment-tray-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    max-width: 220px;
+}
+
+/*
+ * Named-file chip rather than a bare thumbnail: at composer size the file name is what
+ * identifies an attachment, and the preview is only a hint of which one it is.
+ */
+.composer-attachment-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px 4px 5px;
+    border-radius: 10px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+}
+
+/* Shrunk from the 72px message-bubble size; the overlays are rescaled to match. */
+.composer-attachment-chip .attachment-thumbnail {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+}
+
+.composer-attachment-chip .attachment-thumbnail-spinner {
+    width: 12px;
+    height: 12px;
+    border-width: 2px;
+}
+
+.composer-attachment-chip .attachment-thumbnail-retry svg {
+    width: 14px;
+    height: 14px;
+}
+
+.composer-attachment-chip-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--text-color);
+}
+
+.composer-attachment-chip-warning {
+    display: flex;
+    flex: 0 0 auto;
+}
+
+.composer-attachment-chip-warning svg {
+    width: 14px;
+    height: 14px;
+    color: #f0b429;
+}
+
+.composer-attachment-note-toggle,
+.composer-attachment-chip-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.composer-attachment-note-toggle svg,
+.composer-attachment-chip-remove svg {
+    width: 14px;
+    height: 14px;
+    color: var(--text-color);
+    opacity: 0.65;
+}
+
+.composer-attachment-note-toggle:hover,
+.composer-attachment-chip-remove:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.composer-attachment-note-toggle:hover svg,
+.composer-attachment-note-toggle--open svg,
+.composer-attachment-chip-remove:hover svg {
+    opacity: 1;
+}
+
+.composer-attachment-note-toggle--open svg {
+    color: var(--text-light);
+}
+
+.composer-attachment-note-toggle:focus-visible,
+.composer-attachment-chip-remove:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 1px;
+}
+
+.composer-attachment-error {
+    padding-left: 4px;
+    font-size: 10px;
+    line-height: 1.2;
+    color: #e06c62;
+}

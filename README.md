@@ -97,7 +97,7 @@ For production deployment using Docker and Nginx, see [README.docker.md](README.
 ## Project Structure
 
 - `src/` — Source code
-  - `chat/` — Chat interface components and slash command UI
+  - `chat/` — Chat interface: screen shell and history sidebar, plus `message/`, `composer/`, `command/`, and `attachment/` subdirectories
   - `elicitation/` — Elicitation UI components (dynamic prompts/forms)
   - `user/` — User settings, preferences, and model configuration UI
   - `train/` — RAG management for custom training/knowledge base
@@ -120,12 +120,47 @@ The UI communicates with the Solesonic backend using REST and SSE streaming. Aut
 ### Chat Streaming
 
 - Initiated via `ChatService.chatStream(...)`
-- Uses `@microsoft/fetch-event-source` to receive SSE frames
+- Uses a plain `fetch` plus `src/client/parseSseStream.js`, an async generator over the
+  response body, to receive SSE frames. (`@microsoft/fetch-event-source` is still a dependency
+  but is no longer used.)
 - Supported server events:
-  - `init` — initial payload that may include the `chatId`
+  - `init` — initial payload that may include the chat id (read from `id`, falling back to
+    `chatId`) and a `messageId`
   - `chunk` / `message` — incremental content for the assistant’s reply
   - `elicitation` — request for more information from the user with a JSON schema
   - `done` — end of assistant’s reply, with final metadata
+  - MCP `notifications/progress` frames are detected ahead of the event switch and rendered as
+    the message’s step log rather than as reply content
+
+### Image Attachments
+
+Users can attach up to four images per message by pasting into the composer, dropping onto it,
+or using the paperclip button. PNG, JPEG, GIF and WebP are accepted up to 20MB; anything over
+5MB is downscaled client-side (`src/util/downscaleImage.js`) because that is the limit the
+vision model can read. Animated GIFs are never downscaled — canvas re-encoding would flatten
+them to a single frame.
+
+Flow:
+
+1. Each selected image is uploaded immediately to `POST /attachments`
+   (`src/service/AttachmentService.js`) and appears in the composer tray
+   (`src/hooks/useAttachmentTray.js`). Removing one issues a `DELETE`.
+2. A caption is stored as the attachment’s `description`. The backend only accepts it on the
+   initial multipart upload, so a caption typed after staging is committed on send by
+   re-staging the image and deleting the superseded copy. The new upload always completes
+   before the old id is deleted, so a failure loses the caption rather than the image.
+3. On send, the staged ids go out as `attachmentIds` on the chat payload — omitted entirely
+   when nothing is attached.
+4. The tray is cleared only once an `init` frame arrives. If the stream ends without one,
+   nothing was bound server-side, so the ids are still valid: the message text and the tray are
+   both restored for a retry.
+5. Sent images render on their `USER` bubble via `MessageAttachments`, resolving through a
+   ref-counted blob-URL cache (`src/util/attachmentObjectUrlCache.js`) so an image is fetched
+   at most once and an optimistic bubble reuses the bytes it already has. Clicking a thumbnail
+   opens a focus-trapped lightbox.
+
+Staged ids are kept in `sessionStorage` scoped by chat id and revalidated against the server on
+restore, so a reload does not resurrect an attachment the backend has already discarded.
 
 ### Elicitation Flow
 
@@ -158,7 +193,7 @@ Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:
 - `chatStream(message, chatId, { onChunk, onDone, signal })` — initiates or continues a chat stream via SSE
 - `handleStreamChunk(event, handlers)` — processes server events: `init`, `chunk`/`message`, `elicitation`, and `done`
 - `findChatDetails(chatId)` — retrieves chat metadata
-- `findChatHistory()` — fetches recent chats for the authenticated user
+- `findChatHistory({ page, size })` — fetches one page of the authenticated user's chats (newest first) from the Spring `Pageable` endpoint, flattened to `{ chats, page, last, totalPages, totalElements }`. The history drawer pages through it with `usePagedChatHistory`, which loads the next page as an infinite-scroll sentinel comes into view.
 
 Server events include `ELICITATION`, which triggers the elicitation form UI with a JSON schema and message.
 

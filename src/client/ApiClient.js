@@ -10,7 +10,7 @@ export class ApiError extends Error {
     }
 }
 
-async function request(method, uri, { body, headers = {}, noOp = false } = {}) {
+async function request(method, uri, { body, headers = {}, noOp = false, responseType = 'json' } = {}) {
     const token = await authService.getAccessToken();
 
     const requestHeaders = { ...headers };
@@ -64,6 +64,10 @@ async function request(method, uri, { body, headers = {}, noOp = false } = {}) {
         return null;
     }
 
+    if (responseType === 'blob') {
+        return await response.blob();
+    }
+
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
         return null;
@@ -88,6 +92,7 @@ export function buildUrl(baseUri, queryParams) {
 
 const apiClient = {
     get: (uri, options) => request('GET', uri, options),
+    getBlob: (uri, options) => request('GET', uri, { ...options, responseType: 'blob' }),
     post: (uri, body, options) => request('POST', uri, { ...options, body }),
     put: (uri, body, options) => request('PUT', uri, { ...options, body }),
     delete: (uri, options) => request('DELETE', uri, options),

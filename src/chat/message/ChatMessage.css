@@ -31,6 +31,59 @@
     justify-content: center;
 }
 
+/*
+ * Column holding an assistant card and the action row under it. The 70% cap lives here rather
+ * than on .message, so the card and the row beneath it share one width — otherwise the row
+ * would stretch to the full container and the button would drift far right of the card edge.
+ */
+.message-with-actions {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 70%;
+}
+
+.message-with-actions .message {
+    max-width: 100%;
+}
+
+/*
+ * Faded rather than unmounted: revealing it must not reflow the transcript, and opacity leaves
+ * the button in the tab order so a keyboard can still reach it.
+ */
+.message-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: 4px;
+    opacity: 0;
+    transition: opacity var(--transition-speed);
+}
+
+/*
+ * Scoped to pointer devices: touch browsers emulate :hover on tap and leave it stuck on the
+ * last-tapped element, so on those the explicit --revealed flag is the only trigger.
+ */
+@media (hover: hover) {
+    .message-with-actions:hover .message-actions {
+        opacity: 1;
+    }
+}
+
+/*
+ * Keyboard reveal, kept in its own rule so browsers without :has() drop only this one.
+ * :focus-visible, not :focus-within — clicking the copy button focuses it, and :focus-within
+ * would then hold the row open after the pointer had left the message.
+ */
+.message-with-actions:has(.message-copy-button:focus-visible) .message-actions {
+    opacity: 1;
+}
+
+.message-with-actions--revealed .message-actions {
+    opacity: 1;
+}
+
 .message.USER {
     background-color: #e0e0e0;
     color: #000;
@@ -429,9 +482,38 @@
     color: rgba(255, 255, 255, 0.7);
 }
 
+/*
+ * A caveat on an answer that otherwise looks confident, so it sits below the text rather than
+ * competing with it. Deliberately not styled as an error — the turn itself succeeded.
+ */
+.message-vision-unconfirmed {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border-left: 2px solid rgba(242, 201, 76, 0.6);
+    background: rgba(242, 201, 76, 0.08);
+    font-size: 12px;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/*
+ * Neutral, not amber: the connection dropped but the turn is still running, so this is status
+ * rather than a warning about the answer.
+ */
+.message-reconnecting {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border-left: 2px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 12px;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.7);
+}
+
 @media (max-width: 768px) {
     .message {
         max-width: 100%;
     }
 }
-

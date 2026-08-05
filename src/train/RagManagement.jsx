@@ -1,17 +1,55 @@
 import {useEffect, useState, useRef} from "react";
+import {FiTrash2, FiRefreshCw, FiUploadCloud, FiFile, FiX, FiCheckCircle, FiAlertCircle} from "react-icons/fi";
 import documentService from "../service/DocumentService.js";
 import "./RagManagement.css";
+import {PiQueueFill} from "react-icons/pi";
 
 const RagManagement = () => {
     const [file, setFile] = useState(null);
     const [fileName, setFileName] = useState(null);
-    const [statusMessage, setStatusMessage] = useState(""); // State for status message
+    const [statusMessage, setStatusMessage] = useState("");
+    const [statusType, setStatusType] = useState("success"); // "success" | "error"
+    const [isDragging, setIsDragging] = useState(false);
     const [files, setFiles] = useState([]);
     const fileInputRef = useRef(null);
 
+    const selectFile = (selectedFile) => {
+        if (!selectedFile) {
+            return;
+        }
+
+        setFile(selectedFile);
+        setFileName(selectedFile.name);
+        setStatusMessage("");
+    };
+
     const handleFileChange = (e) => {
-        setFile(e.target.files[0]);
-        setFileName(e.target.files[0].name);
+        selectFile(e.target.files[0]);
+    };
+
+    const handleClearFile = () => {
+        setFile(null);
+        setFileName(null);
+
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        selectFile(e.dataTransfer.files[0]);
     };
 
     const getFiles = async () => {
@@ -31,23 +69,61 @@ const RagManagement = () => {
         return () => clearInterval(intervalId);
     }, []);
 
+    const handleDelete = async (id) => {
+        await documentService.deleteTrainingDocument(id)
+            .then(() => {
+                setFiles((currentFiles) => currentFiles.filter((currentFile) => currentFile.id !== id));
+            })
+            .catch((error) => {
+                setStatusType("error");
+                setStatusMessage(`Error deleting file: ${error}`);
+            });
+    };
+
+    const handleRefresh = async (id) => {
+        await documentService.refreshTrainingDocument(id)
+            .then(() => {
+                getFiles().then((files) => setFiles(files));
+            })
+            .catch((error) => {
+                setStatusType("error");
+                setStatusMessage(`Error refreshing file: ${error}`);
+            });
+    };
+
+    const handleProcessQueue = async () => {
+        await documentService.processDocumentQueue()
+            .then(() => {
+                setStatusType("success");
+                setStatusMessage("Document queue processing started.");
+                getFiles().then((files) => setFiles(files));
+            })
+            .catch((error) => {
+                setStatusType("error");
+                setStatusMessage(`Error processing document queue: ${error}`);
+            });
+    };
+
     const handleSubmit = async (event) => {
         event.preventDefault();
 
         if (!file) {
-            setStatusMessage("Select a file before uploading. ¯\\_(ツ\\_/¯");
+            setStatusType("error");
+            setStatusMessage("Select a file before uploading.");
             return;
         }
-        setStatusMessage(""); // Reset status message
+        setStatusMessage("");
 
         const formData = new FormData();
         formData.append("file", file);
 
         await documentService.uploadDocument(formData)
             .then(() => {
+                setStatusType("success");
                 setStatusMessage("File uploaded successfully!");
-                fileInputRef.current.value = "";
+                handleClearFile();
             }).catch((error) => {
+                setStatusType("error");
                 setStatusMessage(`Error uploading file: ${error}`);
             });
     };
@@ -55,35 +131,86 @@ const RagManagement = () => {
     return (
         <div>
             <div className="rag-container">
+                <div className="rag-card-header">
+                    <h2 className="rag-title">Upload File to Train solesonic-llm</h2>
+
+                    <button
+                        type="button"
+                        className="rag-process-queue-button"
+                        onClick={handleProcessQueue}
+                        aria-label="Process document queue"
+                        data-tooltip="Process Document Queue"
+                    >
+                        <PiQueueFill />
+                    </button>
+                </div>
+
                 <form onSubmit={handleSubmit}>
-
-                    <h2 style={{textAlign: "center", marginBottom: "20px"}}>Upload File to Train solesonic-llm</h2>
-
-                    <div style={{marginBottom: "20px"}}>
-                        <label
-                            htmlFor="fileInput"
-                            className="rag-file-input"
-                        >
-                            Choose A File
-                        </label>
-
+                    <div
+                        className={[
+                            "rag-dropzone",
+                            isDragging ? "rag-dropzone-dragging" : "",
+                            fileName ? "rag-dropzone-has-file" : "",
+                        ].join(" ").trim()}
+                        onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                fileInputRef.current && fileInputRef.current.click();
+                            }
+                        }}
+                    >
                         <input
                             type="file"
                             id="fileInput"
                             onChange={handleFileChange}
                             ref={fileInputRef}
-                            style={{display: "none"}}
+                            className="rag-dropzone-input"
                         />
-                        <div className="rag-file-input-name">{fileName}</div>
+
+                        {fileName ? (
+                            <div className="rag-dropzone-file">
+                                <FiFile className="rag-dropzone-file-icon" />
+                                <span className="rag-dropzone-file-name">{fileName}</span>
+                                <button
+                                    type="button"
+                                    className="rag-dropzone-clear-button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleClearFile();
+                                    }}
+                                    aria-label="Remove selected file"
+                                    title="Remove file"
+                                >
+                                    <FiX />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="rag-dropzone-placeholder">
+                                <FiUploadCloud className="rag-dropzone-icon" />
+                                <div className="rag-dropzone-text rag-dropzone-text-pointer">
+                                    <strong>Click to browse</strong> or drag and drop a file here
+                                </div>
+                                <div className="rag-dropzone-text rag-dropzone-text-touch">
+                                    <strong>Tap to browse</strong> for a file
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <button type="submit" className="rag-upload-file-button">
+                    <button type="submit" className="rag-upload-file-button" disabled={!file}>
                         Upload File
                     </button>
                 </form>
 
                 {statusMessage && (
-                    <div className="rag-file-upload-status-message">
+                    <div className={`rag-file-upload-status-message rag-file-upload-status-message-${statusType}`}>
+                        {statusType === "success" ? <FiCheckCircle /> : <FiAlertCircle />}
                         {statusMessage}
                     </div>
                 )}
@@ -95,6 +222,7 @@ const RagManagement = () => {
                         <div className={"rag-file-processing-files-header"}>
                             <div className="rag-file-processing-files-header-filename">File Name</div>
                             <div className="rag-file-processing-files-header-status">Status</div>
+                            <div className="rag-file-processing-files-header-actions">Actions</div>
                         </div>
                         {files.map((file) => {
                             const statusClass = {
@@ -116,8 +244,30 @@ const RagManagement = () => {
                                      className="rag-file-processing-row-container"
                                 >
                                     <div className="rag-file-processing-row-filename">{file.fileName}</div>
-                                    <div className={statusClass[file.documentStatus]}>
-                                        {formattedStatus}
+                                    <div className="rag-file-processing-row-meta">
+                                        <div className={`rag-file-processing-row-status ${statusClass[file.documentStatus]}`}>
+                                            {formattedStatus}
+                                        </div>
+                                        <div className="rag-file-processing-row-actions">
+                                            <button
+                                                type="button"
+                                                className="rag-file-refresh-button"
+                                                onClick={() => handleRefresh(file.id)}
+                                                aria-label={`Refresh ${file.fileName}`}
+                                                title="Refresh document"
+                                            >
+                                                <FiRefreshCw />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="rag-file-delete-button"
+                                                onClick={() => handleDelete(file.id)}
+                                                aria-label={`Delete ${file.fileName}`}
+                                                title="Delete document"
+                                            >
+                                                <FiTrash2 />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             );
