@@ -8,18 +8,19 @@ import OllamaModelSettings from "./OllamaModelSettings.jsx";
 import { useLocation } from 'react-router';
 
 import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
-import { SiAtlassian } from 'react-icons/si';
+import { SiAtlassian, SiGoogle } from 'react-icons/si';
 
 import atlassianAuthService from "../service/AtlassianAuthService.js";
 import AtlassianSettings from "./AtlassianSettings.jsx";
+import GoogleSettings from "./GoogleSettings.jsx";
 import GeneralUserSettings from "./GeneralUserSettings.jsx";
 import RoleGuard from '../authorizer/RoleGuard.jsx';
 import { ROLES } from '../authorizer/roles.js';
 
 const UserSettings = () => {
-    const [selectedSetting, setSelectedSetting] = useState("generalUserSettings");
     const navigate = useNavigate();
     const location = useLocation();
+    const [selectedSetting, setSelectedSetting] = useState(location.state?.panel || "generalUserSettings");
     const useCallback = useRef(true);
 
     useEffect(() => {
@@ -59,6 +60,8 @@ const UserSettings = () => {
                 );
             case "atlassianSettings":
                 return <AtlassianSettings/>;
+            case "googleSettings":
+                return <GoogleSettings/>;
             case "generalUserSettings":
                 return <GeneralUserSettings/>;
             default:
@@ -108,6 +111,14 @@ const UserSettings = () => {
                             <SiAtlassian size={20} color="#0052CC"/>
                         </div>
                         <div className="settings-sidebar-item-label">Atlassian</div>
+                    </div>
+                    <div
+                        className={`settings-sidebar-item ${selectedSetting === "googleSettings" ? "selected" : ""}`}
+                        onClick={() => setSelectedSetting("googleSettings")}>
+                        <div className="settings-sidebar-icon">
+                            <SiGoogle size={20} color="#EA4335"/>
+                        </div>
+                        <div className="settings-sidebar-item-label">Google</div>
                     </div>
                     <RoleGuard role={ROLES.RAG_ADMIN}>
                         <div

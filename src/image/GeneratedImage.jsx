@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {ArrowsPointingOutIcon} from '@heroicons/react/20/solid';
 import useGeneratedImageUrl from '../hooks/useGeneratedImageUrl.js';
+import MessageCopyButton from '../chat/message/MessageCopyButton.jsx';
 import './GeneratedImage.css';
 
 /*
@@ -74,9 +75,14 @@ function GeneratedImage({image, onExpand}) {
         return null;
     }
 
+    if (!image?.imageId) {
+        return null;
+    }
+
     const altText = image.prompt || 'Generated image';
-    const hasMetadata = image.seed !== null && image.seed !== undefined
-        || image.elapsedSeconds !== null && image.elapsedSeconds !== undefined;
+    const hasMetadata = Boolean(image.prompt)
+        || (image.seed !== null && image.seed !== undefined)
+        || (image.elapsedSeconds !== null && image.elapsedSeconds !== undefined);
 
     return (
         <div className="generated-image">
@@ -143,10 +149,11 @@ function GeneratedImage({image, onExpand}) {
               */}
             {hasMetadata && isMetadataOpen && (
                 <dl className="generated-image-metadata" id={`generated-image-metadata-${image.imageId}`}>
-                    {image.seed !== null && image.seed !== undefined && (
+                    {image.prompt && (
                         <div className="generated-image-metadata-row">
-                            <dt>Seed</dt>
-                            <dd>{String(image.seed)}</dd>
+                            <dt className="generated-image-metadata-prompt-label">
+                                Prompt<MessageCopyButton text={image.prompt}/>
+                            </dt>
                         </div>
                     )}
 
