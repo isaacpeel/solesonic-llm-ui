@@ -39,7 +39,10 @@ function ChatScreen() {
         document.addEventListener('copy', handleCopy);
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
+    const chatSwitchResetRef = useRef(null);
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory({
+        onChatIdChangedExternally: () => chatSwitchResetRef.current?.(),
+    });
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
@@ -92,13 +95,14 @@ function ChatScreen() {
 
     const {commandCandidates} = useSlashCommands({inputValue});
 
-    const {selectedIndex, selectedCommand, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss} = useSlashCommandSelection({
+    const {selectedIndex, selectedCommand, isPinned, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss, handlePinToggle} = useSlashCommandSelection({
         commandCandidates,
         setInputValue,
     });
 
     getSelectedCommandRef.current = () => selectedCommand?.command || null;
     getMessageTextRef.current = () => inputValue.trim();
+    chatSwitchResetRef.current = handleDismiss;
 
     const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
         chatHistory,
@@ -165,6 +169,8 @@ function ChatScreen() {
                     commandCandidates={commandCandidates}
                     selectedIndex={selectedIndex}
                     selectedCommand={selectedCommand}
+                    isPinned={isPinned}
+                    onTogglePin={handlePinToggle}
                     onCommandSelect={handleCommandSelect}
                     onArrowUp={handleArrowUp}
                     onArrowDown={handleArrowDown}

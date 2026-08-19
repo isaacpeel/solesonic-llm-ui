@@ -8,7 +8,7 @@ import {
 } from '../service/ProgressNotificationService.js';
 import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 
-function useChatHistory() {
+function useChatHistory({onChatIdChangedExternally} = {}) {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
 
     /*
@@ -17,6 +17,24 @@ function useChatHistory() {
      * setChatId and are otherwise indistinguishable.
      */
     const adoptedChatIdRef = useRef(null);
+
+    /*
+     * Reused by conversation-scoped UI state (e.g. a pinned slash command) that must reset on a
+     * real chat switch but survive a new chat's own first `init` frame assigning its id — the
+     * same distinction `adoptedChatIdRef` already draws for hydration below.
+     */
+    const previousChatIdRef = useRef(chatId);
+
+    useEffect(() => {
+        const previousChatId = previousChatIdRef.current;
+        previousChatIdRef.current = chatId;
+
+        if (chatId === previousChatId || adoptedChatIdRef.current === chatId) {
+            return;
+        }
+
+        onChatIdChangedExternally?.();
+    }, [chatId, onChatIdChangedExternally]);
 
     useEffect(() => {
         if (chatHistory.length === 0) {

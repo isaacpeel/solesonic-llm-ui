@@ -15,6 +15,8 @@ function ChatInput({
     commandCandidates,
     selectedIndex,
     selectedCommand,
+    isPinned,
+    onTogglePin,
     onCommandSelect,
     onArrowUp,
     onArrowDown,
@@ -54,7 +56,10 @@ function ChatInput({
                 chatInputRef.current.style.height = "auto";
             }
 
-            onDeselect();
+            /* A pinned command stays selected so it is resent on the next turn too. */
+            if (!isPinned) {
+                onDeselect();
+            }
         });
     };
 
@@ -102,9 +107,11 @@ function ChatInput({
                         selectedIndex={selectedIndex}
                         onCommandSelect={onCommandSelect}
                     />
-                    {selectedCommand && !loading && (
+                    {selectedCommand && (!loading || isPinned) && (
                         <SelectedCommandChip
                             selectedCommand={selectedCommand}
+                            isPinned={isPinned}
+                            onTogglePin={onTogglePin}
                             onDeselect={onDeselect}
                         />
                     )}

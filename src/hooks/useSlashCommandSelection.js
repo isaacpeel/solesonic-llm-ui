@@ -3,6 +3,7 @@ import {useState, useCallback, useEffect} from 'react';
 function useSlashCommandSelection({commandCandidates, setInputValue}) {
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [selectedCommand, setSelectedCommand] = useState(null);
+    const [isPinned, setIsPinned] = useState(false);
 
     useEffect(() => {
         setSelectedIndex(-1);
@@ -19,21 +20,38 @@ function useSlashCommandSelection({commandCandidates, setInputValue}) {
     const handleCommandSelect = useCallback((commandObject) => {
         if (!commandObject) return;
         setSelectedCommand(commandObject);
+        setIsPinned(false);
         setInputValue('');
         setSelectedIndex(-1);
     }, [setInputValue]);
 
     const handleDismiss = useCallback(() => {
         setSelectedCommand(null);
+        setIsPinned(false);
         setSelectedIndex(-1);
     }, []);
 
     const clearSelectedCommand = useCallback(() => {
         setSelectedCommand(null);
+        setIsPinned(false);
         setSelectedIndex(-1);
     }, []);
 
-    return {selectedIndex, selectedCommand, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss, clearSelectedCommand};
+    const handlePinToggle = useCallback(() => {
+        setIsPinned(previous => !previous);
+    }, []);
+
+    return {
+        selectedIndex,
+        selectedCommand,
+        isPinned,
+        handleArrowDown,
+        handleArrowUp,
+        handleCommandSelect,
+        handleDismiss,
+        clearSelectedCommand,
+        handlePinToggle,
+    };
 }
 
 export default useSlashCommandSelection;
