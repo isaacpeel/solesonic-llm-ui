@@ -84,17 +84,6 @@ function ChatMessage({message, onExpandImage}) {
         </div>
     ) : null;
 
-    /*
-     * The turn is still running server-side; only our connection to it went away. Says so
-     * plainly rather than leaving a silent spinner, and deliberately is not an error — nothing
-     * has failed yet.
-     */
-    const reconnectingChildren = isAIMessage && message.isReconnecting ? (
-        <div className="message-reconnecting" role="status">
-            Reconnecting…
-        </div>
-    ) : null;
-
     const notificationLogChildren = !isElicitation && isAIMessage ? (
         <ChatNotifications
             notifications={notificationLog}
@@ -142,7 +131,6 @@ function ChatMessage({message, onExpandImage}) {
             {attachmentChildren}
             {elicitationChildren}
             {notificationLogChildren}
-            {reconnectingChildren}
             {visionUnconfirmedChildren}
         </ChatCard>
     );

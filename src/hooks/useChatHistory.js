@@ -215,11 +215,6 @@ function useChatHistory() {
         });
     }, [setChatHistory]);
 
-    /*
-     * Deliberately leaves `isReconnecting` alone — `clearReconnectingMark` owns that field so
-     * useStreamRecovery can defer clearing it (topping up its minimum visible time) without
-     * delaying the rest of a turn's completion, which must land immediately.
-     */
     const stopStreamingLastAIMessage = useCallback(() => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -240,54 +235,6 @@ function useChatHistory() {
                 isStreaming: false,
                 hasSeededNotification: false,
             };
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    /*
-     * Keeps the bubble streaming but marks why it is quiet. Must not touch `text` or `_key` —
-     * the tokens already on screen stay, and a changed key would remount the bubble.
-     */
-    const markLastAIMessageReconnecting = useCallback((isReconnecting) => {
-        setChatHistory((previousHistory) => {
-            const lastIndex = previousHistory.length - 1;
-
-            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
-                return previousHistory;
-            }
-
-            const lastMessage = previousHistory[lastIndex];
-
-            if (!!lastMessage.isReconnecting === !!isReconnecting) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            newHistory[lastIndex] = {...lastMessage, isReconnecting: !!isReconnecting};
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    /*
-     * A recovery that gets cancelled (a new turn starts, or the hook unmounts) can leave the
-     * flag stuck on a message that is no longer last — a fresh AI placeholder may already sit
-     * after it. Clear by scanning for the flag itself rather than by position, since at most
-     * one message ever carries it.
-     */
-    const clearReconnectingMark = useCallback(() => {
-        setChatHistory((previousHistory) => {
-            const reconnectingIndex = previousHistory.findIndex(
-                (message) => message.type === AI && message.isReconnecting
-            );
-
-            if (reconnectingIndex < 0) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            newHistory[reconnectingIndex] = {...newHistory[reconnectingIndex], isReconnecting: false};
 
             return newHistory;
         });
@@ -401,8 +348,6 @@ function useChatHistory() {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
-        markLastAIMessageReconnecting,
-        clearReconnectingMark,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,

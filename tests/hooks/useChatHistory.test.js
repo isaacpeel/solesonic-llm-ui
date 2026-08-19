@@ -850,100 +850,22 @@ describe('chat history support for stream recovery', () => {
     });
 
     describe('stopStreamingLastAIMessage', () => {
-        it('clears the streaming and seeded flags, but leaves the reconnecting mark alone', () => {
+        it('clears the streaming and seeded flags on the last AI entry', () => {
             const {result} = renderHook(() => useChatHistory());
 
             result.current.stopStreamingLastAIMessage();
 
             const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const updatedHistory = historyUpdater([
-                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true, isReconnecting: true, hasSeededNotification: true},
+                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true, hasSeededNotification: true},
             ]);
 
-            /*
-             * clearReconnectingMark owns isReconnecting so useStreamRecovery can defer clearing
-             * it (topping up its minimum visible time) without delaying the rest of the turn.
-             */
             expect(updatedHistory[0]).toMatchObject({
                 isStreaming: false,
-                isReconnecting: true,
                 hasSeededNotification: false,
                 text: 'partial',
                 _key: 'ai1',
             });
-        });
-    });
-
-    describe('markLastAIMessageReconnecting', () => {
-        it('flags the trailing AI message without disturbing it', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.markLastAIMessageReconnecting(true);
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const updatedHistory = historyUpdater([
-                {type: 'USER', text: 'question', _key: 'u1'},
-                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true},
-            ]);
-
-            expect(updatedHistory[1]).toMatchObject({
-                isReconnecting: true,
-                isStreaming: true,
-                text: 'partial',
-                _key: 'ai1',
-            });
-        });
-
-        it('does not churn history when the flag is already set', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.markLastAIMessageReconnecting(true);
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const previousHistory = [{type: AI, text: 'partial', _key: 'ai1', isReconnecting: true}];
-
-            expect(historyUpdater(previousHistory)).toBe(previousHistory);
-        });
-
-        it('leaves history untouched when the last entry is not an AI message', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.markLastAIMessageReconnecting(true);
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const previousHistory = [{type: 'USER', text: 'question', _key: 'u1'}];
-
-            expect(historyUpdater(previousHistory)).toBe(previousHistory);
-        });
-    });
-
-    describe('clearReconnectingMark', () => {
-        it('clears the flag on whichever AI message carries it, even when it is not last', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.clearReconnectingMark();
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const orphanedMessage = {type: AI, text: 'orphaned turn', _key: 'ai1', isReconnecting: true};
-            const updatedHistory = historyUpdater([
-                orphanedMessage,
-                {type: 'USER', text: 'a new question', _key: 'u2'},
-                {type: AI, text: '', _key: 'ai2', isStreaming: true},
-            ]);
-
-            expect(updatedHistory[0]).toMatchObject({isReconnecting: false, text: 'orphaned turn', _key: 'ai1'});
-            expect(updatedHistory[2]).toMatchObject({isStreaming: true, _key: 'ai2'});
-        });
-
-        it('is a no-op when no message carries the flag', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.clearReconnectingMark();
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const previousHistory = [{type: AI, text: 'settled', _key: 'ai1'}];
-
-            expect(historyUpdater(previousHistory)).toBe(previousHistory);
         });
     });
 });

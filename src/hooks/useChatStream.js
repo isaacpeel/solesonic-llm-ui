@@ -33,8 +33,6 @@ function useChatStream({
     updateSeededNotificationText,
     attachGeneratedImagesToLastAIMessage,
     stopStreamingLastAIMessage,
-    markLastAIMessageReconnecting,
-    clearReconnectingMark,
     reloadChatHistory,
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
@@ -73,8 +71,6 @@ function useChatStream({
     const {recovering, recoveryFailed, beginRecovery, retryRecovery, dismissRecoveryFailure, cancelActiveRecovery} = useStreamRecovery({
         reloadChatHistory,
         stopStreamingLastAIMessage,
-        markLastAIMessageReconnecting,
-        clearReconnectingMark,
     });
 
     const handleInputChange = (event) => {

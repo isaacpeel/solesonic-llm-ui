@@ -617,8 +617,6 @@ describe('backgrounded disconnect recovery', () => {
             appendNotificationToLastAIMessage: vi.fn(),
             updateSeededNotificationText: vi.fn(),
             stopStreamingLastAIMessage: vi.fn(),
-            markLastAIMessageReconnecting: vi.fn(),
-            clearReconnectingMark: vi.fn(),
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
@@ -659,7 +657,7 @@ describe('backgrounded disconnect recovery', () => {
 
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
         expect(result.current.error).toBeNull();
-        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
         /* The turn is bound, so the ids are spent and the tray must not come back. */
         expect(options.attachmentTray.clearTray).toHaveBeenCalled();
     });
@@ -674,7 +672,7 @@ describe('backgrounded disconnect recovery', () => {
         await submitWith(result, 'tell me about the thing');
 
         expect(result.current.error).toBeNull();
-        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
     });
 
     it('reconciles the turn from the server once the reply is persisted', async () => {
@@ -736,7 +734,6 @@ describe('backgrounded disconnect recovery', () => {
         await submitWith(result, 'tell me about the thing');
 
         expect(streamService.handleStreamError).toHaveBeenCalled();
-        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
     });
 
     it('does not recover an attachment turn that never saw init', async () => {
@@ -749,28 +746,8 @@ describe('backgrounded disconnect recovery', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'look at this');
 
-        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
         expect(options.attachmentTray.restoreTray).toHaveBeenCalled();
         expect(result.current.error).not.toBeNull();
-    });
-
-    it('clears the stale reconnecting mark when a new turn supersedes an in-flight recovery', async () => {
-        simulateBackgroundedDuringTurn();
-        /* Never resolves, so the first turn's recovery is still polling when the second turn starts. */
-        chatService.findChatDetails.mockImplementation(() => new Promise(() => {}));
-        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
-            emitInit(chunkOptions);
-        });
-
-        const {result} = renderHook(() => useChatStream(options));
-        await submitWith(result, 'first turn');
-
-        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
-        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
-
-        await submitWith(result, 'second turn');
-
-        expect(options.clearReconnectingMark).toHaveBeenCalled();
     });
 
     it('leaves an aborted stream alone', async () => {
@@ -785,7 +762,6 @@ describe('backgrounded disconnect recovery', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'tell me about the thing');
 
-        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
     });
 });

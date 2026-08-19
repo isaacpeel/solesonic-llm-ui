@@ -113,8 +113,6 @@ describe('useStreamRecovery', () => {
         options = {
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             stopStreamingLastAIMessage: vi.fn(),
-            markLastAIMessageReconnecting: vi.fn(),
-            clearReconnectingMark: vi.fn(),
         };
     });
 
@@ -132,7 +130,7 @@ describe('useStreamRecovery', () => {
         });
 
         expect(started).toBe(false);
-        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
+        expect(options.stopStreamingLastAIMessage).not.toHaveBeenCalled();
     });
 
     it('reconciles the bubble once the reply is persisted', async () => {
@@ -141,8 +139,6 @@ describe('useStreamRecovery', () => {
         act(() => {
             result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
         });
-
-        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
 
         await waitFor(() => {
             expect(options.reloadChatHistory).toHaveBeenCalled();
@@ -157,72 +153,6 @@ describe('useStreamRecovery', () => {
 
         expect(result.current.recoveryFailed).toBe(false);
     });
-
-    it('keeps the reconnecting mark up for a minimum duration even when the reply resolves instantly', async () => {
-        const {result} = renderHook(() => useStreamRecovery(options));
-
-        act(() => {
-            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
-        });
-
-        /* The real completion work (reload, stop-streaming) runs immediately, unslowed. */
-        await waitFor(() => {
-            expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
-        });
-
-        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
-
-        await new Promise((resolve) => setTimeout(resolve, 3200));
-
-        expect(options.clearReconnectingMark).toHaveBeenCalledTimes(1);
-    }, 10000);
-
-    it('clears the reconnecting mark immediately once the recovery has already run past the minimum duration', async () => {
-        chatService.findChatDetails
-            .mockResolvedValueOnce(chatWithoutReply())
-            .mockResolvedValueOnce(chatWithoutReply())
-            .mockResolvedValueOnce(chatWithReply());
-
-        const {result} = renderHook(() => useStreamRecovery(options));
-
-        act(() => {
-            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
-        });
-
-        /* Polling already spent 0 + 1000 + 2000ms — at least the minimum — before succeeding. */
-        await waitFor(() => {
-            expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
-        }, {timeout: 5000});
-
-        expect(options.clearReconnectingMark).toHaveBeenCalledTimes(1);
-    }, 10000);
-
-    it('does not let a finished recovery\'s deferred clear cut short a new recovery already in flight', async () => {
-        const {result} = renderHook(() => useStreamRecovery(options));
-
-        /* First recovery resolves near-instantly and schedules its clear ~3s out. */
-        act(() => {
-            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
-        });
-
-        await waitFor(() => {
-            expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
-        });
-
-        /* A second recovery begins before the first's deferred clear has fired. */
-        chatService.findChatDetails.mockResolvedValue(chatWithoutReply());
-
-        act(() => {
-            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
-        });
-
-        expect(options.markLastAIMessageReconnecting).toHaveBeenLastCalledWith(true);
-
-        /* Past when the first recovery's now-cancelled timer would have fired. */
-        await new Promise((resolve) => setTimeout(resolve, 3200));
-
-        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
-    }, 10000);
 
     it('waits for the page to come back before polling', async () => {
         isPageHidden.mockReturnValue(true);
@@ -306,7 +236,6 @@ describe('useStreamRecovery', () => {
 
         const callCountAtCancel = chatService.findChatDetails.mock.calls.length;
         expect(result.current.recovering).toBe(false);
-        expect(options.clearReconnectingMark).toHaveBeenCalled();
 
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -321,7 +250,7 @@ describe('useStreamRecovery', () => {
             result.current.cancelActiveRecovery();
         });
 
-        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
+        expect(result.current.recovering).toBe(false);
     });
 
     it('never attempts a resume without a chunk handler to route the replay through', async () => {
@@ -354,7 +283,6 @@ describe('useStreamRecovery', () => {
         unmount();
 
         const callCountAtUnmount = chatService.findChatDetails.mock.calls.length;
-        expect(options.clearReconnectingMark).toHaveBeenCalled();
 
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -390,8 +318,6 @@ describe('resuming a dropped stream', () => {
         options = {
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             stopStreamingLastAIMessage: vi.fn(),
-            markLastAIMessageReconnecting: vi.fn(),
-            clearReconnectingMark: vi.fn(),
         };
     });
 
