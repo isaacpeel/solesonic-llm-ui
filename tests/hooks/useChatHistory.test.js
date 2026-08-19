@@ -850,7 +850,7 @@ describe('chat history support for stream recovery', () => {
     });
 
     describe('stopStreamingLastAIMessage', () => {
-        it('clears the reconnecting and seeded flags along with the streaming one', () => {
+        it('clears the streaming and seeded flags, but leaves the reconnecting mark alone', () => {
             const {result} = renderHook(() => useChatHistory());
 
             result.current.stopStreamingLastAIMessage();
@@ -860,9 +860,13 @@ describe('chat history support for stream recovery', () => {
                 {type: AI, text: 'partial', _key: 'ai1', isStreaming: true, isReconnecting: true, hasSeededNotification: true},
             ]);
 
+            /*
+             * clearReconnectingMark owns isReconnecting so useStreamRecovery can defer clearing
+             * it (topping up its minimum visible time) without delaying the rest of the turn.
+             */
             expect(updatedHistory[0]).toMatchObject({
                 isStreaming: false,
-                isReconnecting: false,
+                isReconnecting: true,
                 hasSeededNotification: false,
                 text: 'partial',
                 _key: 'ai1',

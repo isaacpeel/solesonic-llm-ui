@@ -215,6 +215,11 @@ function useChatHistory() {
         });
     }, [setChatHistory]);
 
+    /*
+     * Deliberately leaves `isReconnecting` alone — `clearReconnectingMark` owns that field so
+     * useStreamRecovery can defer clearing it (topping up its minimum visible time) without
+     * delaying the rest of a turn's completion, which must land immediately.
+     */
     const stopStreamingLastAIMessage = useCallback(() => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -233,7 +238,6 @@ function useChatHistory() {
             newHistory[lastIndex] = {
                 ...newHistory[lastIndex],
                 isStreaming: false,
-                isReconnecting: false,
                 hasSeededNotification: false,
             };
 

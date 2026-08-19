@@ -19,6 +19,14 @@ import {isPageHidden, observePageResumed} from '../util/pageLifecycle.js';
 const RECOVERY_POLL_DELAYS_MILLISECONDS = [0, 1000, 2000, 4000, 8000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000];
 
 /*
+ * A recovery that resolves near-instantly (the tab was only backgrounded for a moment) would
+ * otherwise flash "Reconnecting…" and clear it before anyone reads it. Floors how long the mark
+ * stays up without floor-ing the recovery itself — reloadChatHistory/stopStreamingLastAIMessage
+ * still run immediately; only the reconnecting mark's clear is deferred to top up the remainder.
+ */
+const MINIMUM_RECONNECTING_VISIBLE_MILLISECONDS = 3000;
+
+/*
  * True once the server holds an assistant reply for this turn. Anchored on the user message id
  * adopted from `init` so a turn cannot be satisfied by an older reply already in the chat; with
  * no id — the frame never arrived — the last USER row is the best available anchor.
@@ -66,6 +74,40 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
     const activeRecoveryRef = useRef(null);
     const lastRecoveryRequestRef = useRef(null);
 
+    /* When the mark went up, and the pending timer (if any) topping up its minimum visible time. */
+    const reconnectingShownAtRef = useRef(null);
+    const clearReconnectingTimeoutRef = useRef(null);
+
+    const cancelScheduledReconnectingClear = useCallback(() => {
+        if (clearReconnectingTimeoutRef.current) {
+            clearTimeout(clearReconnectingTimeoutRef.current);
+            clearReconnectingTimeoutRef.current = null;
+        }
+    }, []);
+
+    /*
+     * A completed/failed recovery calls this instead of clearing the mark directly, so the
+     * banner still reads as having been shown for at least MINIMUM_RECONNECTING_VISIBLE_MILLISECONDS
+     * even when the actual reconnect was near-instant.
+     */
+    const scheduleReconnectingClear = useCallback(() => {
+        cancelScheduledReconnectingClear();
+
+        const shownAtMilliseconds = reconnectingShownAtRef.current ?? 0;
+        const remainingMilliseconds = MINIMUM_RECONNECTING_VISIBLE_MILLISECONDS - (Date.now() - shownAtMilliseconds);
+
+        if (remainingMilliseconds <= 0) {
+            clearReconnectingMark();
+
+            return;
+        }
+
+        clearReconnectingTimeoutRef.current = setTimeout(() => {
+            clearReconnectingTimeoutRef.current = null;
+            clearReconnectingMark();
+        }, remainingMilliseconds);
+    }, [cancelScheduledReconnectingClear, clearReconnectingMark]);
+
     const cancelActiveRecovery = useCallback(() => {
         const activeRecovery = activeRecoveryRef.current;
 
@@ -82,14 +124,16 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
         activeRecoveryRef.current = null;
         setRecovering(false);
+        cancelScheduledReconnectingClear();
         clearReconnectingMark();
-    }, [clearReconnectingMark]);
+    }, [cancelScheduledReconnectingClear, clearReconnectingMark]);
 
     useEffect(() => {
         return () => {
             cancelActiveRecovery();
+            cancelScheduledReconnectingClear();
         };
-    }, [cancelActiveRecovery]);
+    }, [cancelActiveRecovery, cancelScheduledReconnectingClear]);
 
     const runRecovery = useCallback(async (recoveryToken, {recoveryChatId, userMessageId, lastEventId, onResumeChunk}) => {
         const finishRecovery = (failed) => {
@@ -123,6 +167,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
                 if (resumeOutcome === RESUME_STREAMED) {
                     /* `done` already finalized the bubble; this only clears the reconnecting mark. */
                     stopStreamingLastAIMessage();
+                    scheduleReconnectingClear();
                     finishRecovery(false);
 
                     return;
@@ -130,6 +175,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
                 if (resumeOutcome === RESUME_ALREADY_COMPLETE) {
                     stopStreamingLastAIMessage();
+                    scheduleReconnectingClear();
                     await reloadChatHistory();
 
                     if (recoveryToken.cancelled) {
@@ -143,6 +189,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
                 if (resumeOutcome === RESUME_REJECTED) {
                     stopStreamingLastAIMessage();
+                    scheduleReconnectingClear();
                     finishRecovery(true);
 
                     return;
@@ -178,6 +225,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
                      * exactly backwards here — clear the flag first so the server's text wins.
                      */
                     stopStreamingLastAIMessage();
+                    scheduleReconnectingClear();
                     await reloadChatHistory();
 
                     if (recoveryToken.cancelled) {
@@ -192,13 +240,15 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
             log.warn('[useStreamRecovery] Gave up waiting for the assistant reply.');
             stopStreamingLastAIMessage();
+            scheduleReconnectingClear();
             finishRecovery(true);
         } catch (caughtError) {
             log.error('[useStreamRecovery] Recovery failed.', caughtError);
             stopStreamingLastAIMessage();
+            scheduleReconnectingClear();
             finishRecovery(true);
         }
-    }, [reloadChatHistory, stopStreamingLastAIMessage]);
+    }, [reloadChatHistory, stopStreamingLastAIMessage, scheduleReconnectingClear]);
 
     const beginRecovery = useCallback((recoveryRequest) => {
         if (!recoveryRequest?.recoveryChatId) {
@@ -207,6 +257,12 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
         cancelActiveRecovery();
 
+        /*
+         * A prior recovery's clear may still be pending (it resolved fast and is topping up its
+         * own minimum visible time) — that timer must not fire mid-way through this new one.
+         */
+        cancelScheduledReconnectingClear();
+
         lastRecoveryRequestRef.current = recoveryRequest;
 
         const recoveryToken = {cancelled: false, unsubscribe: null, timeoutId: null};
@@ -214,13 +270,14 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
         setRecovering(true);
         setRecoveryFailed(false);
+        reconnectingShownAtRef.current = Date.now();
         markLastAIMessageReconnecting(true);
 
         /* Fire-and-forget by design — runRecovery handles its own failures and never rejects. */
         void runRecovery(recoveryToken, recoveryRequest);
 
         return true;
-    }, [cancelActiveRecovery, markLastAIMessageReconnecting, runRecovery]);
+    }, [cancelActiveRecovery, cancelScheduledReconnectingClear, markLastAIMessageReconnecting, runRecovery]);
 
     const retryRecovery = useCallback(() => {
         const lastRecoveryRequest = lastRecoveryRequestRef.current;

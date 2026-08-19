@@ -158,6 +158,72 @@ describe('useStreamRecovery', () => {
         expect(result.current.recoveryFailed).toBe(false);
     });
 
+    it('keeps the reconnecting mark up for a minimum duration even when the reply resolves instantly', async () => {
+        const {result} = renderHook(() => useStreamRecovery(options));
+
+        act(() => {
+            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
+        });
+
+        /* The real completion work (reload, stop-streaming) runs immediately, unslowed. */
+        await waitFor(() => {
+            expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
+        });
+
+        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
+
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+
+        expect(options.clearReconnectingMark).toHaveBeenCalledTimes(1);
+    }, 10000);
+
+    it('clears the reconnecting mark immediately once the recovery has already run past the minimum duration', async () => {
+        chatService.findChatDetails
+            .mockResolvedValueOnce(chatWithoutReply())
+            .mockResolvedValueOnce(chatWithoutReply())
+            .mockResolvedValueOnce(chatWithReply());
+
+        const {result} = renderHook(() => useStreamRecovery(options));
+
+        act(() => {
+            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
+        });
+
+        /* Polling already spent 0 + 1000 + 2000ms — at least the minimum — before succeeding. */
+        await waitFor(() => {
+            expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
+        }, {timeout: 5000});
+
+        expect(options.clearReconnectingMark).toHaveBeenCalledTimes(1);
+    }, 10000);
+
+    it('does not let a finished recovery\'s deferred clear cut short a new recovery already in flight', async () => {
+        const {result} = renderHook(() => useStreamRecovery(options));
+
+        /* First recovery resolves near-instantly and schedules its clear ~3s out. */
+        act(() => {
+            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
+        });
+
+        await waitFor(() => {
+            expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        });
+
+        /* A second recovery begins before the first's deferred clear has fired. */
+        chatService.findChatDetails.mockResolvedValue(chatWithoutReply());
+
+        act(() => {
+            result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
+        });
+
+        expect(options.markLastAIMessageReconnecting).toHaveBeenLastCalledWith(true);
+
+        /* Past when the first recovery's now-cancelled timer would have fired. */
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+
+        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
+    }, 10000);
+
     it('waits for the page to come back before polling', async () => {
         isPageHidden.mockReturnValue(true);
 
