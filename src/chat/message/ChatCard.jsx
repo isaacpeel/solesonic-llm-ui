@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import {buildStreamingMarkdownDisplay} from "../../util/streamingMarkdown.js";
+import {renderLatexArrows} from "../../util/latexArrows.js";
 import "./ChatMessage.css";
 
 function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, isStreaming = false, showPlaceholder = false, className, children, footer}) {
@@ -33,7 +34,7 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
         if (!hasText) {
             return null;
         }
-        const rawText = text.trimEnd();
+        const rawText = renderLatexArrows(text.trimEnd());
         const isFinal = !isStreaming;
         return buildStreamingMarkdownDisplay(rawText, {isFinal});
     }, [text, isStreaming, hasText]);
