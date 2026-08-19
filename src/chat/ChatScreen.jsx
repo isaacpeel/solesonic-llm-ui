@@ -39,7 +39,7 @@ function ChatScreen() {
         document.addEventListener('copy', handleCopy);
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, markLastAIMessageReconnecting, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, markLastAIMessageReconnecting, clearReconnectingMark, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
@@ -76,6 +76,7 @@ function ChatScreen() {
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
         markLastAIMessageReconnecting,
+        clearReconnectingMark,
         reloadChatHistory,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,

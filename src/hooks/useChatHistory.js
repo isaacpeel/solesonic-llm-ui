@@ -267,6 +267,29 @@ function useChatHistory() {
     }, [setChatHistory]);
 
     /*
+     * A recovery that gets cancelled (a new turn starts, or the hook unmounts) can leave the
+     * flag stuck on a message that is no longer last — a fresh AI placeholder may already sit
+     * after it. Clear by scanning for the flag itself rather than by position, since at most
+     * one message ever carries it.
+     */
+    const clearReconnectingMark = useCallback(() => {
+        setChatHistory((previousHistory) => {
+            const reconnectingIndex = previousHistory.findIndex(
+                (message) => message.type === AI && message.isReconnecting
+            );
+
+            if (reconnectingIndex < 0) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            newHistory[reconnectingIndex] = {...newHistory[reconnectingIndex], isReconnecting: false};
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
+    /*
      * The `init` frame has been observed carrying the chat id under `id`; the attachment
      * design document specifies `chatId`. Accept both — guessing wrong means a new chat
      * never adopts an id and every follow-up turn silently starts a fresh chat.
@@ -375,6 +398,7 @@ function useChatHistory() {
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
         markLastAIMessageReconnecting,
+        clearReconnectingMark,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,

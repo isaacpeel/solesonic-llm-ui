@@ -114,6 +114,7 @@ describe('useStreamRecovery', () => {
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             stopStreamingLastAIMessage: vi.fn(),
             markLastAIMessageReconnecting: vi.fn(),
+            clearReconnectingMark: vi.fn(),
         };
     });
 
@@ -239,12 +240,23 @@ describe('useStreamRecovery', () => {
 
         const callCountAtCancel = chatService.findChatDetails.mock.calls.length;
         expect(result.current.recovering).toBe(false);
+        expect(options.clearReconnectingMark).toHaveBeenCalled();
 
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
         expect(chatService.findChatDetails.mock.calls.length).toBe(callCountAtCancel);
         expect(options.reloadChatHistory).not.toHaveBeenCalled();
     }, 10000);
+
+    it('does nothing when there is no active recovery to cancel', () => {
+        const {result} = renderHook(() => useStreamRecovery(options));
+
+        act(() => {
+            result.current.cancelActiveRecovery();
+        });
+
+        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
+    });
 
     it('never attempts a resume without a chunk handler to route the replay through', async () => {
         const {result} = renderHook(() => useStreamRecovery(options));
@@ -276,6 +288,7 @@ describe('useStreamRecovery', () => {
         unmount();
 
         const callCountAtUnmount = chatService.findChatDetails.mock.calls.length;
+        expect(options.clearReconnectingMark).toHaveBeenCalled();
 
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -312,6 +325,7 @@ describe('resuming a dropped stream', () => {
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             stopStreamingLastAIMessage: vi.fn(),
             markLastAIMessageReconnecting: vi.fn(),
+            clearReconnectingMark: vi.fn(),
         };
     });
 

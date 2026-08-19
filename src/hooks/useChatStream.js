@@ -34,6 +34,7 @@ function useChatStream({
     attachGeneratedImagesToLastAIMessage,
     stopStreamingLastAIMessage,
     markLastAIMessageReconnecting,
+    clearReconnectingMark,
     reloadChatHistory,
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
@@ -73,6 +74,7 @@ function useChatStream({
         reloadChatHistory,
         stopStreamingLastAIMessage,
         markLastAIMessageReconnecting,
+        clearReconnectingMark,
     });
 
     const handleInputChange = (event) => {

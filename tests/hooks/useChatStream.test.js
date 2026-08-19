@@ -618,6 +618,7 @@ describe('backgrounded disconnect recovery', () => {
             updateSeededNotificationText: vi.fn(),
             stopStreamingLastAIMessage: vi.fn(),
             markLastAIMessageReconnecting: vi.fn(),
+            clearReconnectingMark: vi.fn(),
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
@@ -751,6 +752,25 @@ describe('backgrounded disconnect recovery', () => {
         expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
         expect(options.attachmentTray.restoreTray).toHaveBeenCalled();
         expect(result.current.error).not.toBeNull();
+    });
+
+    it('clears the stale reconnecting mark when a new turn supersedes an in-flight recovery', async () => {
+        simulateBackgroundedDuringTurn();
+        /* Never resolves, so the first turn's recovery is still polling when the second turn starts. */
+        chatService.findChatDetails.mockImplementation(() => new Promise(() => {}));
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'first turn');
+
+        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
+        expect(options.clearReconnectingMark).not.toHaveBeenCalled();
+
+        await submitWith(result, 'second turn');
+
+        expect(options.clearReconnectingMark).toHaveBeenCalled();
     });
 
     it('leaves an aborted stream alone', async () => {

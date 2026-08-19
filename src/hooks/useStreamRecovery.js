@@ -60,7 +60,7 @@ export function hasCompletedAssistantReply(chatDetails, userMessageId) {
  * bound server-side, so recovery never re-sends anything — it waits for the user to come back
  * and reconciles the bubble against what the server persisted.
  */
-function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markLastAIMessageReconnecting}) {
+function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markLastAIMessageReconnecting, clearReconnectingMark}) {
     const [recovering, setRecovering] = useState(false);
     const [recoveryFailed, setRecoveryFailed] = useState(false);
     const activeRecoveryRef = useRef(null);
@@ -82,7 +82,8 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
         activeRecoveryRef.current = null;
         setRecovering(false);
-    }, []);
+        clearReconnectingMark();
+    }, [clearReconnectingMark]);
 
     useEffect(() => {
         return () => {

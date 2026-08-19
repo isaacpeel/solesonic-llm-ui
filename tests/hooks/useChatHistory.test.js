@@ -912,4 +912,34 @@ describe('chat history support for stream recovery', () => {
             expect(historyUpdater(previousHistory)).toBe(previousHistory);
         });
     });
+
+    describe('clearReconnectingMark', () => {
+        it('clears the flag on whichever AI message carries it, even when it is not last', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.clearReconnectingMark();
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const orphanedMessage = {type: AI, text: 'orphaned turn', _key: 'ai1', isReconnecting: true};
+            const updatedHistory = historyUpdater([
+                orphanedMessage,
+                {type: 'USER', text: 'a new question', _key: 'u2'},
+                {type: AI, text: '', _key: 'ai2', isStreaming: true},
+            ]);
+
+            expect(updatedHistory[0]).toMatchObject({isReconnecting: false, text: 'orphaned turn', _key: 'ai1'});
+            expect(updatedHistory[2]).toMatchObject({isStreaming: true, _key: 'ai2'});
+        });
+
+        it('is a no-op when no message carries the flag', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.clearReconnectingMark();
+
+            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [{type: AI, text: 'settled', _key: 'ai1'}];
+
+            expect(historyUpdater(previousHistory)).toBe(previousHistory);
+        });
+    });
 });
