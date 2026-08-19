@@ -1,7 +1,7 @@
 import {useState, useEffect} from 'react';
 import ollamaService from '../service/OllamaService.js';
 import './OllamaModelSettings.css';
-import {BoltIcon, BoltSlashIcon, DocumentArrowDownIcon, ChevronLeftIcon} from "@heroicons/react/24/solid";
+import {BoltIcon, BoltSlashIcon, DocumentArrowDownIcon, ChevronLeftIcon, ArrowPathIcon, TrashIcon} from "@heroicons/react/24/solid";
 import {ToastContainer, toast, Bounce} from 'react-toastify';
 
 const OllamaModelSettings = () => {
@@ -12,6 +12,7 @@ const OllamaModelSettings = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [mobileView, setMobileView] = useState('list');
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         censored: false,
@@ -54,6 +55,30 @@ const OllamaModelSettings = () => {
         } catch (error) {
             toast.error('Error fetching installed models: ' + error.message);
             setInstalledModels([]);
+        }
+    };
+
+    const handleRefreshModels = async () => {
+        setIsRefreshing(true);
+
+        try {
+            await ollamaService.refreshModels();
+            await fetchInstalledModels();
+
+            toast("Ollama models refreshed", {
+                position: "top-right",
+                autoClose: 2500,
+                hideProgressBar: true,
+                closeOnClick: true,
+                pauseOnHover: false,
+                draggable: false,
+                theme: "dark",
+                transition: Bounce,
+            });
+        } catch (error) {
+            toast.error('Error refreshing models: ' + error.message);
+        } finally {
+            setIsRefreshing(false);
         }
     };
 
@@ -253,6 +278,41 @@ const OllamaModelSettings = () => {
         }
     };
 
+    const handleDeleteModel = async () => {
+        if (!selectedModel) {
+            return;
+        }
+
+        const modelName = selectedModel.name || selectedModel.ollamaModel?.model || 'this model';
+        if (!window.confirm(`Delete configuration for "${modelName}"?`)) {
+            return;
+        }
+
+        try {
+            await ollamaService.deleteModel(selectedModel.id);
+
+            const remainingModels = Array.isArray(models)
+                ? models.filter(model => model.id !== selectedModel.id)
+                : [];
+            setModels(remainingModels);
+            setSelectedModel(remainingModels.length > 0 ? remainingModels[0] : null);
+            setMobileView('list');
+
+            toast("Model deleted", {
+                position: "top-right",
+                autoClose: 2500,
+                hideProgressBar: true,
+                closeOnClick: true,
+                pauseOnHover: false,
+                draggable: false,
+                theme: "dark",
+                transition: Bounce,
+            });
+        } catch (error) {
+            toast.error('Failed to delete model: ' + error.message);
+        }
+    };
+
     const renderModelForm = () => {
         return (
             <form onSubmit={handleSubmit} className="model-form">
@@ -322,6 +382,13 @@ const OllamaModelSettings = () => {
                         <button className="btn-add-model" onClick={handleSaveNativeModel}>
                             <DocumentArrowDownIcon className="btn-icon" />
                             Add Model
+                        </button>
+                    )}
+
+                    {!isNativeModel && (
+                        <button className="btn-delete-model" onClick={handleDeleteModel}>
+                            <TrashIcon className="btn-icon" />
+                            Delete Model
                         </button>
                     )}
                 </div>
@@ -396,6 +463,19 @@ const OllamaModelSettings = () => {
             <ToastContainer />
 
             <div className={`models-sidebar ${mobileView === 'detail' ? 'mobile-hidden' : ''}`}>
+                <div className="models-sidebar-header">
+                    <span className="models-sidebar-title">Ollama Models</span>
+                    <button
+                        type="button"
+                        className="btn-refresh-models"
+                        onClick={handleRefreshModels}
+                        disabled={isRefreshing}
+                        title="Refresh available models"
+                    >
+                        <ArrowPathIcon className={`btn-icon ${isRefreshing ? 'spinning' : ''}`} />
+                    </button>
+                </div>
+
                 {Array.isArray(models) && models.length > 0 && (
                     <div className="model-section">
                         <div className="model-section-label">Configured</div>

@@ -16,6 +16,63 @@
     padding: 8px 0;
 }
 
+.models-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 16px 12px;
+}
+
+.models-sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ddd;
+}
+
+.btn-refresh-models {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    color: #999;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.btn-refresh-models:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    color: #e0e0e0;
+}
+
+.btn-refresh-models:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn-refresh-models .btn-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-refresh-models .btn-icon.spinning {
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .model-section {
     margin-bottom: 8px;
 }
@@ -208,6 +265,27 @@
 
 .btn-add-model:hover {
     background: #0069d9;
+}
+
+.btn-delete-model {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    background: rgba(220, 53, 69, 0.12);
+    color: #f16b7a;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    align-self: flex-start;
+}
+
+.btn-delete-model:hover {
+    background: #dc3545;
+    color: #fff;
 }
 
 .btn-icon {
@@ -461,9 +539,8 @@
     }
 
     /* On desktop, mobile-hidden class is ignored for both panels */
-    .models-sidebar.mobile-hidden,
-    .model-detail-panel.mobile-hidden {
-        display: flex !important;
+    .models-sidebar.mobile-hidden {
+        display: block !important;
     }
 
     .model-detail-panel.mobile-hidden {
