@@ -16,6 +16,7 @@ import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
 import useAttachmentTray from '../hooks/useAttachmentTray.js';
 import useScrollToBottom from '../hooks/useScrollToBottom.js';
+import useKeyboardInset from '../hooks/useKeyboardInset.js';
 
 
 function ChatScreen() {
@@ -93,6 +94,7 @@ function ChatScreen() {
 
     const composerRef = useRef(null);
     const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
+    const keyboardInset = useKeyboardInset();
 
     const {commandCandidates} = useSlashCommands({inputValue});
 
@@ -123,7 +125,7 @@ function ChatScreen() {
         : '';
 
     return (
-        <div className={`chat-app${trayStateClassName}`}>
+        <div className={`chat-app${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
             {error && <ConsoleErrors error={error}/>}
 
             <div className="chat-content" ref={scrollContainerRef}>
