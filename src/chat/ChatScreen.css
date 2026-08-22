@@ -13,7 +13,7 @@
 .chat-content {
     flex: 1;
     overflow-y: auto;
-    margin-bottom: var(--composer-clearance, 70px);
+    margin-bottom: var(--composer-clearance, calc(70px + env(safe-area-inset-bottom)));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -31,24 +31,25 @@
  * because the tray is capped at 4 images and never wraps to a second row.
  */
 .chat-app--tray-open {
-    --composer-clearance: 110px;
+    --composer-clearance: calc(110px + env(safe-area-inset-bottom));
 }
 
 .chat-app--caption-open {
-    --composer-clearance: 165px;
+    --composer-clearance: calc(165px + env(safe-area-inset-bottom));
 }
 
 /*
- * Vertically it rides the same clearance the transcript uses, so it clears the composer
- * whether or not the attachment tray is open. Horizontally it sits in the page gutter
- * right of the message column: .chat-content's 15px padding plus the layout's 20px leaves
- * 35px of empty page, so a 32px button at 12px stays clear of the widest bubble at every
- * breakpoint — including the 768px one, where .message drops its 70% cap and runs full
- * width. Fixed rather than absolute because the composer it sits above is fixed too.
+ * Centered horizontally on the full viewport — neither .chat-app nor .chat-content
+ * constrains its width, so there's no narrower column to center against. left: 50% alone
+ * would offset by the button's own half-width, hence the translateX correction (same idiom
+ * as .dots-loader in ChatInput.css). Vertically it rides the same clearance the transcript
+ * uses, so it clears the composer whether or not the attachment tray is open. Fixed rather
+ * than absolute because the composer it sits above is fixed too.
  */
 .chat-scroll-to-bottom {
     position: fixed;
     left: 50%;
+    transform: translate(-50%, 0);
     bottom: calc(var(--composer-clearance, 70px) + 10px);
     z-index: 2;
     display: flex;
@@ -137,6 +138,10 @@
 }
 
 @media (max-width: 768px) {
+    .chat-content {
+        padding: 8px;
+    }
+
     .chat-attachment-notice {
         width: 85%;
     }

@@ -11,7 +11,7 @@ import AuthenticationWrapper from "./authorizer/AuthenticationWrapper.jsx";
 const Layout = () => (
     <div>
         <Header />
-        <div style={{marginTop: "60px", flex: 1, padding: "20px"}}>
+        <div className="app-layout-content">
             <Outlet />
         </div>
     </div>

@@ -29,6 +29,7 @@ function ChatInput({
     setEntryCaption,
     trayError,
     onCaptionOpenChange,
+    composerContainerRef,
 }) {
     useEffect(() => {
         const adjustInputHeight = () => {
@@ -93,7 +94,7 @@ function ChatInput({
     };
 
     return (
-        <div className="chat-input-container">
+        <div className="chat-input-container" ref={composerContainerRef}>
             <div className="textarea-parent">
                 {/*
                   * Both popovers live in one absolutely-positioned stack above the composer.

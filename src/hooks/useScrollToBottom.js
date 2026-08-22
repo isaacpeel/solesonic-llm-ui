@@ -11,14 +11,23 @@ import {useCallback, useEffect, useRef, useState} from 'react';
  * height. Whichever it is, listening on window catches both — scroll events from the
  * document arrive there, and container scrolls reach it during the capture phase.
  *
+ * Because the document is the scroller, `.chat-content`'s margin-bottom (reserved so the
+ * last message clears the fixed composer) counts as real, invisible scrollHeight below the
+ * visual end of the transcript — the composer itself is position: fixed and contributes
+ * nothing to flow height. That margin varies (plain/tray/caption, plus a safe-area inset),
+ * so a flat "close enough" threshold either misses it or gets stale the moment the composer
+ * changes size. Reading the composer's own live rendered height via `composerRef` instead
+ * gives the true current gap for free, tray/caption/safe-area already baked in.
+ *
  * A scroll listener alone is not enough: while a reply streams, the content grows without
  * the user scrolling. Passing the streaming history as `contentDependency` re-measures
  * after every append, and a ResizeObserver covers height changes the render does not
  * account for (viewport resize, composer tray opening, images finishing their load).
  */
 const BOTTOM_THRESHOLD_PIXELS = 48;
+const BOTTOM_THRESHOLD_SLOP_PIXELS = 8;
 
-function useScrollToBottom(contentDependency) {
+function useScrollToBottom(contentDependency, composerRef) {
     const scrollContainerRef = useRef(null);
     const [isScrolledAwayFromBottom, setIsScrolledAwayFromBottom] = useState(false);
 
@@ -32,6 +41,14 @@ function useScrollToBottom(contentDependency) {
         return document.scrollingElement || document.documentElement;
     }, []);
 
+    const resolveBottomThreshold = useCallback(() => {
+        const composerClearance = composerRef?.current?.getBoundingClientRect().height;
+
+        return composerClearance > 0
+            ? composerClearance + BOTTOM_THRESHOLD_SLOP_PIXELS
+            : BOTTOM_THRESHOLD_PIXELS;
+    }, [composerRef]);
+
     const measureScrollPosition = useCallback(() => {
         const scrollingElement = resolveScrollingElement();
 
@@ -40,8 +57,8 @@ function useScrollToBottom(contentDependency) {
         }
 
         const distanceFromBottom = scrollingElement.scrollHeight - scrollingElement.scrollTop - scrollingElement.clientHeight;
-        setIsScrolledAwayFromBottom(distanceFromBottom > BOTTOM_THRESHOLD_PIXELS);
-    }, [resolveScrollingElement]);
+        setIsScrolledAwayFromBottom(distanceFromBottom > resolveBottomThreshold());
+    }, [resolveScrollingElement, resolveBottomThreshold]);
 
     useEffect(() => {
         measureScrollPosition();
@@ -54,8 +71,14 @@ function useScrollToBottom(contentDependency) {
             ? new ResizeObserver(measureScrollPosition)
             : null;
 
-        if (resizeObserver && scrollContainerRef.current) {
-            resizeObserver.observe(scrollContainerRef.current);
+        if (resizeObserver) {
+            if (scrollContainerRef.current) {
+                resizeObserver.observe(scrollContainerRef.current);
+            }
+
+            if (composerRef?.current) {
+                resizeObserver.observe(composerRef.current);
+            }
         }
 
         return () => {
@@ -63,7 +86,7 @@ function useScrollToBottom(contentDependency) {
             window.removeEventListener('resize', measureScrollPosition);
             resizeObserver?.disconnect();
         };
-    }, [measureScrollPosition]);
+    }, [measureScrollPosition, composerRef]);
 
     useEffect(() => {
         measureScrollPosition();

@@ -91,7 +91,8 @@ function ChatScreen() {
         attachmentTray,
     });
 
-    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory);
+    const composerRef = useRef(null);
+    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
 
     const {commandCandidates} = useSlashCommands({inputValue});
 
@@ -183,6 +184,7 @@ function ChatScreen() {
                     setEntryCaption={attachmentTray.setEntryCaption}
                     trayError={attachmentTray.trayError}
                     onCaptionOpenChange={setIsCaptionRowOpen}
+                    composerContainerRef={composerRef}
                 />
             </div>
 

@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+.app-layout-content {
+    margin-top: calc(60px + env(safe-area-inset-top));
+    flex: 1;
+    padding: 20px;
+}
+
+@media (max-width: 768px) {
+    .app-layout-content {
+        padding: 10px;
+    }
+}

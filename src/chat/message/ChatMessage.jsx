@@ -1,7 +1,6 @@
 import {useState} from "react";
 import PropTypes from "prop-types";
 import "./ChatMessage.css";
-import {InformationCircleIcon} from "@heroicons/react/20/solid";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "../attachment/MessageAttachments.jsx";
@@ -38,8 +37,7 @@ function ChatMessage({message, onExpandImage}) {
     const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
 
     const containerClass = isElicitation ? SYSTEM : message.type;
-    const showIcon = isElicitation || isAIorSystem;
-    const iconLabel = isElicitation ? 'AI Assistant' : (message.model || 'AI Assistant');
+    const modelName = message.model || 'AI Assistant';
     const cardClassName = isElicitation ? 'SYSTEM elicitation-resolved' : message.type;
     const typeColors = isElicitation ? TYPE_COLORS[SYSTEM] : (TYPE_COLORS[message.type] || TYPE_COLORS[SYSTEM]);
 
@@ -137,16 +135,10 @@ function ChatMessage({message, onExpandImage}) {
 
     return (
         <div className={`chat-message-container ${containerClass}`}>
-            {showIcon && (
-                <div className="info-icon-wrapper" data-dialog={iconLabel}>
-                    <InformationCircleIcon />
-                </div>
-            )}
-
             {/*
               * The action row needs its own column beneath the card, but .chat-message-container
-              * is a row (info icon beside card), so the card gets wrapped. Only wrapped when
-              * there is an action to show, to leave every other message type's layout untouched.
+              * is a row, so the card gets wrapped. Only wrapped when there is an action to show,
+              * to leave every other message type's layout untouched.
               *
               * Hover reveals it on a pointer device; a tap does the same where there is no hover
               * to give, which is why the click handler sets a flag rather than leaning on :hover.
@@ -162,6 +154,7 @@ function ChatMessage({message, onExpandImage}) {
                 >
                     {messageCard}
                     <div className="message-actions">
+                        <span className="message-model-name">{modelName}</span>
                         <MessageCopyButton text={message.text}/>
                         <MessageTimestamp timestamp={message.timestamp} nowMilliseconds={nowMilliseconds}/>
                     </div>

@@ -20,7 +20,11 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
         code: ({node, className: codeClassName, children: codeChildren, ...props}) => (
             <code className={codeClassName} {...props}>{codeChildren}</code>
         ),
-        table: ({node, ...props}) => <table {...props} />,
+        table: ({node, ...props}) => (
+            <div className="table-scroll-wrapper">
+                <table {...props} />
+            </div>
+        ),
         thead: ({node, ...props}) => <thead {...props} />,
         tbody: ({node, ...props}) => <tbody {...props} />,
         tr: ({node, ...props}) => <tr {...props} />,
