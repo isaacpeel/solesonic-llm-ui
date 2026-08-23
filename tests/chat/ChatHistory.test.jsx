@@ -6,6 +6,23 @@ vi.mock('../../src/hooks/usePagedChatHistory.js', () => ({
     default: vi.fn(),
 }));
 
+vi.mock('../../src/service/ChatService.js', () => ({
+    default: {
+        renameChat: vi.fn(),
+    },
+    DEFAULT_CHAT_HISTORY_PAGE_SIZE: 20,
+}));
+
+vi.mock('react-toastify', () => ({
+    toast: Object.assign(vi.fn(), {error: vi.fn()}),
+    ToastContainer: () => null,
+    Bounce: {},
+}));
+
+vi.mock('loglevel', () => ({
+    default: {error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()},
+}));
+
 const navigateSpy = vi.fn();
 
 vi.mock('react-router', async (importOriginal) => {
@@ -17,6 +34,7 @@ vi.mock('react-router', async (importOriginal) => {
 import ChatHistory from '../../src/chat/ChatHistory.jsx';
 import {SharedDataContext} from '../../src/context/SharedDataContext.jsx';
 import usePagedChatHistory from '../../src/hooks/usePagedChatHistory.js';
+import chatService from '../../src/service/ChatService.js';
 
 const VIEWPORT_HEIGHT = 600;
 
@@ -61,11 +79,24 @@ function stubLayout() {
     };
 }
 
-/* All on one day, so the list is a single header plus one row per chat. */
-function chatsOf(count) {
+/*
+ * The day header is labelled relative to the current date, so the fixture has to be too — a
+ * hardcoded day silently stops being "Today" the day after it is written.
+ */
+function todayAtMidMorning() {
+    const now = new Date();
+
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10).toISOString();
+}
+
+/* All on one day — and all at the same instant, so the newest-first sort keeps them in id order. */
+function chatsOf(count, name = null) {
+    const timestamp = todayAtMidMorning();
+
     return Array.from({length: count}, (unused, index) => ({
         id: `chat-${index}`,
-        timestamp: '2026-08-03T10:00:00.000-06:00',
+        name,
+        timestamp,
         chatMessages: [{message: `Message number ${index}`}],
     }));
 }
@@ -75,8 +106,19 @@ function renderChatHistory({chats, hasMore = true, loading = false, error} = {})
     const retry = vi.fn();
     const setChatId = vi.fn();
     const setDrawerOpen = vi.fn();
+    const replaceChat = vi.fn();
+    const removeChat = vi.fn();
 
-    usePagedChatHistory.mockReturnValue({chats, loading, error: error ?? null, hasMore, loadMore, retry});
+    usePagedChatHistory.mockReturnValue({
+        chats,
+        loading,
+        error: error ?? null,
+        hasMore,
+        loadMore,
+        retry,
+        replaceChat,
+        removeChat,
+    });
 
     const sharedData = {
         reloadHistoryTrigger: 0,
@@ -92,7 +134,7 @@ function renderChatHistory({chats, hasMore = true, loading = false, error} = {})
         </MemoryRouter>
     );
 
-    return {...renderResult, loadMore, retry, setChatId, setDrawerOpen};
+    return {...renderResult, loadMore, retry, setChatId, setDrawerOpen, replaceChat, removeChat};
 }
 
 let restoreLayout;
@@ -101,6 +143,8 @@ beforeEach(() => {
     restoreLayout = stubLayout();
     navigateSpy.mockReset();
     usePagedChatHistory.mockReset();
+    chatService.renameChat.mockReset();
+    chatService.renameChat.mockResolvedValue({id: 'chat-0', name: 'Trip planning'});
 });
 
 afterEach(() => {
@@ -196,6 +240,184 @@ describe('ChatHistory paging feedback', () => {
 
         expect(container.querySelector('.chat-history-status').textContent).toBe('No chats yet.');
         expect(container.querySelectorAll('.chat-item')).toHaveLength(0);
+    });
+});
+
+/* The menu is portalled to document.body, so it is never inside the render container. */
+function openRowMenu(container, rowIndex = 0) {
+    fireEvent.click(container.querySelectorAll('.chat-row-menu-trigger')[rowIndex]);
+
+    return document.body.querySelector('.chat-row-menu');
+}
+
+function startRename(container, rowIndex = 0) {
+    openRowMenu(container, rowIndex);
+    fireEvent.click(document.body.querySelector('.chat-row-menu-item'));
+
+    return container.querySelector('.chat-item-rename');
+}
+
+describe('ChatHistory row labels', () => {
+    it('renders the name the chat was given rather than its first message', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1, 'Trip planning')});
+
+        expect(container.querySelector('.chat-item-label').textContent).toBe('Trip planning');
+    });
+
+    it('exposes the untruncated label as the row title', () => {
+        const longName = 'n'.repeat(40);
+        const {container} = renderChatHistory({chats: chatsOf(1, longName)});
+
+        expect(container.querySelector('.chat-item-label').textContent).toBe('n'.repeat(25) + '...');
+        expect(container.querySelector('.chat-item').getAttribute('title')).toBe(longName);
+    });
+});
+
+describe('ChatHistory row actions', () => {
+    it('renders a kebab for every chat row', () => {
+        const {container} = renderChatHistory({chats: chatsOf(5)});
+
+        expect(container.querySelectorAll('.chat-row-menu-trigger')).toHaveLength(5);
+    });
+
+    it('opens the action menu without opening the chat', () => {
+        const {container, setChatId, setDrawerOpen} = renderChatHistory({chats: chatsOf(5)});
+
+        const menu = openRowMenu(container, 2);
+
+        expect(menu).not.toBeNull();
+        expect(menu.textContent).toBe('Rename');
+        expect(setChatId).not.toHaveBeenCalled();
+        expect(setDrawerOpen).not.toHaveBeenCalled();
+        expect(navigateSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('ChatHistory rename', () => {
+    it('seeds the editor with the chat name and the fallback as its placeholder', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1, 'Trip planning')});
+
+        const renameInput = startRename(container);
+
+        expect(renameInput).not.toBeNull();
+        expect(renameInput.value).toBe('Trip planning');
+        expect(renameInput.placeholder).toBe('Message number 0');
+        expect(renameInput.maxLength).toBe(255);
+    });
+
+    it('leaves the editor empty for a chat that was never named', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1)});
+
+        expect(startRename(container).value).toBe('');
+    });
+
+    it('commits the trimmed name on Enter, once, and updates the row before the response', async () => {
+        const {container, replaceChat} = renderChatHistory({chats: chatsOf(1)});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: '  Trip planning  '}});
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        expect(replaceChat).toHaveBeenCalledWith(expect.objectContaining({id: 'chat-0', name: 'Trip planning'}));
+
+        await waitFor(() => expect(chatService.renameChat).toHaveBeenCalledTimes(1));
+        expect(chatService.renameChat).toHaveBeenCalledWith('chat-0', 'Trip planning');
+    });
+
+    it('commits on blur', async () => {
+        const {container} = renderChatHistory({chats: chatsOf(1)});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: 'Trip planning'}});
+        fireEvent.blur(renameInput);
+
+        await waitFor(() => expect(chatService.renameChat).toHaveBeenCalledWith('chat-0', 'Trip planning'));
+    });
+
+    it('issues no request on Escape and leaves the label alone', () => {
+        const {container, replaceChat} = renderChatHistory({chats: chatsOf(1, 'Trip planning')});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: 'Something else'}});
+        fireEvent.keyDown(renameInput, {key: 'Escape'});
+
+        expect(chatService.renameChat).not.toHaveBeenCalled();
+        expect(replaceChat).not.toHaveBeenCalled();
+        expect(container.querySelector('.chat-item-rename')).toBeNull();
+        expect(container.querySelector('.chat-item-label').textContent).toBe('Trip planning');
+    });
+
+    it('issues no request for an empty or whitespace-only name', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1, 'Trip planning')});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: '   '}});
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        expect(chatService.renameChat).not.toHaveBeenCalled();
+        expect(container.querySelector('.chat-item-rename')).toBeNull();
+    });
+
+    it('issues no request when the name is unchanged', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1, 'Trip planning')});
+
+        const renameInput = startRename(container);
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        expect(chatService.renameChat).not.toHaveBeenCalled();
+    });
+
+    it('drops the row when the server says the conversation is gone', async () => {
+        chatService.renameChat.mockRejectedValue(Object.assign(new Error('404'), {status: 404}));
+
+        const {container, replaceChat, removeChat} = renderChatHistory({chats: chatsOf(1)});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: 'Trip planning'}});
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        await waitFor(() => expect(removeChat).toHaveBeenCalledWith('chat-0'));
+        /* Rolled back to the chat as it was before the optimistic update. */
+        expect(replaceChat).toHaveBeenLastCalledWith(expect.objectContaining({id: 'chat-0', name: null}));
+    });
+
+    it('re-opens the editor with the attempted name when the server rejects it', async () => {
+        chatService.renameChat.mockRejectedValue(Object.assign(new Error('400'), {status: 400}));
+
+        const {container, replaceChat} = renderChatHistory({chats: chatsOf(1)});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: 'Trip planning'}});
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        await waitFor(() => expect(container.querySelector('.chat-item-rename')).not.toBeNull());
+        expect(container.querySelector('.chat-item-rename').value).toBe('Trip planning');
+        expect(replaceChat).toHaveBeenLastCalledWith(expect.objectContaining({id: 'chat-0', name: null}));
+    });
+
+    it('reverts the label on any other failure', async () => {
+        chatService.renameChat.mockRejectedValue(Object.assign(new Error('500'), {status: 500}));
+
+        const {container, replaceChat} = renderChatHistory({chats: chatsOf(1)});
+
+        const renameInput = startRename(container);
+        fireEvent.change(renameInput, {target: {value: 'Trip planning'}});
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        await waitFor(() => {
+            expect(replaceChat).toHaveBeenLastCalledWith(expect.objectContaining({id: 'chat-0', name: null}));
+        });
+
+        expect(container.querySelector('.chat-item-rename')).toBeNull();
+    });
+
+    it('does not open the chat when the row being edited is clicked', () => {
+        const {container, setChatId} = renderChatHistory({chats: chatsOf(1)});
+
+        fireEvent.click(startRename(container));
+        fireEvent.click(container.querySelector('.chat-item'));
+
+        expect(setChatId).not.toHaveBeenCalled();
     });
 });
 

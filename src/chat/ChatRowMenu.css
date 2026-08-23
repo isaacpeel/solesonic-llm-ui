@@ -1,0 +1,86 @@
+/*
+ * The kebab that opens a row's actions. Always in the DOM and always focusable — hiding it with
+ * `display: none` until hover would put every row action out of reach of the keyboard — so it is
+ * revealed with opacity alone, and `flex-shrink: 0` keeps the label from squeezing it away.
+ */
+.chat-row-menu-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--transition-speed), background-color var(--transition-speed);
+}
+
+.chat-row-menu-trigger svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-color);
+}
+
+.chat-item:hover .chat-row-menu-trigger,
+.chat-item:focus-within .chat-row-menu-trigger,
+.chat-row-menu-trigger-open {
+    opacity: 1;
+}
+
+.chat-row-menu-trigger:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+/* Focus-visible alone would leave the button invisible while focused via the keyboard. */
+.chat-row-menu-trigger:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--text-color);
+    outline-offset: 1px;
+}
+
+/*
+ * Portalled to document.body and placed from the trigger's rectangle, because the drawer's scroll
+ * box would clip a menu rendered inside a row. The offsets come from the component.
+ */
+.chat-row-menu {
+    position: fixed;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.chat-row-menu-item {
+    padding: 8px 10px;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-color);
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.chat-row-menu-item:hover,
+.chat-row-menu-item:focus-visible {
+    background-color: var(--secondary-color);
+    outline: none;
+}
+
+.chat-row-menu-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.chat-row-menu-item-destructive {
+    color: #e57373;
+}

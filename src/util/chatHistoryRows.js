@@ -28,19 +28,39 @@ const ESTIMATED_HEADER_ROW_SPACING = 20;
 
 const ESTIMATED_CHAT_ROW_HEIGHT = 41;
 
-/* The row's whole visible content, so the row stays one line and its height stays predictable. */
-export function chatHistoryRowLabel(chat) {
+/*
+ * The label a chat is known by, untruncated.
+ *
+ * A name the user gave the chat wins outright; the first message is only ever a stand-in for one.
+ * A name that is blank once trimmed is treated as no name at all — the server trims before storing,
+ * so whitespace can only reach us from a stale client, and rendering an empty row is worse than
+ * falling back.
+ */
+export function chatHistoryRowFullLabel(chat) {
+    const name = chat?.name;
+
+    if (typeof name === "string" && name.trim() !== "") {
+        return name.trim();
+    }
+
     const firstMessage = chat?.chatMessages?.[0]?.message;
 
     if (!firstMessage) {
         return NO_MESSAGES_LABEL;
     }
 
-    if (firstMessage.length > MAXIMUM_LABEL_LENGTH) {
-        return firstMessage.slice(0, MAXIMUM_LABEL_LENGTH) + "...";
+    return firstMessage;
+}
+
+/* The row's whole visible content, so the row stays one line and its height stays predictable. */
+export function chatHistoryRowLabel(chat) {
+    const fullLabel = chatHistoryRowFullLabel(chat);
+
+    if (fullLabel.length > MAXIMUM_LABEL_LENGTH) {
+        return fullLabel.slice(0, MAXIMUM_LABEL_LENGTH) + "...";
     }
 
-    return firstMessage;
+    return fullLabel;
 }
 
 /**
@@ -50,7 +70,11 @@ export function chatHistoryRowLabel(chat) {
  * has to be padding on the header row — margins are invisible to row measurement — and the very
  * first header must not carry it, or the list starts with a blank band.
  *
- * @returns {Array<{type: string, key: string, label: string, chatId?: *, firstInList?: boolean}>}
+ * Every chat row carries the chat itself rather than a growing list of copied fields: the row
+ * actions read `name` today and ordering and grouping will read more of it, and threading one more
+ * property through per feature does not scale.
+ *
+ * @returns {Array<{type: string, key: string, label: string, chatId?: *, fullLabel?: string, chat?: *, firstInList?: boolean}>}
  */
 export function flattenChatGroupsToRows(groupedChats) {
     const rows = [];
@@ -69,6 +93,8 @@ export function flattenChatGroupsToRows(groupedChats) {
                 key: `chat:${chat.id}`,
                 chatId: chat.id,
                 label: chatHistoryRowLabel(chat),
+                fullLabel: chatHistoryRowFullLabel(chat),
+                chat: chat,
             });
         }
     }

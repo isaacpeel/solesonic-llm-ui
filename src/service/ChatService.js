@@ -323,6 +323,15 @@ const chatService = {
     },
 
     /*
+     * Renames a conversation. No userId in the path — ownership comes from the bearer token, so a
+     * chat the caller does not own is a 404 and cannot be told apart from one that never existed.
+     * The parsed chat is returned as-is; the caller decides what to merge.
+     */
+    renameChat: async (chatId, name) => {
+        return await apiClient.put(`${config.chatsUri}/${chatId}/name`, {name});
+    },
+
+    /*
      * One page of the user's chats, newest first. The endpoint is a Spring `Pageable` one, so the
      * cursor is the page index — built with `URLSearchParams` rather than `buildUrl` so the service
      * stays callable without a `window`.

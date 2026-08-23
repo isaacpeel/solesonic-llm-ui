@@ -107,7 +107,23 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
         void loadPage(nextPageRef.current, requestGenerationRef.current);
     }, [loadPage]);
 
-    return {chats, loading, error, hasMore, loadMore, retry};
+    /*
+     * Row-level edits, applied to the accumulated pages in place. Deliberately not a refetch of
+     * page 0: paging is accumulated here, so re-fetching would discard pages 1..n and the scroll
+     * position that goes with them, for a change the client already knows the outcome of.
+     */
+    const replaceChat = useCallback((updatedChat) => {
+        setChats(previousChats => previousChats.map(
+            chat => (chat.id === updatedChat.id ? {...chat, ...updatedChat} : chat)
+        ));
+    }, []);
+
+    /* Drops one chat from the accumulated pages, for a row the server says is gone. */
+    const removeChat = useCallback((chatId) => {
+        setChats(previousChats => previousChats.filter(chat => chat.id !== chatId));
+    }, []);
+
+    return {chats, loading, error, hasMore, loadMore, retry, replaceChat, removeChat};
 }
 
 /*

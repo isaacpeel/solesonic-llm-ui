@@ -60,6 +60,26 @@ describe('findChatDetails', () => {
     });
 });
 
+describe('renameChat', () => {
+    it('puts the name to the chat name endpoint, with no userId in the path', async () => {
+        apiClient.put.mockResolvedValue({id: '67890', name: 'Trip planning'});
+
+        await chatService.renameChat('67890', 'Trip planning');
+
+        expect(apiClient.put).toHaveBeenCalledWith(
+            'https://api.example.com/chat/67890/name',
+            {name: 'Trip planning'},
+        );
+    });
+
+    it('returns the parsed chat unchanged', async () => {
+        const renamedChat = {id: '67890', name: 'Trip planning', chatMessages: []};
+        apiClient.put.mockResolvedValue(renamedChat);
+
+        expect(await chatService.renameChat('67890', 'Trip planning')).toBe(renamedChat);
+    });
+});
+
 // ---------------------------------------------------------------------------
 // handleStreamChunk
 // ---------------------------------------------------------------------------

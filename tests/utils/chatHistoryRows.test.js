@@ -2,14 +2,16 @@ import {describe, it, expect} from 'vitest';
 import {
     CHAT_HISTORY_CHAT_ROW,
     CHAT_HISTORY_HEADER_ROW,
+    chatHistoryRowFullLabel,
     chatHistoryRowLabel,
     estimateChatHistoryRowSize,
     flattenChatGroupsToRows,
 } from '../../src/util/chatHistoryRows.js';
 
-function chatOf(chatId, message) {
+function chatOf(chatId, message = undefined, name = null) {
     return {
         id: chatId,
+        name,
         chatMessages: message === undefined ? [] : [{message}],
     };
 }
@@ -45,6 +47,42 @@ describe('chatHistoryRowLabel', () => {
 
     it('falls back when the chat itself is missing', () => {
         expect(chatHistoryRowLabel(undefined)).toBe('No messages yet');
+    });
+
+    it('prefers the name the user gave the chat over its first message', () => {
+        expect(chatHistoryRowLabel(chatOf('chat-1', 'Hello there', 'Trip planning'))).toBe('Trip planning');
+    });
+
+    it('falls through to the first message when the name is blank', () => {
+        expect(chatHistoryRowLabel(chatOf('chat-1', 'Hello there', '   '))).toBe('Hello there');
+    });
+
+    it('falls through to "No messages yet" when there is neither a name nor a message', () => {
+        expect(chatHistoryRowLabel(chatOf('chat-1', undefined, null))).toBe('No messages yet');
+    });
+
+    it('truncates a name that would wrap the drawer', () => {
+        const label = chatHistoryRowLabel(chatOf('chat-1', 'Hello there', 'n'.repeat(40)));
+
+        expect(label).toBe('n'.repeat(25) + '...');
+    });
+});
+
+describe('chatHistoryRowFullLabel', () => {
+    it('returns the whole name, untruncated', () => {
+        const name = 'n'.repeat(40);
+
+        expect(chatHistoryRowFullLabel(chatOf('chat-1', 'Hello there', name))).toBe(name);
+    });
+
+    it('returns the whole first message when the chat has no name', () => {
+        const message = 'm'.repeat(40);
+
+        expect(chatHistoryRowFullLabel(chatOf('chat-1', message))).toBe(message);
+    });
+
+    it('trims the stored name', () => {
+        expect(chatHistoryRowFullLabel(chatOf('chat-1', 'Hello there', '  Trip planning  '))).toBe('Trip planning');
     });
 });
 
@@ -92,6 +130,18 @@ describe('flattenChatGroupsToRows', () => {
         expect(firstPageRows[1].key).toBe('chat:chat-1');
         expect(bothPagesRows[2].key).toBe('chat:chat-1');
         expect(new Set(bothPagesRows.map(row => row.key)).size).toBe(bothPagesRows.length);
+    });
+
+    it('carries the untruncated label and the chat itself onto every chat row', () => {
+        const longName = 'n'.repeat(40);
+        const namedChat = chatOf('chat-1', 'first', longName);
+
+        const rows = flattenChatGroupsToRows([groupOf('2026-08-03', 'Today', [namedChat])]);
+        const chatRow = rows[1];
+
+        expect(chatRow.label).toBe('n'.repeat(25) + '...');
+        expect(chatRow.fullLabel).toBe(longName);
+        expect(chatRow.chat).toBe(namedChat);
     });
 
     it('emits a header for a group that has no chats', () => {

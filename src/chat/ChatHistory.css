@@ -80,8 +80,15 @@
     padding-bottom: 8px;
 }
 
-/* Chat item styling. One line, truncated, so its measured height stays uniform. */
+/*
+ * Chat item styling. A flex row so the label and the action kebab share one line — the padding and
+ * the border are unchanged, so the measured height still matches ESTIMATED_CHAT_ROW_HEIGHT.
+ * Nothing in this row may wrap: the virtualizer placed every row below it against that height.
+ */
 .chat-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 10px;
     border-bottom: 1px solid var(--border-color); /* Subtle separator */
     cursor: pointer;
@@ -89,7 +96,37 @@
     color: var(--text-color);
     white-space: nowrap;
     overflow: hidden;
+}
+
+/* min-width: 0 is what lets a flex child shrink far enough to actually ellipsize. */
+.chat-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/*
+ * Sized to the row it replaces rather than to its content, and stripped of the chrome that would
+ * make the row look taller than the label it stands in for.
+ */
+.chat-item-rename {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    border-bottom: 1px solid var(--text-color);
+    border-radius: 0;
+    background: none;
+    color: var(--text-color);
+    font: inherit;
+    line-height: inherit;
+    outline: none;
+}
+
+.chat-item-rename::placeholder {
+    color: var(--text-color);
+    opacity: 0.5;
 }
 
 /* Hover effect on chat items */

@@ -137,6 +137,39 @@ describe('usePagedChatHistory', () => {
         expect(result.current.chats).toHaveLength(1);
     });
 
+    it('replaces one chat in place, without refetching', async () => {
+        chatService.findChatHistory.mockResolvedValue(pageOf(['chat-1', 'chat-2', 'chat-3']));
+
+        const {result} = renderHook(() => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(3));
+
+        act(() => {
+            result.current.replaceChat({id: 'chat-2', name: 'Trip planning'});
+        });
+
+        expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-1', 'chat-2', 'chat-3']);
+        expect(result.current.chats[1].name).toBe('Trip planning');
+        /* The merge is a patch: the fields the caller left out survive. */
+        expect(result.current.chats[1].timestamp).toBe(1_700_000_000);
+        expect(chatService.findChatHistory).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops one chat and leaves the rest, without refetching', async () => {
+        chatService.findChatHistory.mockResolvedValue(pageOf(['chat-1', 'chat-2', 'chat-3']));
+
+        const {result} = renderHook(() => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(3));
+
+        act(() => {
+            result.current.removeChat('chat-2');
+        });
+
+        expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-1', 'chat-3']);
+        expect(chatService.findChatHistory).toHaveBeenCalledTimes(1);
+    });
+
     it('restarts from the first page when the list is invalidated', async () => {
         chatService.findChatHistory
             .mockResolvedValueOnce(pageOf(['chat-1']))
