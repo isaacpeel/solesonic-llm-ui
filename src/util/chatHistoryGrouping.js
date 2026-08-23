@@ -148,3 +148,81 @@ function compareChatsNewestFirst(firstChat, secondChat) {
 
     return secondDate.getTime() - firstDate.getTime();
 }
+
+/**
+ * Splits the accumulated pages into the conversations filed under a group and the ones that are not.
+ *
+ * \`GET /chats/users/{userId}\` returns every chat, grouped or not, and the API has no ungrouped-only
+ * variant — so without this filter every filed conversation would render twice: once under its group
+ * section and once in the day-bucketed list below it.
+ *
+ * A blank \`chatGroupId\` counts as ungrouped; only a real id files a chat.
+ */
+export function partitionGroupedChats(chats) {
+    const grouped = (chats ?? []).filter(chat => !!chat?.chatGroupId);
+    const ungrouped = (chats ?? []).filter(chat => !chat?.chatGroupId);
+
+    return {grouped, ungrouped};
+}
+
+/**
+ * Splits a list into the hand-placed prefix and the rest, preserving input order in both halves.
+ *
+ * The order field is read only as placed-or-not; its value is never used as an index. The server
+ * renumbers densely on every move, but removing a chat leaves a gap behind, so the stored values can
+ * read 0, 1, 3 — only their relative order is meaningful.
+ *
+ * \`orderField\` picks which of the two independent orderings is being read: \`sortOrder\` for the
+ * user's whole list, \`groupSortOrder\` for one group's list. They are separate columns behind
+ * separate endpoints, and mixing them silently reshuffles the list the user was not looking at.
+ */
+export function partitionPlacedChats(chats, orderField = "sortOrder") {
+    const placed = (chats ?? []).filter(chat => isPlacedChat(chat, orderField));
+    const unplaced = (chats ?? []).filter(chat => !isPlacedChat(chat, orderField));
+
+    return {placed, unplaced};
+}
+
+export function isPlacedChat(chat, orderField = "sortOrder") {
+    const order = chat?.[orderField];
+
+    return order !== null && order !== undefined;
+}
+
+/**
+ * Applies an ordering move to a rendered list, for the optimistic redraw that has to happen before
+ * the server answers — a menu click that visibly does nothing for a round trip reads as a broken
+ * button.
+ *
+ * \`position\` is a zero-based index among the chats that are already placed, not an index into the
+ * rendered list, and \`null\` unplaces the chat and returns it to timestamp order. The numbers written
+ * onto the placed prefix here are placeholders that only have to satisfy \`isPlacedChat\`; the
+ * authoritative values arrive with the response and are merged over them.
+ */
+export function applyOrderMove(chats, chatId, position, orderField = "sortOrder") {
+    const movedChat = (chats ?? []).find(chat => chat?.id === chatId);
+
+    if (!movedChat) {
+        return chats ?? [];
+    }
+
+    const {placed, unplaced} = partitionPlacedChats(chats, orderField);
+    const remainingPlaced = placed.filter(chat => chat.id !== chatId);
+    const remainingUnplaced = unplaced.filter(chat => chat.id !== chatId);
+
+    if (position === null || position === undefined) {
+        const restoredChats = [...remainingUnplaced, {...movedChat, [orderField]: null}];
+        restoredChats.sort(compareChatsNewestFirst);
+
+        return [...remainingPlaced, ...restoredChats];
+    }
+
+    const targetIndex = Math.min(Math.max(position, 0), remainingPlaced.length);
+    const nextPlaced = [...remainingPlaced];
+    nextPlaced.splice(targetIndex, 0, movedChat);
+
+    return [
+        ...nextPlaced.map((chat, index) => ({...chat, [orderField]: index})),
+        ...remainingUnplaced,
+    ];
+}

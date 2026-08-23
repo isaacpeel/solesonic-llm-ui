@@ -4,6 +4,7 @@ const config = {
 };
 
 config.chatsUri = `${config.apiBaseUri}/chats`;
+config.chatGroupsUri = `${config.apiBaseUri}/chatgroups`;
 config.streamingChatsUri = `${config.apiBaseUri}/streaming/chats`;
 config.usersUri = `${config.apiBaseUri}/users`;
 config.ollamaUri = `${config.apiBaseUri}/ollama`;
