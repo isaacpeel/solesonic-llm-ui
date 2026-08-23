@@ -5,12 +5,32 @@ import log from "loglevel";
 import googleAuthService from "../service/GoogleAuthService.js";
 import "./GoogleAuthCallback.css";
 
+const GOOGLE_SETTINGS_PANEL = "googleSettings";
+const GOOGLE_CALLBACK_PATH = "/google/auth/callback";
+const GOOGLE_CALLBACK_STASH_KEY = "googleAuthCallbackParams";
+
 // Snapshot the query string at module load. Keycloak's login-required redirect runs before this
 // component ever renders, and reading location at render time only works because keycloak-js
 // returns its own parameters in the URL fragment. Snapshotting removes that dependency.
-const initialSearch = window.location.search;
+//
+// A cold start loses the query entirely, because Keycloak navigates away and back. Stash it so
+// the return trip can recover it. The stashed value is a single-use Google authorization code
+// that the backend exchanges with its own client secret - it is not a credential on its own.
+const captureCallbackParams = () => {
+    if (window.location.pathname !== GOOGLE_CALLBACK_PATH) {
+        return '';
+    }
 
-const GOOGLE_SETTINGS_PANEL = "googleSettings";
+    if (window.location.search) {
+        sessionStorage.setItem(GOOGLE_CALLBACK_STASH_KEY, window.location.search);
+
+        return window.location.search;
+    }
+
+    return sessionStorage.getItem(GOOGLE_CALLBACK_STASH_KEY) ?? '';
+};
+
+const initialSearch = captureCallbackParams();
 
 const GoogleAuthCallback = () => {
     const navigate = useNavigate();
@@ -22,6 +42,8 @@ const GoogleAuthCallback = () => {
         }
 
         exchangeStarted.current = true;
+
+        sessionStorage.removeItem(GOOGLE_CALLBACK_STASH_KEY);
 
         const returnToSettings = () => {
             navigate('/settings', {replace: true, state: {panel: GOOGLE_SETTINGS_PANEL}});

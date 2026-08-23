@@ -1,20 +1,25 @@
-import { createContext, useContext, useEffect, useState, useRef } from 'react';
+import {createContext, useContext, useEffect, useState, useRef} from 'react';
 import Keycloak from 'keycloak-js';
 import keycloakConfig from '../config/keycloak.js';
 import PropTypes from 'prop-types';
-import { toast } from 'react-toastify';
+import log from 'loglevel';
+import {toast} from 'react-toastify';
 
 // Create Keycloak context
 const KeycloakContext = createContext(null);
 
 /**
  * KeycloakProvider Component
- * 
+ *
  * Provides Keycloak authentication state and methods to the application.
  * Initializes Keycloak with PKCE (S256) and login-required.
  * Implements automatic token refresh every 60 seconds when authenticated.
+ *
+ * Tokens are deliberately never written to sessionStorage or localStorage - they live
+ * only in the keycloak-js instance, so an XSS foothold cannot exfiltrate a refresh
+ * token that outlives the page.
  */
-export const KeycloakProvider = ({ children }) => {
+export const KeycloakProvider = ({children}) => {
     const [keycloak, setKeycloak] = useState(null);
     const [authenticated, setAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -27,41 +32,57 @@ export const KeycloakProvider = ({ children }) => {
         if (didInitRef.current) {
             return;
         }
+
         didInitRef.current = true;
 
-        // Initialize Keycloak instance with only constructor params
+        // Deliberately excludes the query string. Keycloak matches redirect_uri against the
+        // client's Valid Redirect URIs, and an exact (non-wildcard) entry will not match a URL
+        // carrying a query - it fails with "Invalid parameter: redirect_uri". Callbacks that
+        // need their query parameters to survive a cold-start login redirect stash them at
+        // module load, before this effect runs; see GoogleAuthCallback.jsx.
+        const redirectUri = window.location.origin + window.location.pathname;
+
         const keycloakInstance = new Keycloak({
             url: keycloakConfig.url,
             realm: keycloakConfig.realm,
             clientId: keycloakConfig.clientId
         });
 
-        // Initialize Keycloak with PKCE and login-required
+        keycloakInstance.onTokenExpired = () => {
+            keycloakInstance.updateToken(30).catch((error) => {
+                log.error('[KeycloakProvider] Token refresh failed', error);
+            });
+        };
+
         keycloakInstance
             .init({
                 onLoad: 'login-required',
                 pkceMethod: 'S256',
                 checkLoginIframe: false,
-                // redirectUri: window.location.origin + '/',
+                redirectUri,
             })
-            .then(async (auth) => {
-                setAuthenticated(!!auth);
+            .then(async (authenticationResult) => {
+                setAuthenticated(!!authenticationResult);
                 setKeycloak(keycloakInstance);
 
-                // Load user profile if authenticated
-                if (auth) {
-                    try {
-                        const userProfile = await keycloakInstance.loadUserInfo();
-                        setUser(userProfile);
-                    } catch (error) {
-                        toast.error('Failed to load user profile');
-                    }
+                if (!authenticationResult) {
+                    return;
                 }
 
-                setLoading(false);
+                // Load user profile if authenticated
+                try {
+                    const userProfile = await keycloakInstance.loadUserInfo();
+                    setUser(userProfile);
+                } catch (error) {
+                    log.error('[KeycloakProvider] Failed to load user info', error);
+                    toast.error('Failed to load user profile');
+                }
             })
             .catch((error) => {
-                toast.error('Authentication initialization failed. Please refresh the page. '+error);
+                log.error('[KeycloakProvider] Initialization failed', error);
+                toast.error('Authentication initialization failed. Please refresh the page.');
+            })
+            .finally(() => {
                 setLoading(false);
             });
     }, []);
@@ -76,8 +97,9 @@ export const KeycloakProvider = ({ children }) => {
             keycloak
                 .updateToken(70)
                 .catch((error) => {
-                    toast.error('Session expired. Please log in again.' +error);
-                    keycloak.login({ redirectUri: window.location.origin + '/' });
+                    log.error('[KeycloakProvider] Session refresh failed', error);
+                    toast.error('Session expired. Please log in again.');
+                    keycloak.login({redirectUri: window.location.origin + '/'});
                 });
         }, 60000); // 60 seconds
 
@@ -136,16 +158,16 @@ KeycloakProvider.propTypes = {
 
 /**
  * useKeycloak Hook
- * 
+ *
  * Custom hook to access Keycloak context.
  * Returns authentication state and methods.
  */
 export const useKeycloak = () => {
     const context = useContext(KeycloakContext);
-    
+
     if (!context) {
         throw new Error('useKeycloak must be used within a KeycloakProvider');
     }
-    
+
     return context;
 };
