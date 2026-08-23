@@ -4,7 +4,7 @@ import authService from "../service/AuthService.js";
 import PropTypes from "prop-types";
 
 const AuthenticationWrapper = ({children}) => {
-    const {keycloak, authenticated, loading} = useKeycloak();
+    const {keycloak, authenticated, loading, login} = useKeycloak();
     const [isBlocked, setIsBlocked] = useState(authService.isBlocked());
     const [remainingTime, setRemainingTime] = useState(authService.remainingBlockTime());
 
@@ -59,13 +59,18 @@ const AuthenticationWrapper = ({children}) => {
         );
     }
 
-    // If not authenticated after loading completes, onLoad: 'login-required' 
-    // should have already redirected to Keycloak. This branch should rarely appear.
+    // If not authenticated after loading completes, onLoad: 'login-required' should
+    // already have redirected to Keycloak, so reaching here means init() rejected -
+    // typically the PKCE token exchange being blocked by CSP connect-src or by the
+    // client's Web Origins. Offer an explicit retry rather than claiming a redirect
+    // is happening: Keycloak still holds an SSO session, so an automatic bounce
+    // would return here instantly and spin.
     if (!authenticated) {
         return (
             <div style={{textAlign: "center", marginTop: "20%"}}>
                 <h1>Authentication Required</h1>
-                <p>Redirecting to login...</p>
+                <p>We could not complete sign-in.</p>
+                <button type="button" onClick={login}>Try signing in again</button>
             </div>
         );
     }

@@ -17,7 +17,7 @@ RUN npm run build
 # Runtime stage
 FROM nginx:alpine
 
-# Needed for envsubst templating of /etc/nginx/templates/*.template in official nginx image
+# Provides envsubst, used by 15-render-nginx-conf.sh below
 RUN apk add --no-cache gettext
 
 # Logs directory (optional, but matches your compose volume mount)
@@ -26,7 +26,16 @@ RUN mkdir -p /var/log/nginx
 # Copy built assets
 COPY --from=build /app/dist /usr/share/nginx/html
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# nginx.conf is a template, not a finished config: 15-render-nginx-conf.sh fills in
+# the CSP origins and writes /etc/nginx/conf.d/default.conf at container start.
+# The template is kept out of /etc/nginx/templates/ so the stock envsubst entrypoint
+# step ignores it and cannot overwrite that rendered output.
+COPY nginx.conf /etc/nginx/default.conf.template
+COPY docker/15-render-nginx-conf.sh /docker-entrypoint.d/15-render-nginx-conf.sh
+
+# The nginx entrypoint silently skips files in /docker-entrypoint.d/ that are not
+# executable, which would leave the stock welcome-page config in place.
+RUN chmod 755 /docker-entrypoint.d/15-render-nginx-conf.sh
 
 # Basic permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/log/nginx && \
