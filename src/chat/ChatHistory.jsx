@@ -9,8 +9,10 @@ import log from "loglevel";
 import "./ChatHistory.css";
 import "./ChatGroupSection.css";
 import ChatRowMenu, {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
+import ChatDropActionMenu from "./ChatDropActionMenu.jsx";
 import CreateChatGroupDialog from "./CreateChatGroupDialog.jsx";
 import DeleteChatDialog from "./DeleteChatDialog.jsx";
+import DeleteChatGroupDialog from "./DeleteChatGroupDialog.jsx";
 import {useSharedData} from "../context/useSharedData.jsx";
 import usePagedChatHistory from "../hooks/usePagedChatHistory.js";
 import useChatGroups from "../hooks/useChatGroups.js";
@@ -27,6 +29,7 @@ import {
     CHAT_GROUP_HEADER_ROW,
     CHAT_GROUP_LOAD_MORE_ROW,
     CHAT_HISTORY_HEADER_ROW,
+    chatHistoryRowFullLabel,
     chatHistoryRowLabel,
     estimateChatHistoryRowSize,
     flattenChatGroupsToRows,
@@ -56,14 +59,6 @@ const INITIAL_SCROLL_RECT = {width: 250, height: 600};
 /* A group's own ordering column. Never `sortOrder` — that one belongs to the user's whole list. */
 const GROUP_ORDER_FIELD = "groupSortOrder";
 
-/*
- * The hand-arranged prefix of the ungrouped list. It is not day-bucketed: `groupChatsByDay` re-sorts
- * every bucket newest-first, which would silently undo the arrangement the user just made.
- */
-const ARRANGED_SECTION_KEY = "arranged";
-
-const ARRANGED_SECTION_LABEL = "Arranged";
-
 /* Rendered as the disabled item's title, so the user learns why rather than just being blocked. */
 const STREAMING_DELETE_REASON = "Wait for the response to finish.";
 
@@ -73,7 +68,12 @@ const STREAMING_DELETE_REASON = "Wait for the response to finish.";
  */
 const MAXIMUM_CONSECUTIVE_EMPTY_PAGES = 10;
 
-const DRAG_HANDLE_HINT = "Drag to move, or use the arrow keys";
+const DRAG_HANDLE_HINT = "Drag onto a group, or out of the drawer";
+
+const GROUPED_DRAG_HANDLE_HINT = "Drag to reorder, or use the arrow keys";
+
+/* Shared empty array, so `placedChatsFor` does not hand out a new one on every render. */
+const NO_PLACED_CHATS = [];
 
 function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const {
@@ -83,6 +83,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         setChatHistory,
         streamingChatId,
         chatInputRef,
+        setReloadHistoryTrigger,
     } = useSharedData();
     const navigate = useNavigate();
 
@@ -99,7 +100,6 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         replaceChat,
         removeChat,
         upsertChat,
-        setChatsDirectly,
     } = usePagedChatHistory({
         active: drawerOpen,
         reloadTrigger: reloadHistoryTrigger,
@@ -140,46 +140,31 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      */
     const [deleteRequest, setDeleteRequest] = useState(null);
 
+    /* null when closed; `{chat, point}` for a conversation released clear of the drawer. */
+    const [dropActionRequest, setDropActionRequest] = useState(null);
+
+    /* null when closed; carries the group so the dialog can name what is about to go. */
+    const [deleteGroupRequest, setDeleteGroupRequest] = useState(null);
+
     /* Two concurrent moves race on a server-side renumbering and land in an unpredictable order. */
     const [reordering, setReordering] = useState(false);
 
     const [emptyPageAttempts, setEmptyPageAttempts] = useState(0);
 
     /*
-     * Both are memoized on the accumulated pages rather than recomputed per render: grouping sorts
-     * every bucket and then the buckets themselves, and the drawer re-renders on every parent
-     * state change, not just when a page lands.
+     * Memoized on the accumulated pages rather than recomputed per render: grouping sorts every
+     * bucket and then the buckets themselves, and the drawer re-renders on every parent state
+     * change, not just when a page lands.
      */
     const {ungrouped} = useMemo(() => partitionGroupedChats(chats), [chats]);
 
     /*
-     * The hand-placed conversations are a prefix of the server's response and stay in exactly that
-     * order. `sortOrder` is read only as placed-or-not: the server renumbers densely on every move,
-     * but deleting a placed chat leaves a gap behind, so the stored values can read 0, 1, 3 and only
-     * their relative order means anything.
+     * The ungrouped list is a timeline and nothing else — day-bucketed, newest first, with no
+     * hand-made arrangement laid over it. A conversation's place here is its date, so there is
+     * nothing for a drag to rearrange; ordering belongs to groups, where the server has a column
+     * for it and the rendered list can express a position. `sortOrder` is deliberately not read.
      */
-    const {placed: arrangedChats, unplaced: datedChats} = useMemo(
-        () => partitionPlacedChats(ungrouped),
-        [ungrouped],
-    );
-
-    const dayGroups = useMemo(() => groupChatsByDay(datedChats), [datedChats]);
-
-    /*
-     * Skipped entirely while nothing is placed, so a user who has never moved a conversation sees
-     * the day-bucketed drawer unchanged rather than an empty section above it.
-     */
-    const arrangedSections = useMemo(() => (
-        arrangedChats.length > 0
-            ? [{
-                key: ARRANGED_SECTION_KEY,
-                label: ARRANGED_SECTION_LABEL,
-                chats: arrangedChats,
-                /* Marks the header as the top of the arrangement rather than a date boundary. */
-                placed: true,
-            }]
-            : []
-    ), [arrangedChats]);
+    const dayGroups = useMemo(() => groupChatsByDay(ungrouped), [ungrouped]);
 
     /*
      * Rendered in the order the API returned them — by name, then id — and never re-sorted here.
@@ -200,8 +185,8 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     }), [groups, chatsByGroupId, expandedGroupIds]);
 
     const rows = useMemo(
-        () => flattenChatGroupsToRows([...chatGroupSections, ...arrangedSections, ...dayGroups]),
-        [chatGroupSections, arrangedSections, dayGroups],
+        () => flattenChatGroupsToRows([...chatGroupSections, ...dayGroups]),
+        [chatGroupSections, dayGroups],
     );
 
     const ungroupedChatCount = ungrouped.length;
@@ -530,92 +515,47 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     };
 
     /*
-     * Moves a conversation within the user's whole list.
-     *
-     * `position` is a zero-based index among the conversations already placed by hand — the index in
-     * the rendered Arranged section — and the redraw happens before the round trip resolves, because
-     * a gesture that visibly does nothing for 200ms reads as a broken control. The response carries
-     * the authoritative `sortOrder`, which is what settles which section the row lands in.
-     */
-    const handleReorderChat = async (chat, position) => {
-        if (reordering) {
-            return;
-        }
-
-        const previousChats = chats;
-
-        setReordering(true);
-        setChatsDirectly(applyOrderMoveToUngrouped(previousChats, chat.id, position));
-
-        try {
-            const movedChat = await chatService.reorderChat(chat.id, position);
-
-            if (movedChat) {
-                replaceChat(movedChat);
-            }
-        } catch (caughtError) {
-            log.error('[ChatHistory] Reordering a conversation failed', chat.id, caughtError);
-            setChatsDirectly(previousChats);
-            toast.error('Could not move the conversation. Please try again.');
-        } finally {
-            setReordering(false);
-        }
-    };
-
-    /*
-     * The conversations a destination has already had arranged by hand, which is the list a drop
-     * position is an index into. A group that nobody has expanded has no cached page and therefore
-     * nothing placed.
+     * The conversations a group has already had arranged by hand, which is the list a drop position
+     * is an index into. A group that nobody has expanded has no cached page and therefore nothing
+     * placed, and the ungrouped list has no arrangement at all.
      */
     const placedChatsFor = (chatGroupId) => {
         if (!chatGroupId) {
-            return arrangedChats;
+            return NO_PLACED_CHATS;
         }
 
         return partitionPlacedChats(chatsByGroupId[chatGroupId]?.chats ?? [], GROUP_ORDER_FIELD).placed;
     };
 
     /*
-     * Sets a just-moved conversation's place in the list it landed in.
+     * Sets a just-moved conversation's place in the group it landed in.
      *
-     * Separate from the two reorder handlers above because those redraw from the arrays as this
-     * render saw them, and the state update that put the conversation into its new list has not
-     * reached this closure yet. The arrangement is therefore computed with a functional update, over
-     * whatever the list holds by the time React applies it.
+     * Separate from `handleReorderInGroup` because that redraws from the array as this render saw
+     * it, and the state update that put the conversation into its new group has not reached this
+     * closure yet. The arrangement is therefore computed with a functional update, over whatever the
+     * group holds by the time React applies it.
      */
     const placeMovedChat = async (chat, chatGroupId, position) => {
-        if (chatGroupId) {
-            setGroupChatsDirectly(chatGroupId, previousChats => (
-                applyOrderMove(previousChats, chat.id, position, GROUP_ORDER_FIELD)
-            ));
-        } else {
-            setChatsDirectly(previousChats => applyOrderMoveToUngrouped(previousChats, chat.id, position));
-        }
+        setGroupChatsDirectly(chatGroupId, previousChats => (
+            applyOrderMove(previousChats, chat.id, position, GROUP_ORDER_FIELD)
+        ));
 
         try {
-            const movedChat = chatGroupId
-                ? await chatGroupService.reorderChatInGroup(chatGroupId, chat.id, position)
-                : await chatService.reorderChat(chat.id, position);
+            const movedChat = await chatGroupService.reorderChatInGroup(chatGroupId, chat.id, position);
 
             if (movedChat) {
                 replaceChat(movedChat);
-
-                if (chatGroupId) {
-                    replaceGroupChat(chatGroupId, movedChat);
-                }
+                replaceGroupChat(chatGroupId, movedChat);
             }
         } catch (caughtError) {
             log.error('[ChatHistory] Placing a moved conversation failed', chat.id, chatGroupId, caughtError);
 
             /*
              * The move itself landed, so there is no earlier arrangement to restore — only this
-             * conversation's position is unknown. Refetching the section it landed in is the honest
-             * resync; the ungrouped list settles on the next drawer open.
+             * conversation's position is unknown. Refetching the group it landed in is the honest
+             * resync.
              */
-            if (chatGroupId) {
-                reloadGroupChats(chatGroupId);
-            }
-
+            reloadGroupChats(chatGroupId);
             toast.error('Could not move the conversation. Please try again.');
         }
     };
@@ -623,10 +563,9 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     /*
      * Performs a drop.
      *
-     * A drop inside the list the conversation already lives in is a pure reorder. A drop into a
-     * different one is two operations in a fixed order: the group move first, so the conversation is
-     * actually in the destination by the time its position there is set. The whole-list ordering and
-     * a group's ordering are separate columns behind separate endpoints and are never mixed.
+     * A drop inside the group the conversation already lives in is a pure reorder. A drop into a
+     * different list is two operations in a fixed order: the group move first, so the conversation
+     * is actually in the destination by the time its position there is set.
      */
     const handleChatDrop = async (chat, destination) => {
         const sourceChatGroupId = chat.chatGroupId ?? null;
@@ -634,16 +573,12 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         const position = destination.position;
 
         if (sourceChatGroupId === targetChatGroupId) {
-            if (isNoOpDrop(placedChatsFor(targetChatGroupId), chat.id, position)) {
+            /* Only a group holds an order to move within; the ungrouped list is a timeline. */
+            if (!targetChatGroupId || isNoOpDrop(placedChatsFor(targetChatGroupId), chat.id, position)) {
                 return;
             }
 
-            if (targetChatGroupId) {
-                await handleReorderInGroup(chat, targetChatGroupId, position);
-                return;
-            }
-
-            await handleReorderChat(chat, position);
+            await handleReorderInGroup(chat, targetChatGroupId, position);
             return;
         }
 
@@ -666,36 +601,52 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const chatFromRow = (row) => ({...row.chat, chatGroupId: row.chatGroupId ?? null});
 
     /*
-     * The whole gesture, from the press on a grip to the release. The `+ New group` button is one of
-     * its targets, which is the only way left to create a group around a conversation now that the
-     * row menu no longer offers one.
+     * The whole gesture, from the press on a grip to the release. Two of its targets are not rows:
+     * the `+ New group` button, and everything outside the drawer — which offers to delete the
+     * conversation or to build a group around it.
      */
-    const {draggedChat, dropTarget, newGroupDropActive, dragHandleProps} = useChatHistoryDrag({
+    const {
+        draggedChat,
+        dropTarget,
+        newGroupDropActive,
+        outsideDropActive,
+        dragHandleProps,
+    } = useChatHistoryDrag({
         rows,
         scrollContainerRef,
+        drawerRef,
         placedChatsFor,
         onDrop: (chat, destination) => {
             void handleChatDrop(chat, destination);
         },
         onNewGroup: (chat) => setCreateGroupRequest({chatToFile: chat}),
+        onDropOutside: (chat, point) => setDropActionRequest({chat, point}),
     });
 
     /*
-     * The keyboard equivalent of a drag, on the focused handle. Ordering left the row menu with this
-     * story, so without it a keyboard user would have no way to arrange anything at all.
+     * The keyboard equivalent of a drag, on the focused handle. Ordering left the row menu with the
+     * drag-and-drop story, so without it a keyboard user would have no way to arrange anything.
+     *
+     * Only inside a group: the ungrouped list is ordered by date, so there is nothing there for an
+     * arrow key to move a conversation past.
      *
      * A conversation that has never been placed has no neighbour to trade with, so the first
-     * keystroke places it — at the head of the arrangement, or at its foot.
+     * keystroke places it — at the head of the group's arrangement, or at its foot.
      */
     const handleDragHandleKeyDown = (event, row) => {
         if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
             return;
         }
 
+        const chatGroupId = row.chatGroupId ?? null;
+
+        if (!chatGroupId) {
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
 
-        const chatGroupId = row.chatGroupId ?? null;
         const placedChats = placedChatsFor(chatGroupId);
         const placedIndex = placedChats.findIndex(placedChat => placedChat.id === row.chatId);
 
@@ -745,6 +696,62 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             setChatId(null);
             navigate("/");
         }
+    };
+
+    /*
+     * A deleted group, and whatever went with it.
+     *
+     * `deletedChatIds` is empty when only the group was removed: the API ungroups rather than
+     * cascades, so those conversations are still there and have to be found again. Patching every
+     * cached row would only cover the ones already paged in, so the whole history is reloaded —
+     * which is also what puts them back into their day buckets.
+     */
+    const forgetDeletedChats = (deletedChatIds) => {
+        for (const deletedChatId of deletedChatIds) {
+            removeChat(deletedChatId);
+
+            /*
+             * The open transcript cannot be left on screen: the next message would PUT to a chat id
+             * the server no longer has. Same sequence, in the same order, as handleChatDeleted.
+             */
+            if (openChatId === deletedChatId) {
+                setChatHistory([]);
+                setChatId(null);
+                navigate("/");
+            }
+        }
+    };
+
+    /*
+     * A cascade that stopped part-way. The group is still there holding whatever was not reached,
+     * so only the rows that are actually gone come out — and the dialog stays open to say so.
+     */
+    const handleGroupConversationsDeleted = (deletedChatIds) => {
+        forgetDeletedChats(deletedChatIds);
+        reloadGroupChats(deleteGroupRequest?.chatGroupId);
+    };
+
+    const handleChatGroupDeleted = (deletedChatGroupId, deletedChatIds) => {
+        setDeleteGroupRequest(null);
+        forgetDeletedChats(deletedChatIds);
+
+        setExpandedGroupIds(previousIds => {
+            const nextIds = new Set([...previousIds]);
+            nextIds.delete(deletedChatGroupId);
+
+            return nextIds;
+        });
+
+        reloadGroups();
+
+        /* Only the group went; its conversations are ungrouped now and belong in the day buckets. */
+        if (deletedChatIds.length === 0) {
+            setReloadHistoryTrigger(trigger => trigger + 1);
+        }
+
+        toast(deletedChatIds.length === 0
+            ? 'Group deleted'
+            : `Group and ${deletedChatIds.length} conversation${deletedChatIds.length === 1 ? '' : 's'} deleted`);
     };
 
     /*
@@ -821,35 +828,53 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
         if (row.type === CHAT_GROUP_HEADER_ROW) {
             return (
-                <button
-                    type="button"
-                    className="chat-group-header"
-                    title={row.fullLabel}
-                    aria-expanded={row.expanded}
-                    onClick={() => toggleChatGroup(row.chatGroupId)}
-                >
-                    {/* A group is somewhere to drop a conversation, not something that moves
-                      * itself — the API has no ordering for groups — so this grip is an
-                      * affordance and nothing else. */}
-                    <span className="chat-history-drag-handle chat-history-drag-handle-static">
-                        <MdDragIndicator aria-hidden="true"/>
-                    </span>
+                /* The header is a button, so the kebab is its sibling rather than a nested one. */
+                <div className="chat-group-header-row">
+                    <button
+                        type="button"
+                        className="chat-group-header"
+                        title={row.fullLabel}
+                        aria-expanded={row.expanded}
+                        onClick={() => toggleChatGroup(row.chatGroupId)}
+                    >
+                        {/* A group is somewhere to drop a conversation, not something that moves
+                          * itself — the API has no ordering for groups — so this grip is an
+                          * affordance and nothing else. */}
+                        <span className="chat-history-drag-handle chat-history-drag-handle-static">
+                            <MdDragIndicator aria-hidden="true"/>
+                        </span>
 
-                    <ChevronRightIcon
-                        aria-hidden="true"
-                        className={row.expanded
-                            ? "chat-group-chevron chat-group-chevron-expanded"
-                            : "chat-group-chevron"}
+                        <ChevronRightIcon
+                            aria-hidden="true"
+                            className={row.expanded
+                                ? "chat-group-chevron chat-group-chevron-expanded"
+                                : "chat-group-chevron"}
+                        />
+
+                        <span className="chat-group-name">{row.label}</span>
+
+                        {/* Absent until the group's first page has landed — the number is not known
+                          * before then, and GET /chatgroups does not carry it. */}
+                        {row.count !== null && (
+                            <span className="chat-group-count">{row.count}</span>
+                        )}
+                    </button>
+
+                    {/* Delete only. There is still no rename: the API ships no endpoint for one,
+                      * and an action that cannot succeed is worse than one that is not offered. */}
+                    <ChatRowMenu
+                        label={row.fullLabel}
+                        actions={[{
+                            key: "deleteGroup",
+                            label: "Delete group",
+                            destructive: true,
+                            onSelect: () => setDeleteGroupRequest({
+                                chatGroupId: row.chatGroupId,
+                                label: row.fullLabel,
+                            }),
+                        }]}
                     />
-
-                    <span className="chat-group-name">{row.label}</span>
-
-                    {/* Absent until the group's first page has landed — the number is not known
-                      * before then, and GET /chatgroups does not carry it. */}
-                    {row.count !== null && (
-                        <span className="chat-group-count">{row.count}</span>
-                    )}
-                </button>
+                </div>
             );
         }
 
@@ -889,8 +914,11 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                         <button
                             type="button"
                             className="chat-history-drag-handle"
-                            aria-label={`Reorder ${row.fullLabel}`}
-                            title={DRAG_HANDLE_HINT}
+                            /* Outside a group the grip files and unfiles; it does not reorder. */
+                            aria-label={row.chatGroupId
+                                ? `Reorder ${row.fullLabel}`
+                                : `Move ${row.fullLabel}`}
+                            title={row.chatGroupId ? GROUPED_DRAG_HANDLE_HINT : DRAG_HANDLE_HINT}
                             /* `.chat-item` opens the chat; grabbing its handle must not. */
                             onClick={(event) => event.stopPropagation()}
                             onKeyDown={(event) => handleDragHandleKeyDown(event, row)}
@@ -909,7 +937,9 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
     return (
         <div ref={drawerRef} className="chat-drawer-container bg-primary">
-            <div className="chat-drawer mt-7!">
+            {/* Dimmed while the pointer is outside during a drag, so leaving the drawer reads as a
+              * deliberate destination rather than the drag silently going nowhere. */}
+            <div className={outsideDropActive ? "chat-drawer mt-7! chat-drawer-releasing" : "chat-drawer mt-7!"}>
                 <h2>Chat History</h2>
 
                 {/* Pinned under the title and outside the scroll box: anything that scrolls above
@@ -985,10 +1015,54 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     )}
                 </div>
 
+                {/*
+                  * None of its actions act on their own: filing goes through the same handler the
+                  * drag does, and Delete goes through DeleteChatDialog, which is what refuses to
+                  * delete a conversation that is mid-turn.
+                  */}
+                {dropActionRequest && (
+                    <ChatDropActionMenu
+                        label={chatHistoryRowFullLabel(dropActionRequest.chat)}
+                        point={dropActionRequest.point}
+                        groups={groups}
+                        currentChatGroupId={dropActionRequest.chat.chatGroupId ?? null}
+                        onNewGroup={() => {
+                            setCreateGroupRequest({chatToFile: dropActionRequest.chat});
+                            setDropActionRequest(null);
+                        }}
+                        onMoveToGroup={(chatGroupId) => {
+                            const chat = dropActionRequest.chat;
+
+                            setDropActionRequest(null);
+                            void handleMoveToGroup(chat, chatGroupId);
+                        }}
+                        onDelete={() => {
+                            setDeleteRequest({
+                                chatId: dropActionRequest.chat.id,
+                                chatGroupId: dropActionRequest.chat.chatGroupId ?? null,
+                                label: chatHistoryRowFullLabel(dropActionRequest.chat),
+                            });
+                            setDropActionRequest(null);
+                        }}
+                        onDismiss={() => setDropActionRequest(null)}
+                    />
+                )}
+
                 {createGroupRequest && (
                     <CreateChatGroupDialog
                         onCancel={() => setCreateGroupRequest(null)}
                         onCreated={handleGroupCreated}
+                    />
+                )}
+
+                {deleteGroupRequest && (
+                    <DeleteChatGroupDialog
+                        chatGroupId={deleteGroupRequest.chatGroupId}
+                        label={deleteGroupRequest.label}
+                        streamingChatId={streamingChatId}
+                        onCancel={() => setDeleteGroupRequest(null)}
+                        onConversationsDeleted={handleGroupConversationsDeleted}
+                        onDeleted={handleChatGroupDeleted}
                     />
                 )}
 
@@ -1077,21 +1151,6 @@ function ChatItemRenameInput({initialValue, placeholder, onCommit, onCancel}) {
             onClick={(event) => event.stopPropagation()}
         />
     );
-}
-
-/**
- * `applyOrderMove` over the ungrouped conversations only.
- *
- * The accumulated pages hold grouped conversations too, and filing one does not clear its
- * `sortOrder` — only its `groupSortOrder`. Running the move over the whole array would therefore
- * count those as part of the Arranged prefix and land the row at an index the user never aimed at.
- * The grouped ones are put back at the tail, where nothing reads them: the group sections render
- * from their own endpoint's pages, not from this list.
- */
-function applyOrderMoveToUngrouped(chats, chatId, position) {
-    const {grouped, ungrouped} = partitionGroupedChats(chats);
-
-    return [...applyOrderMove(ungrouped, chatId, position), ...grouped];
 }
 
 function rowClassName(row, {dragging, dropEdge} = {}) {

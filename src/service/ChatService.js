@@ -332,17 +332,6 @@ const chatService = {
     },
 
     /*
-     * Moves a conversation within the caller's whole list. `position` is a zero-based index among
-     * the chats already placed by hand — not an index into the rendered list, and never derived from
-     * another chat's sortOrder, which the server renumbers and which can carry gaps. A position past
-     * the end of the placed prefix appends rather than failing, and null unplaces the conversation
-     * and returns it to timestamp ordering.
-     */
-    reorderChat: async (chatId, position) => {
-        return await apiClient.put(`${config.chatsUri}/${chatId}/order`, {position});
-    },
-
-    /*
      * Deletes a conversation and everything under it — messages, their attachments, and the images
      * generated inside it — in one transaction. Irreversible: there is no trash and no undo. A
      * repeat is a 404 rather than a 204, so callers treat 404 as "already gone" instead of as a

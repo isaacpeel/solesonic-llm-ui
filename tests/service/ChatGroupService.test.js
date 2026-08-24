@@ -108,6 +108,38 @@ describe('removeChatFromGroup', () => {
     });
 });
 
+describe('deleteGroup', () => {
+    it('deletes the group by id and returns null for the 204', async () => {
+        apiClient.delete.mockResolvedValue(null);
+
+        const result = await chatGroupService.deleteGroup('group-1');
+
+        expect(apiClient.delete).toHaveBeenCalledWith(`${CHAT_GROUPS_URI}/group-1`);
+        expect(result).toBeNull();
+    });
+
+    /*
+     * The foreign key is `on delete set null`, so this call never takes conversations with it —
+     * which is why deleting them as well is a cascade the caller performs.
+     */
+    it('sends no cascade flag of any kind', async () => {
+        apiClient.delete.mockResolvedValue(null);
+
+        await chatGroupService.deleteGroup('group-1');
+
+        const [requestedUri, requestBody] = apiClient.delete.mock.calls[0];
+
+        expect(requestedUri).not.toMatch(/\?/);
+        expect(requestBody).toBeUndefined();
+    });
+
+    it('propagates the failure rather than swallowing it', async () => {
+        apiClient.delete.mockRejectedValue(Object.assign(new Error('404'), {status: 404}));
+
+        await expect(chatGroupService.deleteGroup('group-1')).rejects.toMatchObject({status: 404});
+    });
+});
+
 describe('reorderChatInGroup', () => {
     it('puts the position to the group-scoped order endpoint', async () => {
         apiClient.put.mockResolvedValue({id: 'chat-1', groupSortOrder: 0});

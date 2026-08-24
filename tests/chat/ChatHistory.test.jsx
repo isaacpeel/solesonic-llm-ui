@@ -13,7 +13,6 @@ vi.mock('../../src/hooks/useChatGroups.js', () => ({
 vi.mock('../../src/service/ChatService.js', () => ({
     default: {
         renameChat: vi.fn(),
-        reorderChat: vi.fn(),
         deleteChat: vi.fn(),
     },
     DEFAULT_CHAT_HISTORY_PAGE_SIZE: 20,
@@ -25,6 +24,8 @@ vi.mock('../../src/service/ChatGroupService.js', () => ({
         addChatToGroup: vi.fn(),
         removeChatFromGroup: vi.fn(),
         reorderChatInGroup: vi.fn(),
+        deleteGroup: vi.fn(),
+        findGroupChats: vi.fn(),
     },
 }));
 
@@ -58,6 +59,9 @@ const VIEWPORT_HEIGHT = 600;
 
 const ROW_HEIGHT = 41;
 
+/* Matches `.drawer`'s fixed width, which is what the out-of-drawer dead band is measured from. */
+const DRAWER_WIDTH = 250;
+
 /*
  * jsdom lays nothing out, so every element reports zero for the metrics @tanstack/virtual-core
  * actually reads — `offsetWidth`/`offsetHeight` (its ResizeObserver path never fires under test;
@@ -74,10 +78,27 @@ function stubLayout() {
     const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
     const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
     const originalElementFromPoint = document.elementFromPoint;
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 
     hitTestElement = null;
     document.elementFromPoint = function stubbedElementFromPoint() {
         return hitTestElement;
+    };
+
+    /*
+     * Only the drawer gets a real rectangle — the dead band around it is read from this. Everything
+     * else keeps jsdom's zeros on purpose: a measured `.chat-history-scroll` would put
+     * `autoScrollStep` above its zero-height guard and start requestAnimationFrame loops under test.
+     * Rows that need a rectangle are given one directly by the drag helpers, and an own property
+     * wins over this.
+     */
+    /** @this {Element} */
+    Element.prototype.getBoundingClientRect = function stubbedGetBoundingClientRect() {
+        if (this.classList?.contains('chat-drawer-container')) {
+            return {left: 0, right: DRAWER_WIDTH, top: 0, bottom: VIEWPORT_HEIGHT, width: DRAWER_WIDTH, height: VIEWPORT_HEIGHT};
+        }
+
+        return originalGetBoundingClientRect.call(this);
     };
 
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
@@ -107,6 +128,7 @@ function stubLayout() {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
         Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
         document.elementFromPoint = originalElementFromPoint;
+        Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
         hitTestElement = null;
     };
 }
@@ -152,6 +174,7 @@ function renderChatHistory({
     const retry = vi.fn();
     const setChatId = vi.fn();
     const setChatHistory = vi.fn();
+    const setReloadHistoryTrigger = vi.fn();
     const setDrawerOpen = vi.fn();
     const replaceChat = vi.fn();
     const removeChat = vi.fn();
@@ -202,6 +225,7 @@ function renderChatHistory({
         setChatHistory,
         streamingChatId,
         chatInputRef: {current: null},
+        setReloadHistoryTrigger,
     };
 
     const renderResult = render(
@@ -218,6 +242,7 @@ function renderChatHistory({
         retry,
         setChatId,
         setChatHistory,
+        setReloadHistoryTrigger,
         setDrawerOpen,
         replaceChat,
         removeChat,
@@ -243,8 +268,6 @@ beforeEach(() => {
     useChatGroups.mockReset();
     chatService.renameChat.mockReset();
     chatService.renameChat.mockResolvedValue({id: 'chat-0', name: 'Trip planning'});
-    chatService.reorderChat.mockReset();
-    chatService.reorderChat.mockResolvedValue({id: 'chat-0', sortOrder: 0});
     chatService.deleteChat.mockReset();
     chatService.deleteChat.mockResolvedValue(null);
 
@@ -256,6 +279,10 @@ beforeEach(() => {
     chatGroupService.addChatToGroup.mockResolvedValue(null);
     chatGroupService.removeChatFromGroup.mockResolvedValue(null);
     chatGroupService.reorderChatInGroup.mockResolvedValue({id: 'chat-0', groupSortOrder: 0});
+    chatGroupService.deleteGroup.mockReset();
+    chatGroupService.deleteGroup.mockResolvedValue(null);
+    chatGroupService.findGroupChats.mockReset();
+    chatGroupService.findGroupChats.mockResolvedValue({chats: [], page: 0, last: true, totalElements: 0});
 });
 
 afterEach(() => {
@@ -356,7 +383,14 @@ describe('ChatHistory paging feedback', () => {
 
 /* The menu is portalled to document.body, so it is never inside the render container. */
 function openRowMenu(container, rowIndex = 0) {
-    fireEvent.click(container.querySelectorAll('.chat-row-menu-trigger')[rowIndex]);
+    /* Scoped to conversations: group headers carry a kebab of their own, ahead of these in the list. */
+    fireEvent.click(container.querySelectorAll('.chat-item .chat-row-menu-trigger')[rowIndex]);
+
+    return document.body.querySelector('.chat-row-menu');
+}
+
+function openGroupMenu(container, groupIndex = 0) {
+    fireEvent.click(container.querySelectorAll('.chat-group-header-row .chat-row-menu-trigger')[groupIndex]);
 
     return document.body.querySelector('.chat-row-menu');
 }
@@ -762,15 +796,14 @@ describe('ChatHistory conversation groups', () => {
         expect(loadGroupChats).toHaveBeenCalledTimes(3);
     });
 
-    it('offers no way to rename or delete a group', () => {
+    /* The API ships no rename endpoint, so there is still deliberately no rename here. */
+    it('offers a group delete and nothing else', () => {
         const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
 
-        openRowMenu(container, 0);
+        const menu = openGroupMenu(container);
 
-        const visibleText = container.textContent + document.body.querySelector('.chat-row-menu').textContent;
-
-        expect(visibleText).not.toMatch(/rename group/i);
-        expect(visibleText).not.toMatch(/delete group/i);
+        expect(menuItemLabels(menu)).toEqual(['Delete group']);
+        expect(menu.textContent).not.toMatch(/rename/i);
     });
 });
 
@@ -816,7 +849,7 @@ describe('ChatHistory drag handles', () => {
         fireEvent(window, pointerEventOf('pointercancel', {clientY: PAST_DRAG_THRESHOLD}));
 
         expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
-        expect(chatService.reorderChat).not.toHaveBeenCalled();
+        expect(chatGroupService.reorderChatInGroup).not.toHaveBeenCalled();
     });
 
     it('does not open the chat when its handle is grabbed', () => {
@@ -1138,192 +1171,17 @@ describe('ChatHistory dragging inside a group', () => {
     });
 });
 
-describe('ChatHistory dragging in the whole list', () => {
-    /*
-     * Two hand-placed conversations followed by one still in date order. The stored values carry a
-     * gap, the way they do after a placed conversation has been deleted — nothing may read them as
-     * indices.
-     */
-    function mixedChats() {
-        const chats = chatsOf(3);
-
-        return [
-            {...chats[0], sortOrder: 0},
-            {...chats[1], sortOrder: 3},
-            chats[2],
-        ];
-    }
-
-    function sectionHeaders(container) {
-        return Array.from(container.querySelectorAll('.date-header')).map(header => header.textContent);
-    }
-
-    function rowLabels(container) {
-        return Array.from(container.querySelectorAll('.chat-item-label')).map(label => label.textContent);
-    }
-
-    it('renders no Arranged section while nothing has been placed', () => {
-        const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
-
-        expect(sectionHeaders(container)).toEqual(['Today']);
-    });
-
-    it('renders the placed conversations above the first day header, in response order', () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        expect(sectionHeaders(container)).toEqual(['Arranged', 'Today']);
-        expect(rowLabels(container)).toEqual(['Message number 0', 'Message number 1', 'Message number 2']);
-        /* The Arranged header is the first row in the list, not a section below the day buckets. */
-        expect(container.querySelector('.chat-history-spacer').firstElementChild.textContent)
-            .toBe('Arranged');
-    });
-
-    it('places an unplaced conversation dropped into the Arranged section', async () => {
-        const {container, setChatsDirectly} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        /* 0 Arranged, 1 chat-0, 2 chat-1, 3 the day header, 4 chat-2. */
-        dragRow(container, 4, 1);
-
-        /* Optimistic redraw first, so the row moves before the round trip resolves. */
-        expect(setChatsDirectly).toHaveBeenCalledWith(expect.any(Array));
-        expect(setChatsDirectly.mock.calls[0][0].map(chat => chat.id))
-            .toEqual(['chat-2', 'chat-0', 'chat-1']);
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-2', 0));
-    });
-
-    /* The index comes from the rendered Arranged array — never from the neighbour's sortOrder of 0. */
-    it('sends the index within the Arranged section rather than a neighbour sortOrder', async () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 2, 1);
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-1', 0));
-    });
-
-    it('counts the index with the dragged conversation taken out when it moves down', async () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 1, 2, {edge: 'after'});
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-0', 1));
-    });
-
-    /* A day header stands for the date-ordered region, so landing on one gives the row back to it. */
-    it('sends a null position for a drop on a day header', async () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 1, 3);
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-0', null));
-    });
-
-    it('sends position zero for a drop on the Arranged header', async () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 2, 0);
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-1', 0));
-    });
-
-    it('issues no request for a drop that would leave the order as it is', () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 1, 2, {edge: 'before'});
-
-        expect(chatService.reorderChat).not.toHaveBeenCalled();
-    });
-
-    it('issues no request when a conversation is dropped on itself', () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 1, 1);
-
-        expect(chatService.reorderChat).not.toHaveBeenCalled();
-    });
-
-    it('merges the authoritative sortOrder the response carries', async () => {
-        chatService.reorderChat.mockResolvedValue({id: 'chat-2', sortOrder: 0});
-
-        const {container, replaceChat} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 4, 1);
-
-        await waitFor(() => expect(replaceChat).toHaveBeenCalledWith({id: 'chat-2', sortOrder: 0}));
-    });
-
-    it('restores the previous order when the move fails', async () => {
-        chatService.reorderChat.mockRejectedValue(new Error('boom'));
-
-        const chats = mixedChats();
-        const {container, setChatsDirectly} = renderChatHistory({chats, hasMore: false});
-
-        dragRow(container, 2, 1);
-
-        await waitFor(() => expect(toast.error)
-            .toHaveBeenCalledWith('Could not move the conversation. Please try again.'));
-        expect(setChatsDirectly).toHaveBeenLastCalledWith(chats);
-    });
-
-    it('ignores a second move while one is in flight', () => {
-        chatService.reorderChat.mockImplementation(() => new Promise(() => {
-        }));
-
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        dragRow(container, 2, 1);
-        dragRow(container, 4, 1);
-
-        expect(chatService.reorderChat).toHaveBeenCalledTimes(1);
-    });
-
-    it('moves a conversation with the arrow keys from its focused handle', async () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        pressDragHandle(container, 2, 'ArrowUp');
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-1', 0));
-    });
-
-    it('places a conversation that was still in date order on the first arrow keystroke', async () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        pressDragHandle(container, 4, 'ArrowUp');
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-2', 0));
-    });
-
-    it('ignores an arrow key at the end of the arrangement it points to', () => {
-        const {container} = renderChatHistory({chats: mixedChats(), hasMore: false});
-
-        pressDragHandle(container, 1, 'ArrowUp');
-
-        expect(chatService.reorderChat).not.toHaveBeenCalled();
-    });
-});
-
 /*
- * The state every user starts in, and the one every fixture above skips: a drawer where nothing has
- * ever been arranged, so there is no Arranged section and every conversation is in a day bucket.
- * A drop resolved against the empty placed list here, drew its indicator, and then did nothing.
+ * A group nobody has arranged yet: the drop resolved against an empty placed list, drew its
+ * indicator, and then did nothing at all.
  */
-describe('ChatHistory dragging with nothing arranged yet', () => {
-    it('arranges a conversation dropped onto another one in the day list', async () => {
-        const {container, setChatsDirectly} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+describe('ChatHistory dragging inside a group with nothing placed', () => {
+    function unarrangedGroup() {
+        return [chatFiledUnder('group-1', null, 0), chatFiledUnder('group-1', null, 1)];
+    }
 
-        /* 0 is the day header; 1, 2 and 3 are the conversations, none of them placed. */
-        dragRow(container, 3, 1);
-
-        expect(setChatsDirectly).toHaveBeenCalled();
-
-        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-2', 0));
-    });
-
-    it('arranges a conversation inside a group that has nothing placed either', async () => {
-        const {container} = renderExpandedGroup([
-            chatFiledUnder('group-1', null, 0),
-            chatFiledUnder('group-1', null, 1),
-        ]);
+    it('arranges a conversation dropped onto another one', async () => {
+        const {container} = renderExpandedGroup(unarrangedGroup());
 
         /* 0 is Work's header, 1 and 2 its conversations, 3 Personal's header. */
         dragRow(container, 2, 1);
@@ -1334,16 +1192,331 @@ describe('ChatHistory dragging with nothing arranged yet', () => {
 
     /* An indicator is a promise that releasing moves something; it must not appear otherwise. */
     it('draws no indicator for a drop that would change nothing', () => {
-        const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+        const {container} = renderExpandedGroup(unarrangedGroup());
 
-        /* Row 0 is the day header, and these conversations are already in date order. */
+        /* Row 0 is the group's own header, and these conversations are already in date order. */
         expect(hoverRowOver(container, 1, 0)).toBeNull();
     });
 
     it('still draws one where the drop does move something', () => {
+        const {container} = renderExpandedGroup(unarrangedGroup());
+
+        expect(hoverRowOver(container, 2, 1)).not.toBeNull();
+    });
+});
+
+/*
+ * The ungrouped list is a timeline: ordered by date and by nothing else. Dragging within it used to
+ * pull a conversation out of its day bucket and up to the top of the drawer, which is the surprise
+ * this suite exists to hold shut.
+ */
+describe('ChatHistory dragging in the ungrouped list', () => {
+    function sectionHeaders(container) {
+        return Array.from(container.querySelectorAll('.date-header')).map(header => header.textContent);
+    }
+
+    /* A conversation carrying a sortOrder from an older build must still render in its day bucket. */
+    function chatsWithStaleSortOrder() {
+        const chats = chatsOf(3);
+
+        return [{...chats[0], sortOrder: 0}, {...chats[1], sortOrder: 3}, chats[2]];
+    }
+
+    it('labels nothing but the day buckets, whatever sortOrder the response carries', () => {
+        const {container} = renderChatHistory({chats: chatsWithStaleSortOrder(), hasMore: false});
+
+        expect(sectionHeaders(container)).toEqual(['Today']);
+        expect(Array.from(container.querySelectorAll('.chat-item-label')).map(label => label.textContent))
+            .toEqual(['Message number 0', 'Message number 1', 'Message number 2']);
+    });
+
+    it('draws no indicator anywhere in the list', () => {
         const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
 
-        expect(hoverRowOver(container, 3, 1)).not.toBeNull();
+        /* 0 is the day header, 1..3 the conversations. */
+        expect(hoverRowOver(container, 3, 1)).toBeNull();
+        expect(hoverRowOver(container, 1, 2, {edge: 'after'})).toBeNull();
+        expect(hoverRowOver(container, 2, 0)).toBeNull();
+    });
+
+    it('issues no request for a drop anywhere in the list', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+
+        dragRow(container, 3, 1);
+        dragRow(container, 1, 2, {edge: 'after'});
+        dragRow(container, 2, 0);
+
+        expect(chatGroupService.reorderChatInGroup).not.toHaveBeenCalled();
+        expect(chatGroupService.addChatToGroup).not.toHaveBeenCalled();
+    });
+
+    /* Arrow keys reorder inside a group; out here there is nothing to move a conversation past. */
+    it('ignores the arrow keys on an ungrouped conversation', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+
+        pressDragHandle(container, 2, 'ArrowUp');
+        pressDragHandle(container, 2, 'ArrowDown');
+
+        expect(chatGroupService.reorderChatInGroup).not.toHaveBeenCalled();
+    });
+
+    it('says as much on the grip', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const handle = container.querySelector('.chat-item .chat-history-drag-handle');
+
+        expect(handle.getAttribute('aria-label')).toBe('Move Message number 0');
+        expect(handle.getAttribute('title')).not.toMatch(/reorder/i);
+    });
+
+    /* Filing into a group is the point of keeping a grip on these rows at all. */
+    it('still files into a group', async () => {
+        const {container} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP],
+        });
+
+        /* 0 is the group header, 1 the day header, 2 the conversation. */
+        dragRow(container, 2, 0);
+
+        await waitFor(() => expect(chatGroupService.addChatToGroup).toHaveBeenCalledWith('group-1', 'chat-0'));
+    });
+});
+
+/* Row indices shift with however many group sections sit above the day buckets. */
+function rowIndexOfConversation(container, label) {
+    return Array.from(container.querySelectorAll('.chat-history-row'))
+        .findIndex(row => row.querySelector('.chat-item-label')?.textContent === label);
+}
+
+/* Comfortably past the drawer's edge and the dead band that guards it. */
+const WELL_CLEAR_OF_DRAWER = 600;
+
+/* A drift that clips the drawer's edge on the way past — inside the band, so not an exit. */
+const DRIFTED_PAST_DRAWER = DRAWER_WIDTH + 8;
+
+/* Releases the conversation clear of the drawer. */
+function dragRowOutOfDrawer(container, fromIndex) {
+    const handle = container.querySelectorAll('.chat-history-row')[fromIndex]
+        .querySelector('.chat-history-drag-handle');
+
+    hitTestElement = document.body;
+
+    fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+    fireEvent(window, pointerEventOf('pointermove', {clientX: WELL_CLEAR_OF_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+    fireEvent(window, pointerEventOf('pointerup', {clientX: WELL_CLEAR_OF_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+
+    return document.body.querySelector('.chat-drop-action-menu');
+}
+
+function dropActionSelect() {
+    return document.body.querySelector('.chat-drop-action-select');
+}
+
+function dropActionOptions() {
+    return Array.from(dropActionSelect()?.options ?? []).map(option => option.textContent);
+}
+
+/* The group picker acts on change; there is no separate confirm. */
+function chooseDropDestination(value) {
+    fireEvent.change(dropActionSelect(), {target: {value}});
+}
+
+function clickDeleteDropAction() {
+    fireEvent.click(document.body.querySelector('.chat-drop-action-menu .chat-row-menu-item'));
+}
+
+describe('ChatHistory dragging out of the drawer', () => {
+    it('offers a destination and a delete, and does neither on its own', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const menu = dragRowOutOfDrawer(container, 1);
+
+        expect(menu).not.toBeNull();
+        expect(dropActionSelect()).not.toBeNull();
+        expect(menu.querySelector('.chat-row-menu-item').textContent).toBe('Delete conversation');
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+        expect(chatGroupService.createGroup).not.toHaveBeenCalled();
+        expect(chatGroupService.addChatToGroup).not.toHaveBeenCalled();
+    });
+
+    /* New Group leads, then the groups themselves in an order a reader can scan. */
+    it('lists New Group first and the existing groups alphabetically after it', () => {
+        const {container} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [
+                {id: 'group-3', name: 'zebra'},
+                {id: 'group-1', name: 'Alpha'},
+                {id: 'group-2', name: 'middle'},
+            ],
+        });
+
+        dragRowOutOfDrawer(container, rowIndexOfConversation(container, 'Message number 0'));
+
+        expect(dropActionOptions())
+            .toEqual(['Choose a group…', 'New Group', 'Alpha', 'middle', 'zebra']);
+    });
+
+    it('files the conversation into the group that is chosen', async () => {
+        const {container, upsertChat} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP, PERSONAL_GROUP],
+        });
+
+        dragRowOutOfDrawer(container, rowIndexOfConversation(container, 'Message number 0'));
+        chooseDropDestination('group-2');
+
+        expect(upsertChat).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'chat-0',
+            chatGroupId: 'group-2',
+        }));
+
+        await waitFor(() => expect(chatGroupService.addChatToGroup)
+            .toHaveBeenCalledWith('group-2', 'chat-0'));
+        expect(document.body.querySelector('.chat-drop-action-menu')).toBeNull();
+    });
+
+    /* Offered so the list reads whole, but inert — choosing it would be a request for no change. */
+    it('cannot choose the group the conversation is already in', () => {
+        const {container} = renderExpandedGroup([chatFiledUnder('group-1')]);
+
+        dragRowOutOfDrawer(container, rowIndexOfConversation(container, 'Message number 0'));
+
+        const options = Array.from(dropActionSelect().options);
+
+        expect(options.find(option => option.value === 'group-1').disabled).toBe(true);
+        expect(options.find(option => option.value === 'group-2').disabled).toBe(false);
+    });
+
+    it('dims the drawer while the conversation is held outside it', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const handle = container.querySelectorAll('.chat-history-row')[1]
+            .querySelector('.chat-history-drag-handle');
+
+        hitTestElement = document.body;
+
+        fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+        fireEvent(window, pointerEventOf('pointermove', {clientX: WELL_CLEAR_OF_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+
+        expect(container.querySelector('.chat-drawer-releasing')).not.toBeNull();
+    });
+
+    it('builds a group around the conversation', async () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        dragRowOutOfDrawer(container, 1);
+        chooseDropDestination('new-group');
+
+        fireEvent.change(document.body.querySelector('.create-chat-group-input'), {target: {value: 'Work'}});
+        fireEvent.submit(document.body.querySelector('.create-chat-group-dialog'));
+
+        await waitFor(() => expect(chatGroupService.createGroup).toHaveBeenCalledWith('Work'));
+        await waitFor(() => expect(chatGroupService.addChatToGroup)
+            .toHaveBeenCalledWith('group-new', 'chat-0'));
+    });
+
+    /*
+     * Through the confirmation, never around it — that dialog is what refuses to delete a
+     * conversation that is still streaming, and what says the delete cannot be undone.
+     */
+    it('opens the delete confirmation rather than deleting', async () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        dragRowOutOfDrawer(container, 1);
+        clickDeleteDropAction();
+
+        expect(document.body.querySelector('.delete-chat-dialog')).not.toBeNull();
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+
+        fireEvent.click(document.body.querySelector('.delete-chat-dialog-confirm'));
+
+        await waitFor(() => expect(chatService.deleteChat).toHaveBeenCalledWith('chat-0'));
+    });
+
+    it('cannot delete a conversation that is still streaming', () => {
+        const {container} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            streamingChatId: 'chat-0',
+        });
+
+        dragRowOutOfDrawer(container, 1);
+        clickDeleteDropAction();
+
+        expect(document.body.querySelector('.delete-chat-dialog-confirm').disabled).toBe(true);
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+    });
+
+    it('closes without touching the conversation on Escape', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const menu = dragRowOutOfDrawer(container, 1);
+
+        fireEvent.keyDown(menu, {key: 'Escape'});
+
+        expect(document.body.querySelector('.chat-drop-action-menu')).toBeNull();
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+        expect(chatGroupService.createGroup).not.toHaveBeenCalled();
+    });
+
+    /*
+     * A diagonal drag that clips the drawer's edge on its way down the list must not be answered
+     * with a menu that has Delete in it.
+     */
+    it('offers nothing for a drift that only just clears the drawer', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const handle = container.querySelectorAll('.chat-history-row')[1]
+            .querySelector('.chat-history-drag-handle');
+
+        hitTestElement = document.body;
+
+        fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+        fireEvent(window, pointerEventOf('pointermove', {clientX: DRIFTED_PAST_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+
+        expect(container.querySelector('.chat-drawer-releasing')).toBeNull();
+
+        fireEvent(window, pointerEventOf('pointerup', {clientX: DRIFTED_PAST_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+
+        expect(document.body.querySelector('.chat-drop-action-menu')).toBeNull();
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+    });
+
+    /* The pointer left the viewport entirely, which is abandoning the drag rather than aiming. */
+    it('offers nothing when the pointer leaves the viewport', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const handle = container.querySelectorAll('.chat-history-row')[1]
+            .querySelector('.chat-history-drag-handle');
+
+        hitTestElement = null;
+
+        fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+        fireEvent(window, pointerEventOf('pointermove', {clientY: PAST_DRAG_THRESHOLD}));
+        fireEvent(window, pointerEventOf('pointerup', {clientY: PAST_DRAG_THRESHOLD}));
+
+        expect(document.body.querySelector('.chat-drop-action-menu')).toBeNull();
+    });
+
+    it('abandons the drag on Escape before it is released', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        const handle = container.querySelectorAll('.chat-history-row')[1]
+            .querySelector('.chat-history-drag-handle');
+
+        hitTestElement = document.body;
+
+        fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+        fireEvent(window, pointerEventOf('pointermove', {clientX: WELL_CLEAR_OF_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+        fireEvent.keyDown(window, {key: 'Escape'});
+        fireEvent(window, pointerEventOf('pointerup', {clientX: WELL_CLEAR_OF_DRAWER, clientY: PAST_DRAG_THRESHOLD}));
+
+        expect(document.body.querySelector('.chat-drop-action-menu')).toBeNull();
+        expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
     });
 });
 
@@ -1353,6 +1526,211 @@ function openDeleteDialog(container, rowIndex = 0) {
 
     return document.body.querySelector('.delete-chat-dialog');
 }
+
+function openDeleteGroupDialog(container, groupIndex = 0) {
+    openGroupMenu(container, groupIndex);
+    clickMenuItem('Delete group');
+
+    return document.body.querySelector('.delete-chat-group-dialog');
+}
+
+function clickGroupDialog(className) {
+    fireEvent.click(document.body.querySelector(`.delete-chat-group-dialog-${className}`));
+}
+
+/* One page of a group, in the shape `findGroupChats` normalizes to. */
+function groupPageOf(chatIds, {last = true, page = 0} = {}) {
+    return {
+        chats: chatIds.map(chatId => ({id: chatId})),
+        page,
+        last,
+        totalElements: chatIds.length,
+    };
+}
+
+describe('ChatHistory delete group', () => {
+    /*
+     * Three answers, because the destructive reading and the harmless one are both plausible and
+     * the difference between them is everything.
+     */
+    it('asks what should happen to the conversations inside it', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        const dialog = openDeleteGroupDialog(container);
+
+        expect(dialog).not.toBeNull();
+        expect(Array.from(dialog.querySelectorAll('.delete-chat-group-dialog-actions button'))
+            .map(button => button.textContent))
+            .toEqual(['Cancel', 'Delete group only', 'Delete group and conversations']);
+        expect(chatGroupService.deleteGroup).not.toHaveBeenCalled();
+    });
+
+    it('closes on Cancel without deleting anything', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('cancel');
+
+        expect(document.body.querySelector('.delete-chat-group-dialog')).toBeNull();
+        expect(chatGroupService.deleteGroup).not.toHaveBeenCalled();
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+    });
+
+    /*
+     * The API ungroups rather than cascades, so the conversations are still out there — reloading
+     * the history is what finds them again and puts them back in their day buckets.
+     */
+    it('deletes the group alone and goes looking for its freed conversations', async () => {
+        const {container, reloadGroups, setReloadHistoryTrigger} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP],
+        });
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('keep-chats');
+
+        await waitFor(() => expect(chatGroupService.deleteGroup).toHaveBeenCalledWith('group-1'));
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+        await waitFor(() => expect(reloadGroups).toHaveBeenCalled());
+        expect(setReloadHistoryTrigger).toHaveBeenCalled();
+        expect(document.body.querySelector('.delete-chat-group-dialog')).toBeNull();
+    });
+
+    /* Every page, because the drawer only holds the ones that were scrolled to. */
+    it('reads the whole group before deleting a single conversation', async () => {
+        chatGroupService.findGroupChats
+            .mockResolvedValueOnce(groupPageOf(['chat-a', 'chat-b'], {last: false, page: 0}))
+            .mockResolvedValueOnce(groupPageOf(['chat-c'], {last: true, page: 1}));
+
+        const {container, removeChat} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP],
+        });
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(chatGroupService.deleteGroup).toHaveBeenCalledWith('group-1'));
+
+        expect(chatGroupService.findGroupChats).toHaveBeenCalledTimes(2);
+        expect(chatService.deleteChat.mock.calls.map(call => call[0]))
+            .toEqual(['chat-a', 'chat-b', 'chat-c']);
+        expect(removeChat).toHaveBeenCalledWith('chat-b');
+    });
+
+    /* The group goes last: until every conversation is gone it still holds what survived. */
+    it('deletes the conversations before the group', async () => {
+        chatGroupService.findGroupChats.mockResolvedValue(groupPageOf(['chat-a']));
+
+        const order = [];
+        chatService.deleteChat.mockImplementation(async () => order.push('chat'));
+        chatGroupService.deleteGroup.mockImplementation(async () => order.push('group'));
+
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(order).toEqual(['chat', 'group']));
+    });
+
+    /*
+     * Refused after reading and before deleting, so the refusal costs nothing — a turn in flight
+     * would write a message against a conversation that no longer exists.
+     */
+    it('refuses the cascade while a conversation in the group is still responding', async () => {
+        chatGroupService.findGroupChats.mockResolvedValue(groupPageOf(['chat-a', 'chat-streaming']));
+
+        const {container} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP],
+            streamingChatId: 'chat-streaming',
+        });
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(document.body.querySelector('.delete-chat-group-dialog-error'))
+            .not.toBeNull());
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+        expect(chatGroupService.deleteGroup).not.toHaveBeenCalled();
+        expect(document.body.querySelector('.delete-chat-group-dialog')).not.toBeNull();
+    });
+
+    it('deletes nothing when the group cannot be read', async () => {
+        chatGroupService.findGroupChats.mockRejectedValue(new Error('boom'));
+
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(document.body.querySelector('.delete-chat-group-dialog-error'))
+            .not.toBeNull());
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+        expect(chatGroupService.deleteGroup).not.toHaveBeenCalled();
+    });
+
+    /* Stopping part-way leaves the group in place, holding whatever was not reached. */
+    it('stops at a conversation it cannot delete and leaves the group alone', async () => {
+        chatGroupService.findGroupChats.mockResolvedValue(groupPageOf(['chat-a', 'chat-b']));
+        chatService.deleteChat
+            .mockResolvedValueOnce(null)
+            .mockRejectedValueOnce(Object.assign(new Error('500'), {status: 500}));
+
+        const {container, removeChat, reloadGroupChats} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP],
+        });
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(document.body.querySelector('.delete-chat-group-dialog-error'))
+            .not.toBeNull());
+        expect(chatGroupService.deleteGroup).not.toHaveBeenCalled();
+        expect(removeChat).toHaveBeenCalledWith('chat-a');
+        expect(removeChat).not.toHaveBeenCalledWith('chat-b');
+        expect(reloadGroupChats).toHaveBeenCalledWith('group-1');
+    });
+
+    /* A conversation already gone is the outcome asked for, not a reason to stop. */
+    it('carries on past a conversation that was already deleted', async () => {
+        chatGroupService.findGroupChats.mockResolvedValue(groupPageOf(['chat-a', 'chat-b']));
+        chatService.deleteChat
+            .mockRejectedValueOnce(Object.assign(new Error('404'), {status: 404}))
+            .mockResolvedValueOnce(null);
+
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(chatGroupService.deleteGroup).toHaveBeenCalledWith('group-1'));
+    });
+
+    it('clears the workspace when the open conversation goes with the group', async () => {
+        chatGroupService.findGroupChats.mockResolvedValue(groupPageOf(['chat-open']));
+
+        const {container, setChatId, setChatHistory} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: [WORK_GROUP],
+            openChatId: 'chat-open',
+        });
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(setChatHistory).toHaveBeenCalledWith([]));
+        expect(setChatId).toHaveBeenCalledWith(null);
+        expect(navigateSpy).toHaveBeenCalledWith('/');
+    });
+});
 
 describe('ChatHistory delete', () => {
     it('confirms first, naming the conversation and what goes with it', () => {

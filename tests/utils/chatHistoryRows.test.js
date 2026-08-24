@@ -124,18 +124,6 @@ describe('flattenChatGroupsToRows', () => {
         expect(headerRows.map(row => row.firstInList)).toEqual([true, false]);
     });
 
-    /* A drop on the Arranged header means the top of the arrangement; on a day header, the opposite. */
-    it('marks the header of the hand-arranged section', () => {
-        const rows = flattenChatGroupsToRows([
-            {key: 'arranged', label: 'Arranged', chats: [chatOf('chat-1', 'first')], placed: true},
-            groupOf('2026-08-03', 'Today', [chatOf('chat-2', 'second')]),
-        ]);
-
-        const headerRows = rows.filter(row => row.type === CHAT_HISTORY_HEADER_ROW);
-
-        expect(headerRows.map(row => row.placedSection)).toEqual([true, false]);
-    });
-
     it('keys rows so an append does not reuse a key for a different row', () => {
         const firstPageRows = flattenChatGroupsToRows([
             groupOf('2026-08-03', 'Today', [chatOf('chat-1', 'first')]),

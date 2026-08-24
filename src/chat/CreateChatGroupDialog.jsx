@@ -4,6 +4,7 @@ import log from "loglevel";
 
 import "./CreateChatGroupDialog.css";
 import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
+import {handleDialogKeyDown} from "../util/dialogFocus.js";
 import chatGroupService from "../service/ChatGroupService.js";
 
 /* Matches the server's column limit, so a name long enough to be rejected cannot be typed. */
@@ -70,35 +71,10 @@ function CreateChatGroupDialog({onCancel, onCreated}) {
         }
     };
 
-    const handleKeyDown = (event) => {
-        if (event.key === "Escape") {
-            event.preventDefault();
-            /* The drawer is listening above this dialog; cancelling it is not a drawer gesture. */
-            event.stopPropagation();
-            onCancel();
-            return;
-        }
-
-        if (event.key !== "Tab") {
-            return;
-        }
-
-        /* Focus trap: three controls, so wrapping by hand is cheaper than a focus-scope helper. */
-        const focusableElements = Array.from(
-            dialogRef.current?.querySelectorAll("input, button:not([disabled])") ?? []
-        );
-
-        if (focusableElements.length === 0) {
-            return;
-        }
-
-        const currentIndex = focusableElements.indexOf(document.activeElement);
-        const step = event.shiftKey ? -1 : 1;
-        const nextIndex = (currentIndex + step + focusableElements.length) % focusableElements.length;
-
-        event.preventDefault();
-        focusableElements[nextIndex].focus();
-    };
+    const handleKeyDown = (event) => handleDialogKeyDown(event, {
+        containerElement: dialogRef.current,
+        onDismiss: onCancel,
+    });
 
     return createPortal(
         <div

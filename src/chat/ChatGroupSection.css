@@ -36,14 +36,44 @@
     box-shadow: inset 0 0 0 2px var(--text-color);
 }
 
+/*
+ * The header and its kebab share one line. The separator and the padding live out here now, so the
+ * row measures exactly what it did when the header was the whole of it — a group row and a chat row
+ * must stay the same height or the virtualizer's placement of everything below drifts.
+ */
+.chat-group-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 10px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    overflow: hidden;
+    transition: background-color var(--transition-speed);
+}
+
+.chat-group-header-row:hover {
+    background-color: var(--secondary-color);
+}
+
+/*
+ * The kebab hides with opacity rather than `display: none` — see ChatRowMenu.css — so it stays
+ * focusable. That reveal is written against `.chat-item`, which a group header is not, so its own
+ * container has to say the same thing.
+ */
+.chat-group-header-row:hover .chat-row-menu-trigger,
+.chat-group-header-row:focus-within .chat-row-menu-trigger {
+    opacity: 1;
+}
+
 .chat-group-header {
     display: flex;
     align-items: center;
     gap: 6px;
-    width: 100%;
-    padding: 10px;
+    flex: 1;
+    min-width: 0;
+    padding: 10px 0 10px 10px;
     border: none;
-    border-bottom: 1px solid var(--border-color);
     background: none;
     color: var(--text-color);
     font: inherit;
@@ -51,11 +81,6 @@
     white-space: nowrap;
     overflow: hidden;
     cursor: pointer;
-    transition: background-color var(--transition-speed);
-}
-
-.chat-group-header:hover {
-    background-color: var(--secondary-color);
 }
 
 /*

@@ -42,6 +42,17 @@ const chatGroupService = {
     },
 
     /*
+     * Deletes the group itself. Its conversations are **ungrouped, not deleted** — the foreign key
+     * is `on delete set null`, so they survive and fall back into the date-ordered list.
+     *
+     * Deleting the conversations as well is therefore not something this call can do; it is a
+     * client-side cascade over `chatService.deleteChat`, which `DeleteChatGroupDialog` owns.
+     */
+    deleteGroup: async (chatGroupId) => {
+        return await apiClient.delete(`${config.chatGroupsUri}/${chatGroupId}`);
+    },
+
+    /*
      * Moves a conversation within one group, reading and writing groupSortOrder. The chat's place in
      * the user's whole list is a different column and a different endpoint; the two must never be
      * mixed, or a move here silently reshuffles the list the user was not looking at.

@@ -42,6 +42,9 @@ const AUTO_SCROLL_ZONE_PIXELS = 48;
 
 const AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME = 14;
 
+/* How far past the drawer the pointer has to be before leaving it counts as leaving it. */
+const OUTSIDE_DROP_BAND_PIXELS = 32;
+
 /**
  * Which edge of a row the pointer is nearest.
  *
@@ -92,7 +95,7 @@ export function dropTargetFromElement(element) {
  * Resolves a drop into the destination the conversation ends up in.
  *
  * `chatGroupId` is the list it lands in — `null` for the user's ungrouped list — and `position` is
- * its index among that list's hand-placed conversations, or `null` for "no explicit place", which
+ * its index among that group's hand-placed conversations, or `null` for "no explicit place", which
  * leaves the conversation in, or returns it to, date order.
  *
  * `placedChatsFor(chatGroupId)` hands back the destination's placed prefix; it is a callback rather
@@ -101,7 +104,7 @@ export function dropTargetFromElement(element) {
  * @returns {{chatGroupId: string|null, position: number|null}|null} null when the row is not a drop
  *          target at all — including the dragged conversation's own row.
  */
-export function resolveDropDestination(row, edge, {draggedChatId, placedChatsFor}) {
+export function resolveDropDestination(row, edge, {draggedChatId, draggedChatGroupId, placedChatsFor}) {
     if (!row || !draggedChatId) {
         return null;
     }
@@ -112,13 +115,9 @@ export function resolveDropDestination(row, edge, {draggedChatId, placedChatsFor
         return {chatGroupId: row.chatGroupId, position: null};
     }
 
+    /* Every header in the ungrouped list is a day header, so all of them mean the same thing. */
     if (row.type === CHAT_HISTORY_HEADER_ROW) {
-        /*
-         * A day header stands for the date-ordered region, so landing on one unplaces the
-         * conversation. The Arranged header names the placed region itself, where "no place" would
-         * mean nothing — a drop there goes to the top of it.
-         */
-        return {chatGroupId: null, position: row.placedSection ? 0 : null};
+        return ungroupedDestination(draggedChatGroupId);
     }
 
     if (row.type !== CHAT_HISTORY_CHAT_ROW || row.chatId === draggedChatId) {
@@ -127,6 +126,10 @@ export function resolveDropDestination(row, edge, {draggedChatId, placedChatsFor
 
     const chatGroupId = row.chatGroupId ?? null;
 
+    if (!chatGroupId) {
+        return ungroupedDestination(draggedChatGroupId);
+    }
+
     return {
         chatGroupId,
         position: dropPosition(placedChatsFor(chatGroupId), draggedChatId, row.chatId, edge),
@@ -134,23 +137,36 @@ export function resolveDropDestination(row, edge, {draggedChatId, placedChatsFor
 }
 
 /**
- * The index a dragged conversation lands at among the destination's placed conversations.
+ * What landing anywhere in the ungrouped list means.
+ *
+ * That list is a timeline: it is ordered by date and by nothing else, so there is no position in it
+ * to aim at. The only move that lands here is a conversation leaving a group; one that is already
+ * in the list has nowhere to go, and offering it a drop would promise an arrangement the ordering
+ * cannot hold.
+ */
+function ungroupedDestination(draggedChatGroupId) {
+    return draggedChatGroupId ? {chatGroupId: null, position: null} : null;
+}
+
+/**
+ * The index a dragged conversation lands at among a group's placed conversations.
  *
  * Indices are counted with the dragged conversation taken out of the list, which is exactly how the
- * server reads `position` — see `ChatService.reorderChat`.
+ * server reads `position` — see `ChatGroupService.reorderChatInGroup`.
  *
- * A target that is not itself placed has no index to anchor to, and what that should mean depends
- * on the conversation being dragged, not on the target:
+ * A group's conversations are split the same way the whole list once was: those with a
+ * `groupSortOrder` come first, in that order, and the rest follow in date order. So a target that is
+ * not itself placed has no index to anchor to, and what that means depends on the conversation being
+ * dragged rather than on the target:
  *
- * - Dragging one that *is* arranged down onto a dated one reads as taking it out of the
- *   arrangement, so the drop carries no position and it falls back into date order. This is the
- *   only gesture that un-arranges anything.
- * - Dragging one that is *not* arranged onto another dated one reads as "put this in order". It
- *   joins the foot of the arrangement, which is the closest place to the drop that the two-part
- *   ordering can actually express — the dated conversations have no order to be inserted among.
+ * - Dragging one that *is* placed onto a dated one reads as taking it out of the arrangement, so the
+ *   drop carries no position and it falls back into date order within the group.
+ * - Dragging one that is *not* placed onto another dated one reads as "put this in order". It joins
+ *   the foot of the arrangement, the closest place to the drop that the two-part ordering can
+ *   express — the dated conversations have no order to be inserted among.
  *
- * Reading both as "no position" is what made every drag inert on a list where nothing had been
- * arranged yet: the drop resolved, drew an indicator, and then did nothing at all.
+ * Reading both as "no position" is what made every drag inert in a group nobody had arranged yet:
+ * the drop resolved, drew an indicator, and then did nothing at all.
  */
 export function dropPosition(placedChats, draggedChatId, targetChatId, edge) {
     const allPlacedChats = placedChats ?? [];
@@ -202,17 +218,31 @@ export function isNoOpDrop(placedChats, draggedChatId, position) {
  * The speed ramps with how deep into the zone the pointer is, so resting a finger just inside the
  * edge nudges the list rather than throwing it.
  */
-export function autoScrollStep(clientY, scrollRectangle) {
+export function autoScrollStep({clientX, clientY}, scrollRectangle) {
     if (!scrollRectangle || (scrollRectangle.height ?? 0) <= 0) {
+        return 0;
+    }
+
+    /* Not over the list's own column: the pointer is beside the drawer, not reaching along it. */
+    if (clientX < scrollRectangle.left || clientX > scrollRectangle.right) {
         return 0;
     }
 
     const distanceFromTop = clientY - scrollRectangle.top;
     const distanceFromBottom = scrollRectangle.bottom - clientY;
 
-    /* Dragged clear of the box: full speed toward the edge it left. */
+    /*
+     * The two edges are deliberately not symmetric, because what lies past them is not.
+     *
+     * Above the box are the drawer's title and its `+ New group` button — a drop target in its own
+     * right, so a pointer up there is aiming at something, not asking to scroll. Reaching the group
+     * headers above the fold is what the hot zone just inside this edge is for.
+     *
+     * Below the box is the bottom of the window: the scroll box runs to the foot of the drawer, so
+     * a pointer down there has left the screen and is reaching for the end of the list.
+     */
     if (distanceFromTop < 0) {
-        return -AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME;
+        return 0;
     }
 
     if (distanceFromBottom < 0) {
@@ -232,4 +262,25 @@ export function autoScrollStep(clientY, scrollRectangle) {
 
 function rampedScrollStep(depthIntoZone) {
     return Math.ceil((depthIntoZone / AUTO_SCROLL_ZONE_PIXELS) * AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME);
+}
+
+/**
+ * Whether the pointer is far enough from the drawer to mean it.
+ *
+ * Releasing clear of the drawer offers to delete the conversation, so the gesture has to be
+ * deliberate: a diagonal drag that clips the drawer's edge on its way down the list must not be
+ * answered with a menu that has Delete in it. The band is what separates a drift from an exit.
+ *
+ * Every edge is checked even though the drawer is flush left and full height today, so the rule
+ * still holds if it is ever moved or docked elsewhere.
+ */
+export function isClearOfDrawer(drawerRectangle, {clientX, clientY}) {
+    if (!drawerRectangle) {
+        return false;
+    }
+
+    return clientX > drawerRectangle.right + OUTSIDE_DROP_BAND_PIXELS
+        || clientX < drawerRectangle.left - OUTSIDE_DROP_BAND_PIXELS
+        || clientY > drawerRectangle.bottom + OUTSIDE_DROP_BAND_PIXELS
+        || clientY < drawerRectangle.top - OUTSIDE_DROP_BAND_PIXELS;
 }

@@ -103,12 +103,8 @@ export function chatHistoryRowLabel(chat) {
  * actions read `name` today and ordering and grouping will read more of it, and threading one more
  * property through per feature does not scale.
  *
- * `placed` marks the section holding the hand-arranged conversations. It reaches the header row as
- * `placedSection` because a drop onto that header means "the top of the arrangement", while a drop
- * onto a day header means the opposite — back to date order.
- *
- * @param {Array<{key?: string, label: string, chats?: Array, placed?: boolean, chatGroupId?: string, expanded?: boolean, loading?: boolean, hasMore?: boolean, count?: number|null}>} sections
- * @returns {Array<{type: string, key: string, label: string, chatId?: *, fullLabel?: string, chat?: *, chatGroupId?: string, firstInList?: boolean, placedSection?: boolean}>}
+ * @param {Array<{key?: string, label?: string, chats?: Array, chatGroupId?: string, expanded?: boolean, loading?: boolean, hasMore?: boolean, count?: number|null}>} sections
+ * @returns {Array<{type: string, key: string, label: string, chatId?: *, fullLabel?: string, chat?: *, chatGroupId?: string, firstInList?: boolean}>}
  */
 export function flattenChatGroupsToRows(sections) {
     const rows = [];
@@ -124,7 +120,6 @@ export function flattenChatGroupsToRows(sections) {
             key: `header:${section.key}`,
             label: section.label,
             firstInList: rows.length === 0,
-            placedSection: !!section.placed,
         });
 
         for (const chat of section.chats ?? []) {

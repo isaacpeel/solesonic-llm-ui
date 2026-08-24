@@ -8,6 +8,7 @@ import {
     dropEdgeForRow,
     dropPosition,
     dropTargetFromElement,
+    isClearOfDrawer,
     isNoOpDrop,
     resolveDropDestination,
 } from '../../src/util/chatHistoryDrag.js';
@@ -134,32 +135,67 @@ describe('resolveDropDestination', () => {
             .toEqual({chatGroupId: 'group-1', position: null});
     });
 
-    it('returns a conversation to date order when it lands on a day header', () => {
-        const row = {type: CHAT_HISTORY_HEADER_ROW, placedSection: false};
+    /*
+     * The ungrouped list is a timeline: ordered by date and by nothing else. Landing anywhere in it
+     * therefore means one thing only — leaving a group — and means nothing at all to a conversation
+     * that is already there.
+     */
+    it('takes a conversation out of its group when it lands on a day header', () => {
+        const row = {type: CHAT_HISTORY_HEADER_ROW};
 
-        expect(resolveDropDestination(row, DROP_ONTO, {draggedChatId: 'chat-z', placedChatsFor}))
-            .toEqual({chatGroupId: null, position: null});
+        expect(resolveDropDestination(row, DROP_ONTO, {
+            draggedChatId: 'chat-z',
+            draggedChatGroupId: 'group-1',
+            placedChatsFor,
+        })).toEqual({chatGroupId: null, position: null});
     });
 
-    /* "No place" would mean nothing on the header of the placed region itself. */
-    it('sends a conversation to the top of the arrangement when it lands on the Arranged header', () => {
-        const row = {type: CHAT_HISTORY_HEADER_ROW, placedSection: true};
+    it('takes a conversation out of its group when it lands on an ungrouped row', () => {
+        expect(resolveDropDestination(chatRow('chat-b'), DROP_BEFORE, {
+            draggedChatId: 'chat-z',
+            draggedChatGroupId: 'group-1',
+            placedChatsFor,
+        })).toEqual({chatGroupId: null, position: null});
+    });
 
-        expect(resolveDropDestination(row, DROP_ONTO, {draggedChatId: 'chat-z', placedChatsFor}))
-            .toEqual({chatGroupId: null, position: 0});
+    /* The drop that used to teleport a dated conversation to the top of the list. */
+    it('is not a drop target at all for a conversation that is already ungrouped', () => {
+        const dayHeader = {type: CHAT_HISTORY_HEADER_ROW};
+        const dragged = {draggedChatId: 'chat-z', draggedChatGroupId: null, placedChatsFor};
+
+        expect(resolveDropDestination(dayHeader, DROP_ONTO, dragged)).toBeNull();
+        expect(resolveDropDestination(chatRow('chat-b'), DROP_BEFORE, dragged)).toBeNull();
+        expect(resolveDropDestination(chatRow('chat-b'), DROP_AFTER, dragged)).toBeNull();
+    });
+
+    /* Filing into a group is still open to it, which is the whole point of keeping the grip there. */
+    it('still files an ungrouped conversation into a group', () => {
+        const row = {type: CHAT_GROUP_HEADER_ROW, chatGroupId: 'group-1'};
+
+        expect(resolveDropDestination(row, DROP_ONTO, {
+            draggedChatId: 'chat-z',
+            draggedChatGroupId: null,
+            placedChatsFor,
+        })).toEqual({chatGroupId: 'group-1', position: null});
     });
 
     it('reads the destination group off the conversation row it lands on', () => {
         const row = chatRow('chat-b', 'group-1');
         const groupPlaced = placedChatsFrom(chatsOf('chat-a', 'chat-b'));
 
-        expect(resolveDropDestination(row, DROP_BEFORE, {draggedChatId: 'chat-z', placedChatsFor: groupPlaced}))
-            .toEqual({chatGroupId: 'group-1', position: 1});
+        expect(resolveDropDestination(row, DROP_BEFORE, {
+            draggedChatId: 'chat-z',
+            draggedChatGroupId: null,
+            placedChatsFor: groupPlaced,
+        })).toEqual({chatGroupId: 'group-1', position: 1});
     });
 
     it('is not a drop target when the conversation lands on its own row', () => {
-        expect(resolveDropDestination(chatRow('chat-a'), DROP_BEFORE, {draggedChatId: 'chat-a', placedChatsFor}))
-            .toBeNull();
+        expect(resolveDropDestination(chatRow('chat-a', 'group-1'), DROP_BEFORE, {
+            draggedChatId: 'chat-a',
+            draggedChatGroupId: 'group-1',
+            placedChatsFor,
+        })).toBeNull();
     });
 
     it('is not a drop target without a row or without something being dragged', () => {
@@ -211,36 +247,89 @@ describe('dropTargetFromElement', () => {
 });
 
 describe('autoScrollStep', () => {
-    const scrollRectangle = {top: 100, bottom: 500, height: 400};
+    const scrollRectangle = {left: 0, right: 250, top: 100, bottom: 500, height: 400};
+
+    /* Over the list's own column, which is the only place scrolling means anything. */
+    function pointAt(clientY, clientX = 125) {
+        return {clientX, clientY};
+    }
 
     it('holds still in the middle of the box', () => {
-        expect(autoScrollStep(300, scrollRectangle)).toBe(0);
+        expect(autoScrollStep(pointAt(300), scrollRectangle)).toBe(0);
     });
 
     it('creeps up inside the top zone and down inside the bottom zone', () => {
-        expect(autoScrollStep(120, scrollRectangle)).toBeLessThan(0);
-        expect(autoScrollStep(480, scrollRectangle)).toBeGreaterThan(0);
+        expect(autoScrollStep(pointAt(120), scrollRectangle)).toBeLessThan(0);
+        expect(autoScrollStep(pointAt(480), scrollRectangle)).toBeGreaterThan(0);
     });
 
     /* Ramped, so a finger resting just inside the edge nudges the list rather than throwing it. */
     it('speeds up the deeper into the zone the pointer is', () => {
-        const shallow = Math.abs(autoScrollStep(140, scrollRectangle));
-        const deep = Math.abs(autoScrollStep(105, scrollRectangle));
+        const shallow = Math.abs(autoScrollStep(pointAt(140), scrollRectangle));
+        const deep = Math.abs(autoScrollStep(pointAt(105), scrollRectangle));
 
         expect(deep).toBeGreaterThan(shallow);
     });
 
-    it('runs at full speed once the pointer leaves the box', () => {
-        const atTheEdge = Math.abs(autoScrollStep(101, scrollRectangle));
+    /*
+     * The two edges are not symmetric, and that is the point: above the box are the drawer's title
+     * and its `+ New group` button, which the pointer may legitimately be aiming at.
+     */
+    it('holds still above the box, where the pinned header is', () => {
+        expect(autoScrollStep(pointAt(99), scrollRectangle)).toBe(0);
+        expect(autoScrollStep(pointAt(20), scrollRectangle)).toBe(0);
+    });
 
-        expect(Math.abs(autoScrollStep(20, scrollRectangle))).toBeGreaterThanOrEqual(atTheEdge);
-        expect(autoScrollStep(20, scrollRectangle)).toBeLessThan(0);
-        expect(autoScrollStep(900, scrollRectangle)).toBeGreaterThan(0);
+    it('runs at full speed below the box, where the window ends', () => {
+        const atTheEdge = autoScrollStep(pointAt(499), scrollRectangle);
+
+        expect(autoScrollStep(pointAt(900), scrollRectangle)).toBeGreaterThanOrEqual(atTheEdge);
+        expect(autoScrollStep(pointAt(900), scrollRectangle)).toBeGreaterThan(0);
+    });
+
+    /* Beside the drawer the pointer is on its way out, not reaching along the list. */
+    it('holds still when the pointer is clear of the column', () => {
+        expect(autoScrollStep(pointAt(120, 400), scrollRectangle)).toBe(0);
+        expect(autoScrollStep(pointAt(480, 400), scrollRectangle)).toBe(0);
+        expect(autoScrollStep(pointAt(120, -10), scrollRectangle)).toBe(0);
     });
 
     it('holds still for a box that has not been measured', () => {
-        expect(autoScrollStep(300, {top: 0, bottom: 0, height: 0})).toBe(0);
-        expect(autoScrollStep(300, null)).toBe(0);
+        expect(autoScrollStep(pointAt(300), {left: 0, right: 0, top: 0, bottom: 0, height: 0})).toBe(0);
+        expect(autoScrollStep(pointAt(300), null)).toBe(0);
+    });
+});
+
+describe('isClearOfDrawer', () => {
+    /* The drawer as it actually renders: a full-height 250px column, flush left. */
+    const drawerRectangle = {left: 0, right: 250, top: 0, bottom: 600};
+
+    it('is not clear of it while the pointer is inside', () => {
+        expect(isClearOfDrawer(drawerRectangle, {clientX: 125, clientY: 300})).toBe(false);
+    });
+
+    /*
+     * The band is what stops a diagonal drag that clips the edge on its way down the list from
+     * being answered with a menu that has Delete in it.
+     */
+    it('tolerates a drift just past the edge', () => {
+        expect(isClearOfDrawer(drawerRectangle, {clientX: 251, clientY: 300})).toBe(false);
+        expect(isClearOfDrawer(drawerRectangle, {clientX: 281, clientY: 300})).toBe(false);
+    });
+
+    it('is clear of it once the pointer is properly away', () => {
+        expect(isClearOfDrawer(drawerRectangle, {clientX: 400, clientY: 300})).toBe(true);
+    });
+
+    /* Only the right edge can be crossed today, but the rule must survive the drawer moving. */
+    it('answers for every edge', () => {
+        expect(isClearOfDrawer(drawerRectangle, {clientX: -40, clientY: 300})).toBe(true);
+        expect(isClearOfDrawer(drawerRectangle, {clientX: 125, clientY: -40})).toBe(true);
+        expect(isClearOfDrawer(drawerRectangle, {clientX: 125, clientY: 700})).toBe(true);
+    });
+
+    it('is not clear of a drawer that has not been measured', () => {
+        expect(isClearOfDrawer(null, {clientX: 400, clientY: 300})).toBe(false);
     });
 });
 

@@ -4,6 +4,7 @@ import {
     autoScrollStep,
     dropEdgeForRow,
     dropTargetFromElement,
+    isClearOfDrawer,
     isNoOpDrop,
     resolveDropDestination,
 } from "../util/chatHistoryDrag.js";
@@ -41,15 +42,28 @@ const NEW_GROUP_DESTINATION = Object.freeze({newGroup: true});
  * @param {{
  *   rows: Array<object>,
  *   scrollContainerRef: {current: HTMLElement|null},
+ *   drawerRef: {current: HTMLElement|null},
  *   placedChatsFor: (chatGroupId: string|null) => Array<object>,
  *   onDrop: (chat: object, destination: {chatGroupId: string|null, position: number|null}) => void,
  *   onNewGroup: (chat: object) => void,
+ *   onDropOutside: (chat: object, point: {clientX: number, clientY: number}) => void,
  * }} options
  */
-function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, onNewGroup}) {
+function useChatHistoryDrag({
+    rows,
+    scrollContainerRef,
+    drawerRef,
+    placedChatsFor,
+    onDrop,
+    onNewGroup,
+    onDropOutside,
+}) {
     const [draggedChat, setDraggedChat] = useState(null);
     const [dropTarget, setDropTarget] = useState(null);
     const [newGroupDropActive, setNewGroupDropActive] = useState(false);
+
+    /* The pointer has left the drawer, where releasing offers to delete or to build a group. */
+    const [outsideDropActive, setOutsideDropActive] = useState(false);
 
     /* True from the press to the release. Subscribing the window listeners is all it does. */
     const [pressed, setPressed] = useState(false);
@@ -63,10 +77,10 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
      * The window listeners are registered once per press, so they read everything that changes
      * between renders from here instead of from the closure they were created in.
      */
-    const latestRef = useRef({rows, placedChatsFor, onDrop, onNewGroup});
+    const latestRef = useRef({rows, placedChatsFor, onDrop, onNewGroup, onDropOutside});
 
     useEffect(() => {
-        latestRef.current = {rows, placedChatsFor, onDrop, onNewGroup};
+        latestRef.current = {rows, placedChatsFor, onDrop, onNewGroup, onDropOutside};
     });
 
     const stopAutoScroll = useCallback(() => {
@@ -78,14 +92,17 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
     }, []);
 
     /* A frame loop rather than a scroll per move: a finger held still at the edge must keep going. */
-    const updateAutoScroll = useCallback((clientY) => {
+    const updateAutoScroll = useCallback((clientX, clientY) => {
         const scrollElement = scrollContainerRef.current;
 
         if (!scrollElement) {
             return;
         }
 
-        autoScrollRef.current.step = autoScrollStep(clientY, scrollElement.getBoundingClientRect());
+        autoScrollRef.current.step = autoScrollStep(
+            {clientX, clientY},
+            scrollElement.getBoundingClientRect(),
+        );
 
         if (autoScrollRef.current.step === 0 || autoScrollRef.current.frame !== null) {
             return;
@@ -121,6 +138,7 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         setDraggedChat(null);
         setDropTarget(null);
         setNewGroupDropActive(false);
+        setOutsideDropActive(false);
     }, [scrollContainerRef, stopAutoScroll]);
 
     /*
@@ -136,7 +154,11 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         }
 
         const {rows: currentRows, placedChatsFor: currentPlacedChatsFor} = latestRef.current;
-        const hit = dropTargetFromElement(document.elementFromPoint(clientX, clientY));
+        const hitElement = document.elementFromPoint(clientX, clientY);
+        const hit = dropTargetFromElement(hitElement);
+
+        gesture.outside = false;
+        setOutsideDropActive(false);
 
         if (hit?.newGroup) {
             gesture.destination = NEW_GROUP_DESTINATION;
@@ -150,14 +172,27 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         const row = hit ? currentRows[hit.rowIndex] : null;
 
         if (!row) {
+            /*
+             * Nothing droppable under the pointer. Clear of the drawer altogether that is a gesture
+             * in its own right — the release offers to delete the conversation or to build a group
+             * around it. A null element means the pointer has left the viewport, which is someone
+             * abandoning the drag rather than aiming at anything.
+             */
             gesture.destination = null;
+            gesture.outside = !!hitElement && isClearOfDrawer(
+                drawerRef.current?.getBoundingClientRect(),
+                {clientX, clientY},
+            );
+
             setDropTarget(null);
+            setOutsideDropActive(gesture.outside);
             return;
         }
 
         const edge = dropEdgeForRow(row, clientY, hit.rowElement.getBoundingClientRect());
         const destination = resolveDropDestination(row, edge, {
             draggedChatId: gesture.chat.id,
+            draggedChatGroupId: gesture.chat.chatGroupId ?? null,
             placedChatsFor: currentPlacedChatsFor,
         });
 
@@ -187,7 +222,7 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
                 ? previousTarget
                 : {rowKey: row.key, edge}
         ));
-    }, []);
+    }, [drawerRef]);
 
     const handlePointerMove = useCallback((event) => {
         const gesture = gestureRef.current;
@@ -211,7 +246,7 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         }
 
         updateDropTarget(event.clientX, event.clientY);
-        updateAutoScroll(event.clientY);
+        updateAutoScroll(event.clientX, event.clientY);
     }, [updateDropTarget, updateAutoScroll]);
 
     const handlePointerUp = useCallback((event) => {
@@ -221,13 +256,26 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
             return;
         }
 
-        const {dragging, chat, destination} = gesture;
-        const {onDrop: dropHandler, onNewGroup: newGroupHandler} = latestRef.current;
+        const {dragging, chat, destination, outside} = gesture;
+        const {
+            onDrop: dropHandler,
+            onNewGroup: newGroupHandler,
+            onDropOutside: outsideHandler,
+        } = latestRef.current;
 
         endGesture();
 
         /* A press that never travelled focused the grip and nothing more. */
-        if (!dragging || !destination) {
+        if (!dragging) {
+            return;
+        }
+
+        if (outside) {
+            outsideHandler(chat, {clientX: event.clientX, clientY: event.clientY});
+            return;
+        }
+
+        if (!destination) {
             return;
         }
 
@@ -249,6 +297,20 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         endGesture();
     }, [endGesture]);
 
+    /*
+     * Escape abandons the drag. It matters more than it looks: releasing clear of the drawer now
+     * opens a menu with Delete in it, so there has to be a way to think better of a drag that is
+     * already out there.
+     */
+    const handleKeyDown = useCallback((event) => {
+        if (event.key !== "Escape" || !gestureRef.current) {
+            return;
+        }
+
+        event.preventDefault();
+        endGesture();
+    }, [endGesture]);
+
     useEffect(() => {
         if (!pressed) {
             return;
@@ -257,13 +319,15 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         window.addEventListener("pointermove", handlePointerMove, {passive: false});
         window.addEventListener("pointerup", handlePointerUp);
         window.addEventListener("pointercancel", handlePointerCancel);
+        window.addEventListener("keydown", handleKeyDown);
 
         return () => {
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", handlePointerUp);
             window.removeEventListener("pointercancel", handlePointerCancel);
+            window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [pressed, handlePointerMove, handlePointerUp, handlePointerCancel]);
+    }, [pressed, handlePointerMove, handlePointerUp, handlePointerCancel, handleKeyDown]);
 
     /* A drawer torn down mid-drag would otherwise leave the scroll loop running against nothing. */
     useEffect(() => stopAutoScroll, [stopAutoScroll]);
@@ -295,6 +359,7 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
             chat,
             dragging: false,
             destination: null,
+            outside: false,
         };
 
         setPressed(true);
@@ -304,7 +369,7 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         onPointerDown: (event) => beginGesture(event, chat),
     }), [beginGesture]);
 
-    return {draggedChat, dropTarget, newGroupDropActive, dragHandleProps};
+    return {draggedChat, dropTarget, newGroupDropActive, outsideDropActive, dragHandleProps};
 }
 
 export default useChatHistoryDrag;

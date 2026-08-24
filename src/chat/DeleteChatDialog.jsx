@@ -4,6 +4,7 @@ import log from "loglevel";
 
 import "./DeleteChatDialog.css";
 import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
+import {handleDialogKeyDown} from "../util/dialogFocus.js";
 import chatService from "../service/ChatService.js";
 
 const DELETE_FAILED_ERROR = "Could not delete the conversation. Please try again.";
@@ -90,35 +91,10 @@ function DeleteChatDialog({chatId, label, streaming, onCancel, onDeleted}) {
         }
     };
 
-    const handleKeyDown = (event) => {
-        if (event.key === "Escape") {
-            event.preventDefault();
-            /* The drawer is listening above this dialog; dismissing it is not a drawer gesture. */
-            event.stopPropagation();
-            onCancel();
-            return;
-        }
-
-        if (event.key !== "Tab") {
-            return;
-        }
-
-        /* Focus trap: two buttons, so wrapping by hand is cheaper than a focus-scope helper. */
-        const focusableElements = Array.from(
-            dialogRef.current?.querySelectorAll("button:not([disabled])") ?? []
-        );
-
-        if (focusableElements.length === 0) {
-            return;
-        }
-
-        const currentIndex = focusableElements.indexOf(document.activeElement);
-        const step = event.shiftKey ? -1 : 1;
-        const nextIndex = (currentIndex + step + focusableElements.length) % focusableElements.length;
-
-        event.preventDefault();
-        focusableElements[nextIndex].focus();
-    };
+    const handleKeyDown = (event) => handleDialogKeyDown(event, {
+        containerElement: dialogRef.current,
+        onDismiss: onCancel,
+    });
 
     return createPortal(
         <div

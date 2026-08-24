@@ -81,38 +81,6 @@ describe('renameChat', () => {
     });
 });
 
-describe('reorderChat', () => {
-    it('puts the position to the chat order endpoint, with no userId in the path', async () => {
-        apiClient.put.mockResolvedValue({id: '67890', sortOrder: 0});
-
-        await chatService.reorderChat('67890', 0);
-
-        expect(apiClient.put).toHaveBeenCalledWith(
-            'https://api.example.com/chat/67890/order',
-            {position: 0},
-        );
-    });
-
-    /* `{position: null}` is what unplaces a chat; a body stripped of its nulls would mean nothing. */
-    it('sends a position that is literally null rather than omitting it', async () => {
-        apiClient.put.mockResolvedValue({id: '67890', sortOrder: null});
-
-        await chatService.reorderChat('67890', null);
-
-        const [, sentBody] = apiClient.put.mock.calls[0];
-
-        expect(sentBody).toEqual({position: null});
-        expect(JSON.stringify(sentBody)).toBe('{"position":null}');
-    });
-
-    it('returns the moved chat, carrying its authoritative sortOrder', async () => {
-        const movedChat = {id: '67890', sortOrder: 2};
-        apiClient.put.mockResolvedValue(movedChat);
-
-        expect(await chatService.reorderChat('67890', 2)).toBe(movedChat);
-    });
-});
-
 describe('deleteChat', () => {
     it('deletes the chat by id and returns null for the 204', async () => {
         apiClient.delete.mockResolvedValue(null);

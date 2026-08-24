@@ -26,6 +26,16 @@
     z-index: 1000;
 }
 
+/*
+ * A conversation is being held outside the drawer, where releasing offers to delete it or to build
+ * a group around it. Fading the drawer is the only feedback available for a target that is, by
+ * definition, everywhere else on the screen.
+ */
+.chat-drawer-releasing {
+    opacity: 0.65;
+    transition: opacity var(--transition-speed);
+}
+
 /* Title style */
 .chat-drawer h2 {
     flex-shrink: 0;
