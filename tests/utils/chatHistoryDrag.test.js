@@ -3,8 +3,11 @@ import {
     DROP_AFTER,
     DROP_BEFORE,
     DROP_ONTO,
+    NEW_GROUP_DROP_ATTRIBUTE,
+    autoScrollStep,
     dropEdgeForRow,
     dropPosition,
+    dropTargetFromElement,
     isNoOpDrop,
     resolveDropDestination,
 } from '../../src/util/chatHistoryDrag.js';
@@ -144,6 +147,81 @@ describe('resolveDropDestination', () => {
         expect(resolveDropDestination(null, DROP_BEFORE, {draggedChatId: 'chat-a', placedChatsFor})).toBeNull();
         expect(resolveDropDestination(chatRow('chat-a'), DROP_BEFORE, {draggedChatId: null, placedChatsFor}))
             .toBeNull();
+    });
+});
+
+describe('dropTargetFromElement', () => {
+    /*
+     * Deliberately not jsdom-dependent beyond `closest`: what is being tested is the walk up from
+     * whatever the hit test landed on — a label, an icon — to the thing that can be dropped on.
+     */
+    function elementIn(html) {
+        const host = document.createElement('div');
+        host.innerHTML = html;
+
+        return host;
+    }
+
+    it('walks up from whatever was hit to the row it belongs to', () => {
+        const host = elementIn('<div data-index="4"><span class="chat-item-label">Q3</span></div>');
+        const label = host.querySelector('.chat-item-label');
+
+        expect(dropTargetFromElement(label)).toEqual({rowElement: host.firstElementChild, rowIndex: 4});
+    });
+
+    it('recognises the row itself', () => {
+        const host = elementIn('<div data-index="0"></div>');
+
+        expect(dropTargetFromElement(host.firstElementChild).rowIndex).toBe(0);
+    });
+
+    it('recognises the new-group button, which has no row index', () => {
+        const host = elementIn(`<button ${NEW_GROUP_DROP_ATTRIBUTE}="true"><span>+ New group</span></button>`);
+
+        expect(dropTargetFromElement(host.querySelector('span'))).toEqual({newGroup: true});
+    });
+
+    /* The row menu is portalled onto document.body, so it is over the drawer but not part of it. */
+    it('is not a target for anything outside a row', () => {
+        const host = elementIn('<div class="chat-row-menu"><button>Rename</button></div>');
+
+        expect(dropTargetFromElement(host.querySelector('button'))).toBeNull();
+        expect(dropTargetFromElement(null)).toBeNull();
+        expect(dropTargetFromElement(undefined)).toBeNull();
+    });
+});
+
+describe('autoScrollStep', () => {
+    const scrollRectangle = {top: 100, bottom: 500, height: 400};
+
+    it('holds still in the middle of the box', () => {
+        expect(autoScrollStep(300, scrollRectangle)).toBe(0);
+    });
+
+    it('creeps up inside the top zone and down inside the bottom zone', () => {
+        expect(autoScrollStep(120, scrollRectangle)).toBeLessThan(0);
+        expect(autoScrollStep(480, scrollRectangle)).toBeGreaterThan(0);
+    });
+
+    /* Ramped, so a finger resting just inside the edge nudges the list rather than throwing it. */
+    it('speeds up the deeper into the zone the pointer is', () => {
+        const shallow = Math.abs(autoScrollStep(140, scrollRectangle));
+        const deep = Math.abs(autoScrollStep(105, scrollRectangle));
+
+        expect(deep).toBeGreaterThan(shallow);
+    });
+
+    it('runs at full speed once the pointer leaves the box', () => {
+        const atTheEdge = Math.abs(autoScrollStep(101, scrollRectangle));
+
+        expect(Math.abs(autoScrollStep(20, scrollRectangle))).toBeGreaterThanOrEqual(atTheEdge);
+        expect(autoScrollStep(20, scrollRectangle)).toBeLessThan(0);
+        expect(autoScrollStep(900, scrollRectangle)).toBeGreaterThan(0);
+    });
+
+    it('holds still for a box that has not been measured', () => {
+        expect(autoScrollStep(300, {top: 0, bottom: 0, height: 0})).toBe(0);
+        expect(autoScrollStep(300, null)).toBe(0);
     });
 });
 

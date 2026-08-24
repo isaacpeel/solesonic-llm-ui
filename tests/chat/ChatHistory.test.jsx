@@ -64,9 +64,21 @@ const ROW_HEIGHT = 41;
  * vitest.setup.js stubs the observer as a no-op). Feeding the scroll box and the rows real
  * numbers through those getters is what makes the windowing observable at all.
  */
+/*
+ * What `document.elementFromPoint` answers with. jsdom lays nothing out, so it can only ever return
+ * null on its own; the drag helpers below point it at the row they mean to drop on.
+ */
+let hitTestElement = null;
+
 function stubLayout() {
     const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
     const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    const originalElementFromPoint = document.elementFromPoint;
+
+    hitTestElement = null;
+    document.elementFromPoint = function stubbedElementFromPoint() {
+        return hitTestElement;
+    };
 
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
         configurable: true,
@@ -94,6 +106,8 @@ function stubLayout() {
     return () => {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
         Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
+        document.elementFromPoint = originalElementFromPoint;
+        hitTestElement = null;
     };
 }
 
@@ -365,22 +379,24 @@ function clickMenuItem(label) {
 }
 
 /*
- * jsdom implements neither `DragEvent` nor `DataTransfer`, and testing-library's fallback
- * constructor drops the coordinate the drop arithmetic reads. Building the event by hand keeps both
- * — React listens for the native type at the root container either way.
+ * jsdom implements neither `PointerEvent` nor pointer capture, and testing-library's fallback
+ * constructor drops the coordinates the drop arithmetic reads. Building the event by hand keeps
+ * them — React and the hook's own window listeners both key on the native type, either way.
  */
-function dragEventOf(type, {clientY = 0, dataTransfer} = {}) {
+function pointerEventOf(type, {clientX = 0, clientY = 0} = {}) {
     const event = new Event(type, {bubbles: true, cancelable: true});
 
+    Object.defineProperty(event, 'pointerId', {value: POINTER_ID});
+    Object.defineProperty(event, 'clientX', {value: clientX});
     Object.defineProperty(event, 'clientY', {value: clientY});
-    Object.defineProperty(event, 'dataTransfer', {value: dataTransfer});
 
     return event;
 }
 
-function dataTransferStub() {
-    return {effectAllowed: '', dropEffect: '', setData: vi.fn(), getData: vi.fn()};
-}
+const POINTER_ID = 1;
+
+/* Comfortably past the hook's 6px threshold, so the press becomes a drag. */
+const PAST_DRAG_THRESHOLD = 40;
 
 const ROW_RECTANGLE = {
     top: 0,
@@ -397,34 +413,45 @@ const ROW_RECTANGLE = {
  * Drags the conversation on one row onto another, releasing over the named half of the target.
  * Indices are into `.chat-history-row`, so headers and a group's own rows count — which is the
  * point, since they are drop targets too.
+ *
+ * The move is dispatched twice: once to carry the pointer past the threshold and start the drag,
+ * and once at the coordinate the release actually happens at, which is what settles the edge.
  */
 function dragRow(container, fromIndex, toIndex, {edge = 'before'} = {}) {
     const rows = container.querySelectorAll('.chat-history-row');
-    const source = rows[fromIndex];
+    const handle = rows[fromIndex].querySelector('.chat-history-drag-handle');
     const target = rows[toIndex];
-    const dataTransfer = dataTransferStub();
-
-    fireEvent.mouseDown(source.querySelector('.chat-history-drag-handle'));
-    fireEvent(source, dragEventOf('dragstart', {dataTransfer}));
 
     target.getBoundingClientRect = () => ROW_RECTANGLE;
+    hitTestElement = target;
 
     const clientY = edge === 'after' ? ROW_HEIGHT - 1 : 1;
 
-    fireEvent(target, dragEventOf('dragover', {dataTransfer, clientY}));
-    fireEvent(target, dragEventOf('drop', {dataTransfer, clientY}));
+    fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+    fireEvent(window, pointerEventOf('pointermove', {clientY: PAST_DRAG_THRESHOLD}));
+    fireEvent(window, pointerEventOf('pointermove', {clientY}));
+    fireEvent(window, pointerEventOf('pointerup', {clientY}));
 }
 
 /* Drags a conversation onto the `+ New group` button, which creates the group around it. */
 function dragRowOntoNewGroup(container, fromIndex) {
-    const source = container.querySelectorAll('.chat-history-row')[fromIndex];
-    const newGroupButton = container.querySelector('.chat-history-new-group');
-    const dataTransfer = dataTransferStub();
+    const handle = container.querySelectorAll('.chat-history-row')[fromIndex]
+        .querySelector('.chat-history-drag-handle');
 
-    fireEvent.mouseDown(source.querySelector('.chat-history-drag-handle'));
-    fireEvent(source, dragEventOf('dragstart', {dataTransfer}));
-    fireEvent(newGroupButton, dragEventOf('dragover', {dataTransfer}));
-    fireEvent(newGroupButton, dragEventOf('drop', {dataTransfer}));
+    hitTestElement = container.querySelector('.chat-history-new-group');
+
+    fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+    fireEvent(window, pointerEventOf('pointermove', {clientY: PAST_DRAG_THRESHOLD}));
+    fireEvent(window, pointerEventOf('pointerup', {clientY: PAST_DRAG_THRESHOLD}));
+}
+
+/* Presses a grip and moves, without releasing — for asserting on the drag while it is in flight. */
+function startDraggingRow(container, fromIndex) {
+    const handle = container.querySelectorAll('.chat-history-row')[fromIndex]
+        .querySelector('.chat-history-drag-handle');
+
+    fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+    fireEvent(window, pointerEventOf('pointermove', {clientY: PAST_DRAG_THRESHOLD}));
 }
 
 function pressDragHandle(container, rowIndex, key) {
@@ -739,18 +766,41 @@ describe('ChatHistory drag handles', () => {
         expect(container.querySelectorAll('.chat-item .chat-history-drag-handle')).toHaveLength(1);
     });
 
-    /* Marking every row draggable would let a press on the label or the kebab start a drag. */
-    it('makes only the row whose handle is held down draggable', () => {
+    /* The gesture starts on the grip and nowhere else, so a press on the label cannot begin one. */
+    it('lifts only the row whose handle was pressed', () => {
         const {container} = renderChatHistory({chats: chatsOf(2), hasMore: false});
 
-        const rows = container.querySelectorAll('.chat-history-row');
+        expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
 
-        expect(Array.from(rows).some(row => row.getAttribute('draggable') === 'true')).toBe(false);
+        startDraggingRow(container, 2);
 
-        fireEvent.mouseDown(rows[2].querySelector('.chat-history-drag-handle'));
+        const lifted = container.querySelectorAll('.chat-history-row-dragging');
 
-        expect(rows[1].getAttribute('draggable')).toBe('false');
-        expect(rows[2].getAttribute('draggable')).toBe('true');
+        expect(lifted).toHaveLength(1);
+        expect(lifted[0].textContent).toContain('Message number 1');
+    });
+
+    /* Below the threshold it is still a press — that is how the grip is focused for the arrow keys. */
+    it('does not lift anything until the pointer has actually travelled', () => {
+        const {container} = renderChatHistory({chats: chatsOf(2), hasMore: false});
+
+        const handle = container.querySelectorAll('.chat-history-row')[2]
+            .querySelector('.chat-history-drag-handle');
+
+        fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
+        fireEvent(window, pointerEventOf('pointermove', {clientY: 3}));
+
+        expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
+    });
+
+    it('drops the gesture when the pointer is cancelled', () => {
+        const {container} = renderChatHistory({chats: chatsOf(2), hasMore: false});
+
+        startDraggingRow(container, 2);
+        fireEvent(window, pointerEventOf('pointercancel', {clientY: PAST_DRAG_THRESHOLD}));
+
+        expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
+        expect(chatService.reorderChat).not.toHaveBeenCalled();
     });
 
     it('does not open the chat when its handle is grabbed', () => {
@@ -765,12 +815,10 @@ describe('ChatHistory drag handles', () => {
     it('refuses to drag a group', () => {
         const {container} = renderExpandedGroup([chatFiledUnder('group-1')]);
 
-        const groupHeaderRow = container.querySelectorAll('.chat-history-row')[0];
-        const dragStart = dragEventOf('dragstart', {dataTransfer: dataTransferStub()});
+        /* The grip on a group header is a bare span; pressing it begins nothing. */
+        startDraggingRow(container, 0);
 
-        fireEvent(groupHeaderRow, dragStart);
-
-        expect(dragStart.defaultPrevented).toBe(true);
+        expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
     });
 });
 

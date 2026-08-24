@@ -105,6 +105,7 @@
  * virtualizer measured.
  */
 .chat-history-drag-handle {
+    position: relative; /* Containing block for the touch target below. */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -119,11 +120,39 @@
     opacity: 0.35;
     cursor: grab;
     transition: opacity var(--transition-speed);
+
+    /*
+     * The line that makes dragging work on a phone at all. `.chat-history-scroll` is an
+     * `overflow-y: auto` box, so without this the browser claims a vertical drag that starts here
+     * as a scroll of the list and cancels the pointer stream before the drag can begin.
+     */
+    touch-action: none;
+
+    /* A press-and-hold on the grip is a drag, never a text selection or an iOS callout. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/*
+ * An invisible touch target around the 16px glyph. It has to come from an absolutely positioned
+ * pseudo-element rather than from padding, because the virtualizer positioned every row below this
+ * one against the height it measured — growing the button would move all of them.
+ *
+ * `.chat-item` is `overflow: hidden`, which clips this to roughly the row's own 41px box. That is
+ * the ceiling here, and it is still far closer to the 44px touch minimum than the glyph alone.
+ */
+.chat-history-drag-handle::before {
+    content: "";
+    position: absolute;
+    inset: -12px;
 }
 
 .chat-history-drag-handle svg {
     width: 14px;
     height: 14px;
+    /* The glyph must never be the pointer's target, or a drag would start on a child of the grip. */
+    pointer-events: none;
 }
 
 .chat-item:hover .chat-history-drag-handle,
@@ -148,8 +177,18 @@
  * because the virtualizer placed every row below this one against the height it measured — a border
  * or a margin here would move all of them the moment a drag started.
  */
+/*
+ * Stands in for the drag image the HTML5 API used to render. A pointer drag has none, and on a
+ * touchscreen the finger covers the row, so the conversation in flight has to be obvious from what
+ * is left visible around it. Not a transform — the virtualizer owns this element's `transform` and
+ * sets it inline, where it would win anyway.
+ */
 .chat-history-row-dragging {
-    opacity: 0.4;
+    opacity: 0.5;
+}
+
+.chat-history-row-dragging .chat-item {
+    background-color: var(--secondary-color);
 }
 
 .chat-history-row-drop-before::after,

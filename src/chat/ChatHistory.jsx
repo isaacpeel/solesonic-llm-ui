@@ -26,7 +26,6 @@ import {
     CHAT_GROUP_EMPTY_ROW,
     CHAT_GROUP_HEADER_ROW,
     CHAT_GROUP_LOAD_MORE_ROW,
-    CHAT_HISTORY_CHAT_ROW,
     CHAT_HISTORY_HEADER_ROW,
     chatHistoryRowLabel,
     estimateChatHistoryRowSize,
@@ -36,10 +35,10 @@ import {
     DROP_AFTER,
     DROP_BEFORE,
     DROP_ONTO,
-    dropEdgeForRow,
+    NEW_GROUP_DROP_ATTRIBUTE,
     isNoOpDrop,
-    resolveDropDestination,
 } from "../util/chatHistoryDrag.js";
+import useChatHistoryDrag from "../hooks/useChatHistoryDrag.js";
 
 /* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
 const OVERSCAN_ROWS = 4;
@@ -147,21 +146,6 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const [emptyPageAttempts, setEmptyPageAttempts] = useState(0);
 
     /*
-     * Drag state.
-     *
-     * `dragHandleRowKey` is the row whose handle is currently held down, and it is the only row
-     * carrying `draggable`. Marking every row draggable would let a press anywhere — on the label,
-     * on the kebab — start a drag, which is exactly what a handle exists to prevent.
-     *
-     * `draggedChat` is the conversation in flight; the drop target is a row key plus the edge of it
-     * the pointer is nearest, which is what the indicator line is drawn from.
-     */
-    const [dragHandleRowKey, setDragHandleRowKey] = useState(null);
-    const [draggedChat, setDraggedChat] = useState(null);
-    const [dropTarget, setDropTarget] = useState(null);
-    const [newGroupDropActive, setNewGroupDropActive] = useState(false);
-
-    /*
      * Both are memoized on the accumulated pages rather than recomputed per render: grouping sorts
      * every bucket and then the buckets themselves, and the drawer re-renders on every parent
      * state change, not just when a page lands.
@@ -261,26 +245,6 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             document.removeEventListener("mouseup", handleClickOutside);
         };
     }, [drawerOpen, setDrawerOpen]);
-
-    /*
-     * Disarms a handle that was pressed but never dragged, so a plain click on the grip does not
-     * leave its row draggable from anywhere for the rest of the session. A drag that does start
-     * clears the same state from `dragend`.
-     */
-    useEffect(() => {
-        if (!dragHandleRowKey) {
-            return;
-        }
-
-        function disarmDragHandle() {
-            setDragHandleRowKey(null);
-        }
-
-        document.addEventListener("mouseup", disarmDragHandle);
-        return () => {
-            document.removeEventListener("mouseup", disarmDragHandle);
-        };
-    }, [dragHandleRowKey]);
 
     /*
      * Infinite scroll: the virtualizer already knows how close the window is to the end of the
@@ -701,117 +665,20 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      */
     const chatFromRow = (row) => ({...row.chat, chatGroupId: row.chatGroupId ?? null});
 
-    const clearDragState = () => {
-        setDragHandleRowKey(null);
-        setDraggedChat(null);
-        setDropTarget(null);
-        setNewGroupDropActive(false);
-    };
-
-    const handleRowDragStart = (event, row) => {
-        /* Only a conversation moves. A handle on a group header marks it as somewhere to drop. */
-        if (row.type !== CHAT_HISTORY_CHAT_ROW) {
-            event.preventDefault();
-            return;
-        }
-
-        if (event.dataTransfer) {
-            event.dataTransfer.effectAllowed = "move";
-            /* Firefox refuses to start a drag whose data transfer is empty. */
-            event.dataTransfer.setData("text/plain", row.chatId);
-        }
-
-        setDraggedChat(chatFromRow(row));
-    };
-
     /*
-     * `preventDefault` is what marks a row as a valid drop target, so it is called only for rows a
-     * drop actually resolves against — anything else keeps the browser's "cannot drop here" cursor
-     * and clears the indicator rather than leaving it behind on the row the pointer just left.
+     * The whole gesture, from the press on a grip to the release. The `+ New group` button is one of
+     * its targets, which is the only way left to create a group around a conversation now that the
+     * row menu no longer offers one.
      */
-    const handleRowDragOver = (event, row) => {
-        if (!draggedChat) {
-            return;
-        }
-
-        const edge = dropEdgeForRow(row, event.clientY, event.currentTarget.getBoundingClientRect());
-        const destination = resolveDropDestination(row, edge, {
-            draggedChatId: draggedChat.id,
-            placedChatsFor,
-        });
-
-        if (!destination) {
-            setDropTarget(null);
-            return;
-        }
-
-        event.preventDefault();
-
-        if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = "move";
-        }
-
-        setDropTarget(previousTarget => (
-            previousTarget?.rowKey === row.key && previousTarget.edge === edge
-                ? previousTarget
-                : {rowKey: row.key, edge}
-        ));
-    };
-
-    const handleRowDrop = (event, row) => {
-        if (!draggedChat) {
-            return;
-        }
-
-        event.preventDefault();
-
-        const edge = dropEdgeForRow(row, event.clientY, event.currentTarget.getBoundingClientRect());
-        const destination = resolveDropDestination(row, edge, {
-            draggedChatId: draggedChat.id,
-            placedChatsFor,
-        });
-        const chat = draggedChat;
-
-        clearDragState();
-
-        if (!destination) {
-            return;
-        }
-
-        void handleChatDrop(chat, destination);
-    };
-
-    /*
-     * The `+ New group` button doubles as a drop target, which is the only way left to create a
-     * group around a conversation now that the row menu no longer offers one.
-     */
-    const handleNewGroupDragOver = (event) => {
-        if (!draggedChat) {
-            return;
-        }
-
-        event.preventDefault();
-
-        if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = "move";
-        }
-
-        setDropTarget(null);
-        setNewGroupDropActive(true);
-    };
-
-    const handleNewGroupDrop = (event) => {
-        if (!draggedChat) {
-            return;
-        }
-
-        event.preventDefault();
-
-        const chat = draggedChat;
-
-        clearDragState();
-        setCreateGroupRequest({chatToFile: chat});
-    };
+    const {draggedChat, dropTarget, newGroupDropActive, dragHandleProps} = useChatHistoryDrag({
+        rows,
+        scrollContainerRef,
+        placedChatsFor,
+        onDrop: (chat, destination) => {
+            void handleChatDrop(chat, destination);
+        },
+        onNewGroup: (chat) => setCreateGroupRequest({chatToFile: chat}),
+    });
 
     /*
      * The keyboard equivalent of a drag, on the focused handle. Ordering left the row menu with this
@@ -1026,8 +893,8 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                             title={DRAG_HANDLE_HINT}
                             /* `.chat-item` opens the chat; grabbing its handle must not. */
                             onClick={(event) => event.stopPropagation()}
-                            onMouseDown={() => setDragHandleRowKey(row.key)}
                             onKeyDown={(event) => handleDragHandleKeyDown(event, row)}
+                            {...dragHandleProps(chatFromRow(row))}
                         >
                             <MdDragIndicator aria-hidden="true"/>
                         </button>
@@ -1054,9 +921,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                         ? "chat-history-new-group chat-history-new-group-drop-active"
                         : "chat-history-new-group"}
                     onClick={() => setCreateGroupRequest({chatToFile: null})}
-                    onDragOver={handleNewGroupDragOver}
-                    onDragLeave={() => setNewGroupDropActive(false)}
-                    onDrop={handleNewGroupDrop}
+                    {...{[NEW_GROUP_DROP_ATTRIBUTE]: "true"}}
                 >
                     + New group
                 </button>
@@ -1084,11 +949,6 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                                         dropEdge: dropTarget?.rowKey === row.key ? dropTarget.edge : null,
                                     })}
                                     style={{transform: `translateY(${virtualRow.start}px)`}}
-                                    draggable={dragHandleRowKey === row.key}
-                                    onDragStart={(event) => handleRowDragStart(event, row)}
-                                    onDragEnd={clearDragState}
-                                    onDragOver={(event) => handleRowDragOver(event, row)}
-                                    onDrop={(event) => handleRowDrop(event, row)}
                                 >
                                     {renderRow(row)}
                                 </div>

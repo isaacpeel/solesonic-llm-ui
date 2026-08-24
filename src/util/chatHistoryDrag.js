@@ -5,6 +5,9 @@
  * of that row the pointer was nearest, and the conversations already placed by hand in the
  * destination — into the move the drawer then performs. Keeping it out of the component is what
  * makes the index arithmetic, which is the part that is easy to get wrong, testable without a DOM.
+ *
+ * None of this knows how the pointer got here. The drawer drives it from Pointer Events rather than
+ * the HTML5 drag API, because that API is not implemented for touch input on any mobile browser.
  */
 
 import {
@@ -21,6 +24,23 @@ export const DROP_AFTER = "after";
 
 /* A header, an empty-group line and a load-more line take the whole row rather than one of its edges. */
 export const DROP_ONTO = "onto";
+
+/*
+ * The virtualizer's own attribute — `measureElement` reads exactly this name to know which row it
+ * measured, so it cannot be renamed — reused here as the anchor a hit test walks up to.
+ */
+const ROW_INDEX_SELECTOR = "[data-index]";
+
+/*
+ * Marks the `+ New group` button. It sits outside the scroll box, so it has no row index and cannot
+ * be found the way a row is.
+ */
+export const NEW_GROUP_DROP_ATTRIBUTE = "data-new-group-drop";
+
+/* How deep into the scroll box's top and bottom the pointer has to be before the list creeps. */
+const AUTO_SCROLL_ZONE_PIXELS = 48;
+
+const AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME = 14;
 
 /**
  * Which edge of a row the pointer is nearest.
@@ -41,6 +61,31 @@ export function dropEdgeForRow(row, clientY, rowRectangle) {
     }
 
     return (clientY - rowRectangle.top) < (height / 2) ? DROP_BEFORE : DROP_AFTER;
+}
+
+/**
+ * Turns whatever is under the pointer into the thing that can be dropped on.
+ *
+ * The element handed in is the deepest one at that point — a label, an icon, the kebab — so the
+ * walk up is what finds the row or the button it belongs to. Anything else, including the row menu
+ * portalled onto `document.body`, resolves to nothing and is not a target.
+ *
+ * @returns {{rowElement: Element, rowIndex: number}|{newGroup: true}|null}
+ */
+export function dropTargetFromElement(element) {
+    const rowElement = element?.closest?.(ROW_INDEX_SELECTOR);
+
+    if (rowElement) {
+        const rowIndex = Number(rowElement.getAttribute("data-index"));
+
+        return Number.isInteger(rowIndex) ? {rowElement, rowIndex} : null;
+    }
+
+    if (element?.closest?.(`[${NEW_GROUP_DROP_ATTRIBUTE}]`)) {
+        return {newGroup: true};
+    }
+
+    return null;
 }
 
 /**
@@ -123,4 +168,47 @@ export function isNoOpDrop(placedChats, draggedChatId, position) {
     }
 
     return position === currentIndex;
+}
+
+/**
+ * How far the scroll box should creep this frame, in pixels — negative up, positive down, zero to
+ * hold still.
+ *
+ * The HTML5 drag API scrolled a container near its edges for free. A pointer-driven drag gets
+ * nothing, and on a phone the drawer is close to full height, so without this a group above the
+ * fold simply cannot be reached while a finger is down.
+ *
+ * The speed ramps with how deep into the zone the pointer is, so resting a finger just inside the
+ * edge nudges the list rather than throwing it.
+ */
+export function autoScrollStep(clientY, scrollRectangle) {
+    if (!scrollRectangle || (scrollRectangle.height ?? 0) <= 0) {
+        return 0;
+    }
+
+    const distanceFromTop = clientY - scrollRectangle.top;
+    const distanceFromBottom = scrollRectangle.bottom - clientY;
+
+    /* Dragged clear of the box: full speed toward the edge it left. */
+    if (distanceFromTop < 0) {
+        return -AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME;
+    }
+
+    if (distanceFromBottom < 0) {
+        return AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME;
+    }
+
+    if (distanceFromTop < AUTO_SCROLL_ZONE_PIXELS) {
+        return -rampedScrollStep(AUTO_SCROLL_ZONE_PIXELS - distanceFromTop);
+    }
+
+    if (distanceFromBottom < AUTO_SCROLL_ZONE_PIXELS) {
+        return rampedScrollStep(AUTO_SCROLL_ZONE_PIXELS - distanceFromBottom);
+    }
+
+    return 0;
+}
+
+function rampedScrollStep(depthIntoZone) {
+    return Math.ceil((depthIntoZone / AUTO_SCROLL_ZONE_PIXELS) * AUTO_SCROLL_MAXIMUM_PIXELS_PER_FRAME);
 }
