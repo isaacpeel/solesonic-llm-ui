@@ -1,0 +1,79 @@
+/*
+ * Above the drawer's own z-index (1000) and above the portalled row menu (2000), so the dialog is
+ * never rendered behind the list it was opened from.
+ */
+.create-chat-group-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+.create-chat-group-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 340px;
+    padding: 20px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.create-chat-group-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.create-chat-group-input {
+    padding: 8px 10px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font: inherit;
+    outline: none;
+}
+
+.create-chat-group-input:focus-visible {
+    border-color: var(--text-color);
+}
+
+.create-chat-group-dialog-error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #e57373;
+}
+
+.create-chat-group-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.create-chat-group-actions button {
+    padding: 6px 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.create-chat-group-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.create-chat-group-confirm:not(:disabled) {
+    background-color: var(--primary-color);
+    border-color: var(--text-color);
+}

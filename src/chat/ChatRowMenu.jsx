@@ -27,14 +27,15 @@ const VIEWPORT_GAP = 8;
  * from the trigger's rectangle — which is only valid until something moves, hence the close on
  * scroll and on resize rather than a re-measure.
  *
- * Actions are data rather than markup, so the ordering and deleting stories can add to the menu
- * without touching it.
+ * Actions are data rather than markup, and the list is deliberately short: arranging conversations
+ * is a drag gesture, not a menu, so nothing here files, unfiles or reorders anything.
  *
  * @param {{
  *   actions: Array<{
  *     key: string,
  *     label: string,
- *     onSelect: () => void,
+ *     onSelect?: () => void,
+ *     separatorBefore?: boolean,
  *     destructive?: boolean,
  *     disabled?: boolean,
  *     disabledReason?: string,
@@ -100,7 +101,12 @@ function ChatRowMenu({actions, label}) {
             return;
         }
 
-        function handleViewportChange() {
+        function handleViewportChange(event) {
+            /* A long menu scrolls inside its own panel; that is not the placement going stale. */
+            if (event.target instanceof Node && menuRef.current?.contains(event.target)) {
+                return;
+            }
+
             closeMenu();
         }
 
@@ -166,8 +172,14 @@ function ChatRowMenu({actions, label}) {
 
     const handleItemClick = (event, action) => {
         event.stopPropagation();
-        closeMenu();
-        action.onSelect();
+
+        /*
+         * Focus goes back to the kebab before the action runs, so anything the action opens has a
+         * sensible element to restore focus to when it closes — a dialog captures `activeElement`
+         * on mount, and by then this menu is gone and focus would otherwise be on the body.
+         */
+        closeMenu({returnFocus: true});
+        action.onSelect?.();
     };
 
     return (
@@ -199,12 +211,12 @@ function ChatRowMenu({actions, label}) {
                             key={action.key}
                             type="button"
                             role="menuitem"
-                            className={action.destructive ? "chat-row-menu-item chat-row-menu-item-destructive" : "chat-row-menu-item"}
+                            className={menuItemClassName(action)}
                             disabled={action.disabled}
                             title={action.disabled ? action.disabledReason : undefined}
                             onClick={(event) => handleItemClick(event, action)}
                         >
-                            {action.label}
+                            <span className="chat-row-menu-item-label">{action.label}</span>
                         </button>
                     ))}
                 </div>,
@@ -212,6 +224,20 @@ function ChatRowMenu({actions, label}) {
             )}
         </>
     );
+}
+
+function menuItemClassName(action) {
+    const classNames = ["chat-row-menu-item"];
+
+    if (action.destructive) {
+        classNames.push("chat-row-menu-item-destructive");
+    }
+
+    if (action.separatorBefore) {
+        classNames.push("chat-row-menu-item-separated");
+    }
+
+    return classNames.join(" ");
 }
 
 export default ChatRowMenu;

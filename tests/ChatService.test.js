@@ -18,6 +18,7 @@ vi.mock('../src/client/ApiClient.js', () => ({
         get: vi.fn().mockResolvedValue({chatDetails: {}}),
         post: vi.fn().mockResolvedValue({success: true}),
         put: vi.fn().mockResolvedValue({success: true}),
+        delete: vi.fn().mockResolvedValue(null),
     },
 }));
 
@@ -77,6 +78,56 @@ describe('renameChat', () => {
         apiClient.put.mockResolvedValue(renamedChat);
 
         expect(await chatService.renameChat('67890', 'Trip planning')).toBe(renamedChat);
+    });
+});
+
+describe('reorderChat', () => {
+    it('puts the position to the chat order endpoint, with no userId in the path', async () => {
+        apiClient.put.mockResolvedValue({id: '67890', sortOrder: 0});
+
+        await chatService.reorderChat('67890', 0);
+
+        expect(apiClient.put).toHaveBeenCalledWith(
+            'https://api.example.com/chat/67890/order',
+            {position: 0},
+        );
+    });
+
+    /* `{position: null}` is what unplaces a chat; a body stripped of its nulls would mean nothing. */
+    it('sends a position that is literally null rather than omitting it', async () => {
+        apiClient.put.mockResolvedValue({id: '67890', sortOrder: null});
+
+        await chatService.reorderChat('67890', null);
+
+        const [, sentBody] = apiClient.put.mock.calls[0];
+
+        expect(sentBody).toEqual({position: null});
+        expect(JSON.stringify(sentBody)).toBe('{"position":null}');
+    });
+
+    it('returns the moved chat, carrying its authoritative sortOrder', async () => {
+        const movedChat = {id: '67890', sortOrder: 2};
+        apiClient.put.mockResolvedValue(movedChat);
+
+        expect(await chatService.reorderChat('67890', 2)).toBe(movedChat);
+    });
+});
+
+describe('deleteChat', () => {
+    it('deletes the chat by id and returns null for the 204', async () => {
+        apiClient.delete.mockResolvedValue(null);
+
+        const result = await chatService.deleteChat('67890');
+
+        expect(apiClient.delete).toHaveBeenCalledWith('https://api.example.com/chat/67890');
+        expect(result).toBeNull();
+    });
+
+    /* A repeat is a 404, not a 204 — the caller is the one that decides that is not a failure. */
+    it('propagates the failure rather than swallowing it', async () => {
+        apiClient.delete.mockRejectedValue(Object.assign(new Error('404'), {status: 404}));
+
+        await expect(chatService.deleteChat('67890')).rejects.toMatchObject({status: 404});
     });
 });
 

@@ -1,5 +1,8 @@
 import {describe, it, expect} from 'vitest';
 import {
+    CHAT_GROUP_EMPTY_ROW,
+    CHAT_GROUP_HEADER_ROW,
+    CHAT_GROUP_LOAD_MORE_ROW,
     CHAT_HISTORY_CHAT_ROW,
     CHAT_HISTORY_HEADER_ROW,
     chatHistoryRowFullLabel,
@@ -18,6 +21,10 @@ function chatOf(chatId, message = undefined, name = null) {
 
 function groupOf(key, label, chats) {
     return {key, label, date: null, chats};
+}
+
+function chatGroupOf(chatGroupId, label, chats, overrides = {}) {
+    return {chatGroupId, label, chats, expanded: true, ...overrides};
 }
 
 describe('chatHistoryRowLabel', () => {
@@ -117,6 +124,18 @@ describe('flattenChatGroupsToRows', () => {
         expect(headerRows.map(row => row.firstInList)).toEqual([true, false]);
     });
 
+    /* A drop on the Arranged header means the top of the arrangement; on a day header, the opposite. */
+    it('marks the header of the hand-arranged section', () => {
+        const rows = flattenChatGroupsToRows([
+            {key: 'arranged', label: 'Arranged', chats: [chatOf('chat-1', 'first')], placed: true},
+            groupOf('2026-08-03', 'Today', [chatOf('chat-2', 'second')]),
+        ]);
+
+        const headerRows = rows.filter(row => row.type === CHAT_HISTORY_HEADER_ROW);
+
+        expect(headerRows.map(row => row.placedSection)).toEqual([true, false]);
+    });
+
     it('keys rows so an append does not reuse a key for a different row', () => {
         const firstPageRows = flattenChatGroupsToRows([
             groupOf('2026-08-03', 'Today', [chatOf('chat-1', 'first')]),
@@ -158,6 +177,99 @@ describe('flattenChatGroupsToRows', () => {
     });
 });
 
+describe('flattenChatGroupsToRows with conversation groups', () => {
+    it('emits a group header followed by the conversations under it, in order', () => {
+        const rows = flattenChatGroupsToRows([
+            chatGroupOf('group-1', 'Work', [chatOf('chat-1', 'first'), chatOf('chat-2', 'second')]),
+        ]);
+
+        expect(rows.map(row => row.type)).toEqual([
+            CHAT_GROUP_HEADER_ROW,
+            CHAT_HISTORY_CHAT_ROW,
+            CHAT_HISTORY_CHAT_ROW,
+        ]);
+        expect(rows[0].label).toBe('Work');
+        expect(rows.slice(1).map(row => row.chatId)).toEqual(['chat-1', 'chat-2']);
+        expect(rows.slice(1).every(row => row.chatGroupId === 'group-1')).toBe(true);
+    });
+
+    it('contributes a header row and nothing else while the group is collapsed', () => {
+        const rows = flattenChatGroupsToRows([
+            chatGroupOf('group-1', 'Work', [chatOf('chat-1', 'first')], {expanded: false, hasMore: true}),
+        ]);
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].type).toBe(CHAT_GROUP_HEADER_ROW);
+        expect(rows[0].expanded).toBe(false);
+    });
+
+    it('renders one empty row for an expanded group with nothing in it', () => {
+        const rows = flattenChatGroupsToRows([chatGroupOf('group-1', 'Work', [])]);
+
+        expect(rows.map(row => row.type)).toEqual([CHAT_GROUP_HEADER_ROW, CHAT_GROUP_EMPTY_ROW]);
+        expect(rows[1].label).toBe('No conversations yet.');
+    });
+
+    /* While the first page is still in flight the group is not empty, it is unknown. */
+    it('does not call a loading group empty', () => {
+        const rows = flattenChatGroupsToRows([
+            chatGroupOf('group-1', 'Work', [], {loading: true, hasMore: true}),
+        ]);
+
+        expect(rows.map(row => row.type)).toEqual([CHAT_GROUP_HEADER_ROW, CHAT_GROUP_LOAD_MORE_ROW]);
+        expect(rows[1].label).toBe('Loading…');
+    });
+
+    it('closes a group that has more pages with a load-more row', () => {
+        const rows = flattenChatGroupsToRows([
+            chatGroupOf('group-1', 'Work', [chatOf('chat-1', 'first')], {hasMore: true}),
+        ]);
+
+        expect(rows.map(row => row.type)).toEqual([
+            CHAT_GROUP_HEADER_ROW,
+            CHAT_HISTORY_CHAT_ROW,
+            CHAT_GROUP_LOAD_MORE_ROW,
+        ]);
+        expect(rows[2].label).toBe('Load more');
+        expect(rows[2].chatGroupId).toBe('group-1');
+    });
+
+    it('carries the count only once one has been reported', () => {
+        const withoutCount = flattenChatGroupsToRows([chatGroupOf('group-1', 'Work', [])]);
+        const withCount = flattenChatGroupsToRows([chatGroupOf('group-1', 'Work', [], {count: 3})]);
+
+        expect(withoutCount[0].count).toBeNull();
+        expect(withCount[0].count).toBe(3);
+    });
+
+    it('renders group sections above the day buckets and spaces the first day header', () => {
+        const rows = flattenChatGroupsToRows([
+            chatGroupOf('group-1', 'Work', [chatOf('chat-1', 'grouped')]),
+            groupOf('2026-08-03', 'Today', [chatOf('chat-2', 'loose')]),
+        ]);
+
+        expect(rows.map(row => row.type)).toEqual([
+            CHAT_GROUP_HEADER_ROW,
+            CHAT_HISTORY_CHAT_ROW,
+            CHAT_HISTORY_HEADER_ROW,
+            CHAT_HISTORY_CHAT_ROW,
+        ]);
+        /* The day header is no longer the top of the list, so it keeps its separating padding. */
+        expect(rows[2].firstInList).toBe(false);
+    });
+
+    it('keys a grouped row apart from the same conversation in the ungrouped list', () => {
+        const rows = flattenChatGroupsToRows([
+            chatGroupOf('group-1', 'Work', [chatOf('chat-1', 'grouped')]),
+            groupOf('2026-08-03', 'Today', [chatOf('chat-1', 'loose')]),
+        ]);
+
+        expect(rows[1].key).toBe('groupChat:group-1:chat-1');
+        expect(rows[3].key).toBe('chat:chat-1');
+        expect(new Set(rows.map(row => row.key)).size).toBe(rows.length);
+    });
+});
+
 describe('estimateChatHistoryRowSize', () => {
     it('estimates a header taller than a chat row', () => {
         const headerSize = estimateChatHistoryRowSize({type: CHAT_HISTORY_HEADER_ROW});
@@ -170,5 +282,18 @@ describe('estimateChatHistoryRowSize', () => {
     it('falls back to a chat row estimate for an index past the end of the list', () => {
         expect(estimateChatHistoryRowSize(undefined))
             .toBe(estimateChatHistoryRowSize({type: CHAT_HISTORY_CHAT_ROW}));
+    });
+
+    /* A wrong estimate makes the scrollbar creep as the list is scrolled, so every type needs one. */
+    it('returns a positive number for every group row type', () => {
+        const chatSize = estimateChatHistoryRowSize({type: CHAT_HISTORY_CHAT_ROW});
+
+        for (const rowType of [CHAT_GROUP_HEADER_ROW, CHAT_GROUP_EMPTY_ROW, CHAT_GROUP_LOAD_MORE_ROW]) {
+            const size = estimateChatHistoryRowSize({type: rowType});
+
+            expect(size).toBeGreaterThan(0);
+            /* Group rows are built as one-line boxes with a chat row's padding and separator. */
+            expect(size).toBe(chatSize);
+        }
     });
 });

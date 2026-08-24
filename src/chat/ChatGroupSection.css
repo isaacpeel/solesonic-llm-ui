@@ -1,0 +1,144 @@
+/*
+ * Conversation group sections.
+ *
+ * Every rule here is written against one constraint: a group row must measure the same height as a
+ * chat row. The drawer is virtualized and rows are absolutely positioned, so a row that grows —
+ * on hover, on expand, from a wrapped label — moves every row below it. Group rows therefore carry
+ * the same padding and separator as `.chat-item`, the indent is padding on an inner element, and
+ * nothing in a group row is allowed to wrap.
+ */
+
+/*
+ * Pinned under the drawer's title, outside the scroll box. Anything that scrolls *above* the
+ * virtualizer's rows offsets every one of them, so this cannot live inside `.chat-history-scroll`.
+ */
+.chat-history-new-group {
+    flex-shrink: 0;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.chat-history-new-group:hover {
+    background-color: var(--primary-color);
+}
+
+/* Dropping a conversation here creates the group around it, so the button reads as a target. */
+.chat-history-new-group-drop-active {
+    background-color: var(--primary-color);
+    box-shadow: inset 0 0 0 2px var(--text-color);
+}
+
+.chat-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    background: none;
+    color: var(--text-color);
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.chat-group-header:hover {
+    background-color: var(--secondary-color);
+}
+
+/*
+ * A group is somewhere to drop a conversation, not something that moves itself — the API ships no
+ * ordering for groups — so its grip is an affordance and carries no grab cursor to promise one.
+ */
+.chat-history-drag-handle-static {
+    cursor: inherit;
+    opacity: 0.25;
+}
+
+/* One icon, rotated rather than swapped, so the row never reflows as a group opens. */
+.chat-group-chevron {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    transition: transform var(--transition-speed);
+}
+
+.chat-group-chevron-expanded {
+    transform: rotate(90deg);
+}
+
+.chat-group-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+}
+
+/* Absent until the group's first page has landed — GET /chatgroups does not carry a count. */
+.chat-group-count {
+    flex-shrink: 0;
+    padding: 0 6px;
+    font-size: 0.75rem;
+    line-height: 18px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border-radius: 9px;
+    opacity: 0.8;
+}
+
+/*
+ * The indent for a conversation inside a group. Padding on the row's own box, which leaves its
+ * height untouched — an indent expressed as a margin or a nested wrapper would not.
+ */
+.chat-item-in-group {
+    padding-left: 26px;
+}
+
+.chat-group-empty,
+.chat-group-load-more {
+    padding: 10px 10px 10px 26px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.chat-group-empty {
+    opacity: 0.6;
+}
+
+.chat-group-load-more {
+    display: block;
+    width: 100%;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.chat-group-load-more:hover {
+    background-color: var(--secondary-color);
+}
+
+.chat-group-load-more:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

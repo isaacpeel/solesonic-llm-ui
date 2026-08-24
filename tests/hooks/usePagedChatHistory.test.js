@@ -170,6 +170,61 @@ describe('usePagedChatHistory', () => {
         expect(chatService.findChatHistory).toHaveBeenCalledTimes(1);
     });
 
+    /* Filing and unfiling a conversation is a patch of chatGroupId, not a remove and a re-add. */
+    it('patches a chat that is already loaded rather than duplicating it', async () => {
+        chatService.findChatHistory.mockResolvedValue(pageOf(['chat-1', 'chat-2']));
+
+        const {result} = renderHook(() => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(2));
+
+        act(() => {
+            result.current.upsertChat({id: 'chat-2', chatGroupId: 'group-1'});
+        });
+
+        expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-1', 'chat-2']);
+        expect(result.current.chats[1].chatGroupId).toBe('group-1');
+        expect(result.current.chats[1].timestamp).toBe(1_700_000_000);
+    });
+
+    /* A conversation pulled out of a group may never have been on a page the drawer has loaded. */
+    it('inserts a chat it has never seen', async () => {
+        chatService.findChatHistory.mockResolvedValue(pageOf(['chat-1']));
+
+        const {result} = renderHook(() => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(1));
+
+        act(() => {
+            result.current.upsertChat({id: 'chat-9', chatGroupId: null});
+        });
+
+        expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-9', 'chat-1']);
+        expect(chatService.findChatHistory).toHaveBeenCalledTimes(1);
+    });
+
+    /* A reorder rearranges the whole list, so it is a replacement rather than a patch of one row. */
+    it('replaces the accumulated list wholesale, without refetching', async () => {
+        chatService.findChatHistory.mockResolvedValue(pageOf(['chat-1', 'chat-2', 'chat-3']));
+
+        const {result} = renderHook(() => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(3));
+
+        const rearranged = [
+            {id: 'chat-3', sortOrder: 0},
+            {id: 'chat-1', sortOrder: null},
+            {id: 'chat-2', sortOrder: null},
+        ];
+
+        act(() => {
+            result.current.setChatsDirectly(rearranged);
+        });
+
+        expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-3', 'chat-1', 'chat-2']);
+        expect(chatService.findChatHistory).toHaveBeenCalledTimes(1);
+    });
+
     it('restarts from the first page when the list is invalidated', async () => {
         chatService.findChatHistory
             .mockResolvedValueOnce(pageOf(['chat-1']))

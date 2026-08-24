@@ -98,6 +98,93 @@
     overflow: hidden;
 }
 
+/*
+ * The grip a row is dragged by. Deliberately not `display: none` until hover — it is a real button
+ * and the keyboard path to reordering runs through it, so it is dimmed rather than hidden, and its
+ * 20px box is shorter than the row's line box so it cannot make the row taller than the height the
+ * virtualizer measured.
+ */
+.chat-history-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-color);
+    opacity: 0.35;
+    cursor: grab;
+    transition: opacity var(--transition-speed);
+}
+
+.chat-history-drag-handle svg {
+    width: 14px;
+    height: 14px;
+}
+
+.chat-item:hover .chat-history-drag-handle,
+.chat-group-header:hover .chat-history-drag-handle {
+    opacity: 0.85;
+}
+
+.chat-history-drag-handle:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--text-color);
+    outline-offset: 1px;
+}
+
+.chat-history-drag-handle:active {
+    cursor: grabbing;
+}
+
+/*
+ * Drag feedback.
+ *
+ * Every one of these paints with an absolutely positioned pseudo-element or a change of opacity,
+ * because the virtualizer placed every row below this one against the height it measured — a border
+ * or a margin here would move all of them the moment a drag started.
+ */
+.chat-history-row-dragging {
+    opacity: 0.4;
+}
+
+.chat-history-row-drop-before::after,
+.chat-history-row-drop-after::after,
+.chat-history-row-drop-onto::after {
+    content: "";
+    position: absolute;
+    background-color: transparent;
+    /* The indicator sits over the row it marks, which still has to receive dragover events. */
+    pointer-events: none;
+}
+
+.chat-history-row-drop-before::after,
+.chat-history-row-drop-after::after {
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--text-color);
+}
+
+.chat-history-row-drop-before::after {
+    top: 0;
+}
+
+.chat-history-row-drop-after::after {
+    bottom: 0;
+}
+
+/* A whole-row target: a group to file into, or a day header to send the row back to date order. */
+.chat-history-row-drop-onto::after {
+    inset: 0;
+    box-shadow: inset 0 0 0 2px var(--text-color);
+    border-radius: 4px;
+}
+
 /* min-width: 0 is what lets a flex child shrink far enough to actually ellipsize. */
 .chat-item-label {
     flex: 1;

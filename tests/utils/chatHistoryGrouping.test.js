@@ -1,5 +1,12 @@
 import {describe, it, expect} from 'vitest';
-import {formatDayLabel, groupChatsByDay, parseChatTimestamp} from '../../src/util/chatHistoryGrouping.js';
+import {
+    applyOrderMove,
+    formatDayLabel,
+    groupChatsByDay,
+    parseChatTimestamp,
+    partitionGroupedChats,
+    partitionPlacedChats,
+} from '../../src/util/chatHistoryGrouping.js';
 
 /* The shape the backend actually returns: ISO-8601 with an offset and microsecond precision. */
 function chatAt(id, timestamp) {
@@ -94,5 +101,135 @@ describe('groupChatsByDay', () => {
     it('returns nothing for an empty or missing list', () => {
         expect(groupChatsByDay([], now)).toEqual([]);
         expect(groupChatsByDay(undefined, now)).toEqual([]);
+    });
+});
+
+describe('partitionGroupedChats', () => {
+    it('splits on chatGroupId', () => {
+        const {grouped, ungrouped} = partitionGroupedChats([
+            {id: 'filed', chatGroupId: 'group-1'},
+            {id: 'loose', chatGroupId: null},
+            {id: 'never-filed'},
+        ]);
+
+        expect(grouped.map(chat => chat.id)).toEqual(['filed']);
+        expect(ungrouped.map(chat => chat.id)).toEqual(['loose', 'never-filed']);
+    });
+
+    /* A blank id is not a group; treating it as one would hide the row from both sections. */
+    it('counts an empty-string chatGroupId as ungrouped', () => {
+        const {grouped, ungrouped} = partitionGroupedChats([{id: 'blank', chatGroupId: ''}]);
+
+        expect(grouped).toEqual([]);
+        expect(ungrouped.map(chat => chat.id)).toEqual(['blank']);
+    });
+
+    it('preserves input order in both halves', () => {
+        const {grouped, ungrouped} = partitionGroupedChats([
+            {id: 'a', chatGroupId: 'group-1'},
+            {id: 'b'},
+            {id: 'c', chatGroupId: 'group-2'},
+            {id: 'd'},
+        ]);
+
+        expect(grouped.map(chat => chat.id)).toEqual(['a', 'c']);
+        expect(ungrouped.map(chat => chat.id)).toEqual(['b', 'd']);
+    });
+
+    it('returns two empty halves for an empty or missing list', () => {
+        expect(partitionGroupedChats([])).toEqual({grouped: [], ungrouped: []});
+        expect(partitionGroupedChats(undefined)).toEqual({grouped: [], ungrouped: []});
+    });
+});
+
+describe('partitionPlacedChats', () => {
+    it('splits on null versus non-null sortOrder, and treats undefined as unplaced', () => {
+        const {placed, unplaced} = partitionPlacedChats([
+            {id: 'pinned', sortOrder: 0},
+            {id: 'reset', sortOrder: null},
+            {id: 'never-placed'},
+        ]);
+
+        expect(placed.map(chat => chat.id)).toEqual(['pinned']);
+        expect(unplaced.map(chat => chat.id)).toEqual(['reset', 'never-placed']);
+    });
+
+    /* Zero is a real position. A truthiness check here would silently unplace the top row. */
+    it('keeps a sortOrder of zero on the placed side', () => {
+        expect(partitionPlacedChats([{id: 'top', sortOrder: 0}]).placed).toHaveLength(1);
+    });
+
+    it('preserves response order and does not sort by the stored values', () => {
+        const {placed} = partitionPlacedChats([
+            {id: 'first', sortOrder: 0},
+            {id: 'second', sortOrder: 1},
+            {id: 'third-after-a-gap', sortOrder: 3},
+        ]);
+
+        expect(placed.map(chat => chat.id)).toEqual(['first', 'second', 'third-after-a-gap']);
+    });
+
+    it('reads the group-scoped column when it is asked to', () => {
+        const chats = [
+            {id: 'pinned-in-group', sortOrder: null, groupSortOrder: 0},
+            {id: 'pinned-in-list', sortOrder: 0, groupSortOrder: null},
+        ];
+
+        expect(partitionPlacedChats(chats, 'groupSortOrder').placed.map(chat => chat.id))
+            .toEqual(['pinned-in-group']);
+        expect(partitionPlacedChats(chats).placed.map(chat => chat.id)).toEqual(['pinned-in-list']);
+    });
+});
+
+describe('applyOrderMove', () => {
+    function groupChats() {
+        return [
+            {id: 'pinned-a', groupSortOrder: 0, timestamp: '2026-08-01T10:00:00.000-06:00'},
+            {id: 'pinned-b', groupSortOrder: 1, timestamp: '2026-08-01T09:00:00.000-06:00'},
+            {id: 'dated-new', groupSortOrder: null, timestamp: '2026-08-01T08:00:00.000-06:00'},
+            {id: 'dated-old', groupSortOrder: null, timestamp: '2026-07-31T08:00:00.000-06:00'},
+        ];
+    }
+
+    it('moves a placed chat to the head of the placed prefix', () => {
+        const moved = applyOrderMove(groupChats(), 'pinned-b', 0, 'groupSortOrder');
+
+        expect(moved.map(chat => chat.id)).toEqual(['pinned-b', 'pinned-a', 'dated-new', 'dated-old']);
+    });
+
+    it('places an unplaced chat, taking it out of the dated tail', () => {
+        const moved = applyOrderMove(groupChats(), 'dated-old', 0, 'groupSortOrder');
+
+        expect(moved.map(chat => chat.id)).toEqual(['dated-old', 'pinned-a', 'pinned-b', 'dated-new']);
+        expect(moved[0].groupSortOrder).toBe(0);
+    });
+
+    it('appends rather than failing when the position is past the end of the placed prefix', () => {
+        const moved = applyOrderMove(groupChats(), 'dated-new', 99, 'groupSortOrder');
+
+        expect(moved.map(chat => chat.id)).toEqual(['pinned-a', 'pinned-b', 'dated-new', 'dated-old']);
+        expect(moved[2].groupSortOrder).toBe(2);
+    });
+
+    it('unplaces on a null position and returns the chat to timestamp order', () => {
+        const moved = applyOrderMove(groupChats(), 'pinned-a', null, 'groupSortOrder');
+
+        /* pinned-a is the newest of the three, so it lands at the head of the dated tail. */
+        expect(moved.map(chat => chat.id)).toEqual(['pinned-b', 'pinned-a', 'dated-new', 'dated-old']);
+        expect(moved.find(chat => chat.id === 'pinned-a').groupSortOrder).toBeNull();
+    });
+
+    it('touches only the field it was given', () => {
+        const chats = [{id: 'chat-1', sortOrder: 7, groupSortOrder: null, timestamp: 1}];
+        const moved = applyOrderMove(chats, 'chat-1', 0, 'groupSortOrder');
+
+        expect(moved[0].sortOrder).toBe(7);
+        expect(moved[0].groupSortOrder).toBe(0);
+    });
+
+    it('leaves the list alone for a chat it does not hold', () => {
+        const chats = groupChats();
+
+        expect(applyOrderMove(chats, 'missing', 0, 'groupSortOrder')).toBe(chats);
     });
 });

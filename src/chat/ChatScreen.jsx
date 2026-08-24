@@ -20,7 +20,7 @@ import useKeyboardInset from '../hooks/useKeyboardInset.js';
 
 
 function ChatScreen() {
-    const {chatInputRef} = useSharedData();
+    const {chatInputRef, setStreamingChatId} = useSharedData();
 
     useEffect(() => {
         const handleCopy = (event) => {
@@ -91,6 +91,19 @@ function ChatScreen() {
         getMessageTextRef,
         attachmentTray,
     });
+
+    /*
+     * Publishes which conversation is mid-turn, so the history drawer can refuse to delete it — the
+     * backend runs an in-flight turn to completion and would write its message onto a conversation
+     * that no longer exists.
+     *
+     * Derived from `loading` rather than set once when the turn starts: on a new chat the id only
+     * arrives with the `init` frame, and `loading` going false is what `done` and `error` both
+     * amount to here.
+     */
+    useEffect(() => {
+        setStreamingChatId(loading ? chatId : null);
+    }, [loading, chatId, setStreamingChatId]);
 
     const composerRef = useRef(null);
     const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
