@@ -4,6 +4,7 @@ import {
     autoScrollStep,
     dropEdgeForRow,
     dropTargetFromElement,
+    isNoOpDrop,
     resolveDropDestination,
 } from "../util/chatHistoryDrag.js";
 
@@ -161,6 +162,19 @@ function useChatHistoryDrag({rows, scrollContainerRef, placedChatsFor, onDrop, o
         });
 
         if (!destination) {
+            gesture.destination = null;
+            setDropTarget(null);
+            return;
+        }
+
+        /*
+         * An indicator is a promise that releasing here moves something. Dropping a dated
+         * conversation back onto a day header, or a row onto the neighbour it already sits beside,
+         * changes nothing — drawing a line for it is how a working drag still reads as broken.
+         */
+        const sameList = (gesture.chat.chatGroupId ?? null) === (destination.chatGroupId ?? null);
+
+        if (sameList && isNoOpDrop(currentPlacedChatsFor(destination.chatGroupId), gesture.chat.id, destination.position)) {
             gesture.destination = null;
             setDropTarget(null);
             return;

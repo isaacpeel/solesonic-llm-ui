@@ -137,18 +137,39 @@ export function resolveDropDestination(row, edge, {draggedChatId, placedChatsFor
  * The index a dragged conversation lands at among the destination's placed conversations.
  *
  * Indices are counted with the dragged conversation taken out of the list, which is exactly how the
- * server reads `position` — see `ChatService.reorderChat`. A target that is not itself placed has no
- * index to anchor to, so the drop carries no position and the conversation falls into date order.
+ * server reads `position` — see `ChatService.reorderChat`.
+ *
+ * A target that is not itself placed has no index to anchor to, and what that should mean depends
+ * on the conversation being dragged, not on the target:
+ *
+ * - Dragging one that *is* arranged down onto a dated one reads as taking it out of the
+ *   arrangement, so the drop carries no position and it falls back into date order. This is the
+ *   only gesture that un-arranges anything.
+ * - Dragging one that is *not* arranged onto another dated one reads as "put this in order". It
+ *   joins the foot of the arrangement, which is the closest place to the drop that the two-part
+ *   ordering can actually express — the dated conversations have no order to be inserted among.
+ *
+ * Reading both as "no position" is what made every drag inert on a list where nothing had been
+ * arranged yet: the drop resolved, drew an indicator, and then did nothing at all.
  */
 export function dropPosition(placedChats, draggedChatId, targetChatId, edge) {
-    const remainingChats = (placedChats ?? []).filter(chat => chat?.id !== draggedChatId);
+    const allPlacedChats = placedChats ?? [];
+    const remainingChats = allPlacedChats.filter(chat => chat?.id !== draggedChatId);
     const targetIndex = remainingChats.findIndex(chat => chat?.id === targetChatId);
 
-    if (targetIndex < 0) {
+    if (targetIndex >= 0) {
+        return edge === DROP_AFTER ? targetIndex + 1 : targetIndex;
+    }
+
+    if (allPlacedChats.some(chat => chat?.id === draggedChatId)) {
         return null;
     }
 
-    return edge === DROP_AFTER ? targetIndex + 1 : targetIndex;
+    /*
+     * Both edges of a dated row answer the same, because the whole dated region sits below the
+     * whole arrangement — there is no position within it to aim at.
+     */
+    return remainingChats.length;
 }
 
 /**

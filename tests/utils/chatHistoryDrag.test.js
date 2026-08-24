@@ -84,14 +84,33 @@ describe('dropPosition', () => {
         expect(dropPosition(placed, 'chat-z', 'chat-b', DROP_AFTER)).toBe(2);
     });
 
-    /* A conversation still in date order is not at any index, so there is nothing to anchor to. */
-    it('carries no position when the target is not itself placed', () => {
-        expect(dropPosition(chatsOf('chat-a'), 'chat-z', 'chat-dated', DROP_BEFORE)).toBeNull();
+    /*
+     * Dragging an arranged conversation down onto a dated one takes it out of the arrangement. It
+     * is the only gesture that un-arranges anything.
+     */
+    it('carries no position when an arranged conversation lands on a dated one', () => {
+        expect(dropPosition(chatsOf('chat-a', 'chat-b'), 'chat-a', 'chat-dated', DROP_BEFORE)).toBeNull();
     });
 
-    it('carries no position when nothing has been placed at all', () => {
-        expect(dropPosition([], 'chat-z', 'chat-a', DROP_BEFORE)).toBeNull();
-        expect(dropPosition(undefined, 'chat-z', 'chat-a', DROP_BEFORE)).toBeNull();
+    /*
+     * The regression that made every drag inert on a list nobody had arranged yet: the drop
+     * resolved, drew its indicator, and then did nothing at all.
+     */
+    it('arranges a dated conversation dropped onto another dated one', () => {
+        expect(dropPosition([], 'chat-z', 'chat-dated', DROP_BEFORE)).toBe(0);
+        expect(dropPosition(undefined, 'chat-z', 'chat-dated', DROP_BEFORE)).toBe(0);
+    });
+
+    it('joins the foot of an arrangement that already exists', () => {
+        expect(dropPosition(chatsOf('chat-a', 'chat-b'), 'chat-z', 'chat-dated', DROP_BEFORE)).toBe(2);
+    });
+
+    /* The dated region sits below the whole arrangement, so neither edge of it aims anywhere else. */
+    it('answers the same for both edges of a dated conversation', () => {
+        const placed = chatsOf('chat-a');
+
+        expect(dropPosition(placed, 'chat-z', 'chat-dated', DROP_BEFORE))
+            .toBe(dropPosition(placed, 'chat-z', 'chat-dated', DROP_AFTER));
     });
 });
 

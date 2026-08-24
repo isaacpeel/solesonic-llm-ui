@@ -454,6 +454,22 @@ function startDraggingRow(container, fromIndex) {
     fireEvent(window, pointerEventOf('pointermove', {clientY: PAST_DRAG_THRESHOLD}));
 }
 
+/* Holds a conversation over another row without releasing, for asserting on the drop indicator. */
+function hoverRowOver(container, fromIndex, toIndex, {edge = 'before'} = {}) {
+    const rows = container.querySelectorAll('.chat-history-row');
+    const target = rows[toIndex];
+
+    target.getBoundingClientRect = () => ROW_RECTANGLE;
+    hitTestElement = target;
+
+    startDraggingRow(container, fromIndex);
+    fireEvent(window, pointerEventOf('pointermove', {clientY: edge === 'after' ? ROW_HEIGHT - 1 : 1}));
+
+    return container.querySelector(
+        '.chat-history-row-drop-before, .chat-history-row-drop-after, .chat-history-row-drop-onto'
+    );
+}
+
 function pressDragHandle(container, rowIndex, key) {
     const handle = container.querySelectorAll('.chat-history-row')[rowIndex]
         .querySelector('.chat-history-drag-handle');
@@ -1283,6 +1299,51 @@ describe('ChatHistory dragging in the whole list', () => {
         pressDragHandle(container, 1, 'ArrowUp');
 
         expect(chatService.reorderChat).not.toHaveBeenCalled();
+    });
+});
+
+/*
+ * The state every user starts in, and the one every fixture above skips: a drawer where nothing has
+ * ever been arranged, so there is no Arranged section and every conversation is in a day bucket.
+ * A drop resolved against the empty placed list here, drew its indicator, and then did nothing.
+ */
+describe('ChatHistory dragging with nothing arranged yet', () => {
+    it('arranges a conversation dropped onto another one in the day list', async () => {
+        const {container, setChatsDirectly} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+
+        /* 0 is the day header; 1, 2 and 3 are the conversations, none of them placed. */
+        dragRow(container, 3, 1);
+
+        expect(setChatsDirectly).toHaveBeenCalled();
+
+        await waitFor(() => expect(chatService.reorderChat).toHaveBeenCalledWith('chat-2', 0));
+    });
+
+    it('arranges a conversation inside a group that has nothing placed either', async () => {
+        const {container} = renderExpandedGroup([
+            chatFiledUnder('group-1', null, 0),
+            chatFiledUnder('group-1', null, 1),
+        ]);
+
+        /* 0 is Work's header, 1 and 2 its conversations, 3 Personal's header. */
+        dragRow(container, 2, 1);
+
+        await waitFor(() => expect(chatGroupService.reorderChatInGroup)
+            .toHaveBeenCalledWith('group-1', 'chat-1', 0));
+    });
+
+    /* An indicator is a promise that releasing moves something; it must not appear otherwise. */
+    it('draws no indicator for a drop that would change nothing', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+
+        /* Row 0 is the day header, and these conversations are already in date order. */
+        expect(hoverRowOver(container, 1, 0)).toBeNull();
+    });
+
+    it('still draws one where the drop does move something', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3), hasMore: false});
+
+        expect(hoverRowOver(container, 3, 1)).not.toBeNull();
     });
 });
 
