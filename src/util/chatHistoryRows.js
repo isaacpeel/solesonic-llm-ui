@@ -88,6 +88,15 @@ export function chatHistoryRowLabel(chat) {
     return fullLabel;
 }
 
+/*
+ * The conversation a row stands for, with the group it is rendered under written onto it. A chat
+ * that arrived on a page of the ungrouped list carries no `chatGroupId` field at all, and a
+ * rollback that restored it untouched would leave that field missing rather than cleared.
+ */
+export function chatFromRow(row) {
+    return {...row.chat, chatGroupId: row.chatGroupId ?? null};
+}
+
 /**
  * Flattens the drawer's sections into the virtualizer's index space.
  *

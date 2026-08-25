@@ -37,14 +37,17 @@
 }
 
 /*
- * The header and its kebab share one line. The separator and the padding live out here now, so the
- * row measures exactly what it did when the header was the whole of it — a group row and a chat row
- * must stay the same height or the virtualizer's placement of everything below drifts.
+ * The grip, the header and the kebab share one line. The separator and the horizontal padding live
+ * out here, so the row measures exactly what it did when the header was the whole of it — a group
+ * row and a chat row must stay the same height or the virtualizer's placement of everything below
+ * drifts. The left padding moved here from `.chat-group-header` when the grip became a sibling of
+ * it, which is what keeps the chevron at the same 32px it has always started at.
  */
 .chat-group-header-row {
     display: flex;
     align-items: center;
     gap: 6px;
+    padding-left: 10px;
     padding-right: 10px;
     border-bottom: 1px solid var(--border-color);
     white-space: nowrap;
@@ -72,7 +75,7 @@
     gap: 6px;
     flex: 1;
     min-width: 0;
-    padding: 10px 0 10px 10px;
+    padding: 10px 0;
     border: none;
     background: none;
     color: var(--text-color);
@@ -81,15 +84,6 @@
     white-space: nowrap;
     overflow: hidden;
     cursor: pointer;
-}
-
-/*
- * A group is somewhere to drop a conversation, not something that moves itself — the API ships no
- * ordering for groups — so its grip is an affordance and carries no grab cursor to promise one.
- */
-.chat-history-drag-handle-static {
-    cursor: inherit;
-    opacity: 0.25;
 }
 
 /* One icon, rotated rather than swapped, so the row never reflows as a group opens. */
@@ -110,6 +104,30 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-weight: 600;
+}
+
+/*
+ * The rename editor stands in for the header button, so it carries that button's vertical padding
+ * less the one pixel its own underline adds — a group row and a chat row must measure the same
+ * height, and an editor that grew the row would move every row below it while it was open.
+ */
+.chat-group-rename {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 0 9px;
+    border: none;
+    border-bottom: 1px solid var(--text-color);
+    border-radius: 0;
+    background: none;
+    color: var(--text-color);
+    font: inherit;
+    line-height: inherit;
+    outline: none;
+}
+
+.chat-group-rename::placeholder {
+    color: var(--text-color);
+    opacity: 0.5;
 }
 
 /* Absent until the group's first page has landed — GET /chatgroups does not carry a count. */

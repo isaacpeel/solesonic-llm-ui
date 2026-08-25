@@ -166,7 +166,7 @@
 }
 
 .chat-item:hover .chat-history-drag-handle,
-.chat-group-header:hover .chat-history-drag-handle {
+.chat-group-header-row:hover .chat-history-drag-handle {
     opacity: 0.85;
 }
 

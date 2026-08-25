@@ -4,9 +4,11 @@ import {
     autoScrollStep,
     dropEdgeForRow,
     dropTargetFromElement,
+    groupDropEdgeForRow,
     isClearOfDrawer,
     isNoOpDrop,
     resolveDropDestination,
+    resolveGroupDropDestination,
 } from "../util/chatHistoryDrag.js";
 
 /*
@@ -39,12 +41,18 @@ const NEW_GROUP_DESTINATION = Object.freeze({newGroup: true});
  * The grip must also carry `touch-action: none` in CSS. Without it the browser claims a vertical
  * drag as a scroll of the list and cancels the pointer stream before it reaches any of this.
  *
+ * Two kinds of thing are dragged through it. A conversation can land in any list and carries a
+ * position within it; a group only ever lands between other groups. They share the pointer stream,
+ * the auto-scroll and the Escape handling, and diverge only where the drop is resolved.
+ *
  * @param {{
  *   rows: Array<object>,
  *   scrollContainerRef: {current: HTMLElement|null},
  *   drawerRef: {current: HTMLElement|null},
  *   placedChatsFor: (chatGroupId: string|null) => Array<object>,
+ *   orderedGroups: () => Array<object>,
  *   onDrop: (chat: object, destination: {chatGroupId: string|null, position: number|null}) => void,
+ *   onGroupDrop: (chatGroupId: string, position: number|null) => void,
  *   onNewGroup: (chat: object) => void,
  *   onDropOutside: (chat: object, point: {clientX: number, clientY: number}) => void,
  * }} options
@@ -54,11 +62,17 @@ function useChatHistoryDrag({
     scrollContainerRef,
     drawerRef,
     placedChatsFor,
+    orderedGroups,
     onDrop,
+    onGroupDrop,
     onNewGroup,
     onDropOutside,
 }) {
     const [draggedChat, setDraggedChat] = useState(null);
+
+    /* The group in flight, if this gesture is a group being reordered rather than a conversation. */
+    const [draggedChatGroupId, setDraggedChatGroupId] = useState(null);
+
     const [dropTarget, setDropTarget] = useState(null);
     const [newGroupDropActive, setNewGroupDropActive] = useState(false);
 
@@ -77,10 +91,26 @@ function useChatHistoryDrag({
      * The window listeners are registered once per press, so they read everything that changes
      * between renders from here instead of from the closure they were created in.
      */
-    const latestRef = useRef({rows, placedChatsFor, onDrop, onNewGroup, onDropOutside});
+    const latestRef = useRef({
+        rows,
+        placedChatsFor,
+        orderedGroups,
+        onDrop,
+        onGroupDrop,
+        onNewGroup,
+        onDropOutside,
+    });
 
     useEffect(() => {
-        latestRef.current = {rows, placedChatsFor, onDrop, onNewGroup, onDropOutside};
+        latestRef.current = {
+            rows,
+            placedChatsFor,
+            orderedGroups,
+            onDrop,
+            onGroupDrop,
+            onNewGroup,
+            onDropOutside,
+        };
     });
 
     const stopAutoScroll = useCallback(() => {
@@ -136,6 +166,7 @@ function useChatHistoryDrag({
         stopAutoScroll();
         setPressed(false);
         setDraggedChat(null);
+        setDraggedChatGroupId(null);
         setDropTarget(null);
         setNewGroupDropActive(false);
         setOutsideDropActive(false);
@@ -153,12 +184,53 @@ function useChatHistoryDrag({
             return;
         }
 
-        const {rows: currentRows, placedChatsFor: currentPlacedChatsFor} = latestRef.current;
+        const {
+            rows: currentRows,
+            placedChatsFor: currentPlacedChatsFor,
+            orderedGroups: currentOrderedGroups,
+        } = latestRef.current;
         const hitElement = document.elementFromPoint(clientX, clientY);
         const hit = dropTargetFromElement(hitElement);
 
         gesture.outside = false;
         setOutsideDropActive(false);
+
+        /*
+         * A group in flight has none of the destinations a conversation does: not the `+ New group`
+         * button, not the ungrouped list, and not the world outside the drawer — there is nothing a
+         * release out there could mean for a group, so it is left as a drag that goes nowhere.
+         */
+        if (gesture.chatGroupId) {
+            setNewGroupDropActive(false);
+
+            const arrangedGroups = currentOrderedGroups();
+            const groupRow = hit && !hit.newGroup ? currentRows[hit.rowIndex] : null;
+            const groupEdge = groupRow
+                ? groupDropEdgeForRow(groupRow, clientY, hit.rowElement.getBoundingClientRect())
+                : null;
+            const groupDestination = groupEdge
+                ? resolveGroupDropDestination(groupRow, groupEdge, {
+                    draggedChatGroupId: gesture.chatGroupId,
+                    orderedGroups: arrangedGroups,
+                })
+                : null;
+
+            if (!groupDestination || isNoOpDrop(arrangedGroups, gesture.chatGroupId, groupDestination.position)) {
+                gesture.destination = null;
+                setDropTarget(null);
+                return;
+            }
+
+            gesture.destination = groupDestination;
+
+            setDropTarget(previousTarget => (
+                previousTarget?.rowKey === groupRow.key && previousTarget.edge === groupEdge
+                    ? previousTarget
+                    : {rowKey: groupRow.key, edge: groupEdge}
+            ));
+
+            return;
+        }
 
         if (hit?.newGroup) {
             gesture.destination = NEW_GROUP_DESTINATION;
@@ -242,7 +314,12 @@ function useChatHistoryDrag({
             }
 
             gesture.dragging = true;
-            setDraggedChat(gesture.chat);
+
+            if (gesture.chatGroupId) {
+                setDraggedChatGroupId(gesture.chatGroupId);
+            } else {
+                setDraggedChat(gesture.chat);
+            }
         }
 
         updateDropTarget(event.clientX, event.clientY);
@@ -256,9 +333,10 @@ function useChatHistoryDrag({
             return;
         }
 
-        const {dragging, chat, destination, outside} = gesture;
+        const {dragging, chat, chatGroupId, destination, outside} = gesture;
         const {
             onDrop: dropHandler,
+            onGroupDrop: groupDropHandler,
             onNewGroup: newGroupHandler,
             onDropOutside: outsideHandler,
         } = latestRef.current;
@@ -267,6 +345,14 @@ function useChatHistoryDrag({
 
         /* A press that never travelled focused the grip and nothing more. */
         if (!dragging) {
+            return;
+        }
+
+        if (chatGroupId) {
+            if (destination) {
+                groupDropHandler(chatGroupId, destination.position);
+            }
+
             return;
         }
 
@@ -332,7 +418,7 @@ function useChatHistoryDrag({
     /* A drawer torn down mid-drag would otherwise leave the scroll loop running against nothing. */
     useEffect(() => stopAutoScroll, [stopAutoScroll]);
 
-    const beginGesture = useCallback((event, chat) => {
+    const beginGesture = useCallback((event, payload) => {
         /* One pointer at a time: a second finger landing during a drag is not a second drag. */
         if (gestureRef.current) {
             return;
@@ -356,7 +442,8 @@ function useChatHistoryDrag({
             pointerId: event.pointerId,
             startClientX: event.clientX,
             startClientY: event.clientY,
-            chat,
+            chat: payload.chat ?? null,
+            chatGroupId: payload.chatGroupId ?? null,
             dragging: false,
             destination: null,
             outside: false,
@@ -366,10 +453,22 @@ function useChatHistoryDrag({
     }, [scrollContainerRef]);
 
     const dragHandleProps = useCallback((chat) => ({
-        onPointerDown: (event) => beginGesture(event, chat),
+        onPointerDown: (event) => beginGesture(event, {chat}),
     }), [beginGesture]);
 
-    return {draggedChat, dropTarget, newGroupDropActive, outsideDropActive, dragHandleProps};
+    const groupDragHandleProps = useCallback((chatGroupId) => ({
+        onPointerDown: (event) => beginGesture(event, {chatGroupId}),
+    }), [beginGesture]);
+
+    return {
+        draggedChat,
+        draggedChatGroupId,
+        dropTarget,
+        newGroupDropActive,
+        outsideDropActive,
+        dragHandleProps,
+        groupDragHandleProps,
+    };
 }
 
 export default useChatHistoryDrag;

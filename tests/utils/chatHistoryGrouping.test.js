@@ -1,6 +1,8 @@
 import {describe, it, expect} from 'vitest';
 import {
     applyOrderMove,
+    applyRankMove,
+    changedRanks,
     formatDayLabel,
     groupChatsByDay,
     parseChatTimestamp,
@@ -231,5 +233,92 @@ describe('applyOrderMove', () => {
         const chats = groupChats();
 
         expect(applyOrderMove(chats, 'missing', 0, 'groupSortOrder')).toBe(chats);
+    });
+});
+
+describe('applyRankMove', () => {
+    function arrangedGroups() {
+        return [
+            {id: 'group-1', name: 'Work', sortOrder: 0},
+            {id: 'group-2', name: 'Personal', sortOrder: 1},
+            {id: 'group-3', name: 'Reading', sortOrder: 2},
+        ];
+    }
+
+    it('moves an item to the index it was dropped at', () => {
+        const ranked = applyRankMove(arrangedGroups(), 'group-3', 0);
+
+        expect(ranked.map(group => group.id)).toEqual(['group-3', 'group-1', 'group-2']);
+    });
+
+    /* Every item carries a rank afterwards, which is what makes the arrangement unambiguous. */
+    it('renumbers the whole list from zero, unplaced items included', () => {
+        const groups = [
+            {id: 'group-1', name: 'Work', sortOrder: null},
+            {id: 'group-2', name: 'Personal', sortOrder: null},
+            {id: 'group-3', name: 'Reading', sortOrder: null},
+        ];
+
+        const ranked = applyRankMove(groups, 'group-3', 1);
+
+        expect(ranked.map(group => [group.id, group.sortOrder])).toEqual([
+            ['group-1', 0],
+            ['group-3', 1],
+            ['group-2', 2],
+        ]);
+    });
+
+    it('clamps a position past the end of the list', () => {
+        const ranked = applyRankMove(arrangedGroups(), 'group-1', 99);
+
+        expect(ranked.map(group => group.id)).toEqual(['group-2', 'group-3', 'group-1']);
+        expect(ranked[2].sortOrder).toBe(2);
+    });
+
+    it('touches only the field it was given', () => {
+        const ranked = applyRankMove(
+            [{id: 'group-1', name: 'Work', sortOrder: 7, groupSortOrder: 4}],
+            'group-1',
+            0,
+        );
+
+        expect(ranked[0].sortOrder).toBe(0);
+        expect(ranked[0].groupSortOrder).toBe(4);
+        expect(ranked[0].name).toBe('Work');
+    });
+
+    it('leaves the list alone for an item it does not hold', () => {
+        const groups = arrangedGroups();
+
+        expect(applyRankMove(groups, 'missing', 0)).toBe(groups);
+    });
+});
+
+describe('changedRanks', () => {
+    it('answers only the items whose rank the renumbering moved', () => {
+        const previousGroups = [
+            {id: 'group-1', sortOrder: 0},
+            {id: 'group-2', sortOrder: 1},
+            {id: 'group-3', sortOrder: 2},
+        ];
+
+        const nextGroups = applyRankMove(previousGroups, 'group-2', 0);
+
+        expect(changedRanks(previousGroups, nextGroups).map(group => group.id))
+            .toEqual(['group-2', 'group-1']);
+    });
+
+    /* Rank zero is a real rank; reading it as unplaced would drop the one group that moved. */
+    it('treats a rank of zero as different from no rank at all', () => {
+        const previousGroups = [{id: 'group-1', sortOrder: null}];
+        const nextGroups = [{id: 'group-1', sortOrder: 0}];
+
+        expect(changedRanks(previousGroups, nextGroups)).toHaveLength(1);
+    });
+
+    it('answers nothing when the renumbering changed nothing', () => {
+        const groups = [{id: 'group-1', sortOrder: 0}, {id: 'group-2', sortOrder: 1}];
+
+        expect(changedRanks(groups, applyRankMove(groups, 'group-1', 0))).toEqual([]);
     });
 });

@@ -160,3 +160,82 @@ describe('reorderChatInGroup', () => {
         expect(JSON.stringify(apiClient.put.mock.calls[0][1])).toBe('{"position":null}');
     });
 });
+
+describe('updateChatGroup', () => {
+    const PLACED_GROUP = {id: 'group-1', userId: 'user-1', name: 'Work', sortOrder: 3, timestamp: '2026-08-01T10:00:00Z'};
+
+    /*
+     * The group itself, not a sub-resource. The `/name` suffix this replaced is gone from the API,
+     * so a request that still carried it would answer 404 — which is exactly what this guards.
+     */
+    it('puts the group to the group resource, with no suffix on the path', async () => {
+        apiClient.put.mockResolvedValue({...PLACED_GROUP});
+
+        const updatedGroup = await chatGroupService.updateChatGroup(PLACED_GROUP);
+
+        expect(apiClient.put.mock.calls[0][0]).toBe(`${CHAT_GROUPS_URI}/group-1`);
+        expect(updatedGroup.sortOrder).toBe(3);
+    });
+
+    /*
+     * A full update, not a patch: a rename that omitted the rank would be read as `sortOrder: null`
+     * and would silently drop the group out of the arrangement it was in.
+     */
+    it('carries the existing rank through a rename', async () => {
+        apiClient.put.mockResolvedValue({...PLACED_GROUP, name: 'Client work'});
+
+        await chatGroupService.updateChatGroup({...PLACED_GROUP, name: 'Client work'});
+
+        expect(apiClient.put).toHaveBeenCalledWith(
+            `${CHAT_GROUPS_URI}/group-1`,
+            {name: 'Client work', sortOrder: 3},
+        );
+    });
+
+    /* The mirror image: a body with only a rank in it reads as a blank name and answers 400. */
+    it('carries the existing name through a reorder', async () => {
+        apiClient.put.mockResolvedValue({...PLACED_GROUP, sortOrder: 1});
+
+        await chatGroupService.updateChatGroup({...PLACED_GROUP, sortOrder: 1});
+
+        expect(apiClient.put).toHaveBeenCalledWith(
+            `${CHAT_GROUPS_URI}/group-1`,
+            {name: 'Work', sortOrder: 1},
+        );
+    });
+
+    /* A falsy check here reads rank zero as "unplaced" — the same silent loss as omitting it. */
+    it('sends a rank of zero as a literal zero', async () => {
+        apiClient.put.mockResolvedValue({...PLACED_GROUP, sortOrder: 0});
+
+        await chatGroupService.updateChatGroup({...PLACED_GROUP, sortOrder: 0});
+
+        expect(apiClient.put.mock.calls[0][1].sortOrder).toBe(0);
+        expect(JSON.stringify(apiClient.put.mock.calls[0][1])).toBe('{"name":"Work","sortOrder":0}');
+    });
+
+    /* A group that has never been arranged is unplaced, and stating that is a literal null. */
+    it('sends a literal null for a group that carries no rank', async () => {
+        apiClient.put.mockResolvedValue({id: 'group-2', name: 'Personal', sortOrder: null});
+
+        await chatGroupService.updateChatGroup({id: 'group-2', name: 'Personal'});
+
+        expect(JSON.stringify(apiClient.put.mock.calls[0][1])).toBe('{"name":"Personal","sortOrder":null}');
+    });
+
+    /* Read-only on the wire: Jackson drops them, so sending them would only be noise. */
+    it('sends the two writable fields and nothing else', async () => {
+        apiClient.put.mockResolvedValue({...PLACED_GROUP});
+
+        await chatGroupService.updateChatGroup(PLACED_GROUP);
+
+        expect(Object.keys(apiClient.put.mock.calls[0][1])).toEqual(['name', 'sortOrder']);
+    });
+
+    /* A stale sidebar, which the caller answers by refetching the list rather than by retrying. */
+    it('propagates a 404 for the caller to handle', async () => {
+        apiClient.put.mockRejectedValue(Object.assign(new Error('404'), {status: 404}));
+
+        await expect(chatGroupService.updateChatGroup(PLACED_GROUP)).rejects.toMatchObject({status: 404});
+    });
+});

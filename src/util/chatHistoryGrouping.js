@@ -226,3 +226,45 @@ export function applyOrderMove(chats, chatId, position, orderField = "sortOrder"
         ...remainingUnplaced,
     ];
 }
+
+/**
+ * Moves an item to an index in the rendered list and renumbers the whole list from zero.
+ *
+ * The other half of the difference between the two orderings this drawer holds. `applyOrderMove`
+ * arranges a hand-placed prefix above a tail that is still in date order, because that is what a
+ * conversation ordering is and the server renumbers it densely on every move. A group ordering is
+ * the opposite: `sortOrder` on a group is a rank the client states outright, the server writes it
+ * exactly as sent and touches no other row, so the arrangement is only ever as complete as the
+ * client makes it. Renumbering everything visible is what keeps it unambiguous.
+ */
+export function applyRankMove(items, itemId, position, orderField = "sortOrder") {
+    const currentIndex = (items ?? []).findIndex(item => item?.id === itemId);
+
+    if (currentIndex < 0) {
+        return items ?? [];
+    }
+
+    const rankedItems = [...items];
+    const [movedItem] = rankedItems.splice(currentIndex, 1);
+    const targetIndex = Math.min(Math.max(position ?? currentIndex, 0), rankedItems.length);
+
+    rankedItems.splice(targetIndex, 0, movedItem);
+
+    return rankedItems.map((item, index) => ({...item, [orderField]: index}));
+}
+
+/**
+ * The items a renumbering actually moved, which is exactly the set that has to be written.
+ *
+ * A rank is stated per item and there is no bulk endpoint, so every one of these is a request. A
+ * move usually shifts a run of neighbours and leaves the rest of the list alone; sending the whole
+ * list instead would be correct and wasteful, and an item that was already unranked and still is
+ * must not be written at all.
+ */
+export function changedRanks(previousItems, nextItems, orderField = "sortOrder") {
+    const previousRanks = new Map(
+        (previousItems ?? []).map(item => [item?.id, item?.[orderField] ?? null])
+    );
+
+    return (nextItems ?? []).filter(item => previousRanks.get(item?.id) !== (item?.[orderField] ?? null));
+}

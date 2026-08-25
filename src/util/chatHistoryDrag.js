@@ -137,6 +137,51 @@ export function resolveDropDestination(row, edge, {draggedChatId, draggedChatGro
 }
 
 /**
+ * Which edge of a row the pointer is nearest, while a *group* is being dragged.
+ *
+ * A group lands between other groups and never inside anything, so a group header is the only row
+ * with an edge to aim at. Everything else answers null and is not a target for this gesture — a
+ * group cannot be filed into a day bucket, and dropping one onto a conversation means nothing.
+ */
+export function groupDropEdgeForRow(row, clientY, rowRectangle) {
+    if (row?.type !== CHAT_GROUP_HEADER_ROW) {
+        return null;
+    }
+
+    const height = rowRectangle?.height ?? 0;
+
+    /* An unmeasured row has no halves; treating the whole of it as its top edge is the safe read. */
+    if (height <= 0) {
+        return DROP_BEFORE;
+    }
+
+    return (clientY - rowRectangle.top) < (height / 2) ? DROP_BEFORE : DROP_AFTER;
+}
+
+/**
+ * Resolves a group drop into the position that group ends up at.
+ *
+ * `position` is an index into the rendered list of groups, counted with the dragged group taken
+ * out. Every group is an index here, arranged or not: a group rank is stated by the client rather
+ * than renumbered by the server, so a drop renumbers the whole visible list from zero and a group
+ * nobody has placed yet is placed by the first drop past it.
+ *
+ * @returns {{position: number|null}|null} null when the row is not a target for this gesture,
+ *          including the dragged group's own header.
+ */
+export function resolveGroupDropDestination(row, edge, {draggedChatGroupId, orderedGroups}) {
+    if (!row || !draggedChatGroupId || row.type !== CHAT_GROUP_HEADER_ROW) {
+        return null;
+    }
+
+    if (row.chatGroupId === draggedChatGroupId) {
+        return null;
+    }
+
+    return {position: dropPosition(orderedGroups, draggedChatGroupId, row.chatGroupId, edge)};
+}
+
+/**
  * What landing anywhere in the ungrouped list means.
  *
  * That list is a timeline: it is ordered by date and by nothing else, so there is no position in it

@@ -7,8 +7,9 @@ import {DEFAULT_CHAT_HISTORY_PAGE_SIZE, normalizeChatHistoryPage} from './ChatSe
  * in any of these paths — so a group or a chat that belongs to someone else is indistinguishable
  * from one that does not exist, and both come back as a 404.
  *
- * The API ships create/list/get/add/remove/reorder only: there is no rename and no delete for a
- * group, which is why neither appears anywhere in the UI.
+ * The API ships create, list, update, delete, add, remove, and a conversation's place inside a
+ * group. A group's own place in the list is not an endpoint of its own: it is the `sortOrder` on
+ * the group, written by the same update call that writes the name.
  */
 const chatGroupService = {
     createGroup: async (name) => {
@@ -59,6 +60,26 @@ const chatGroupService = {
      */
     reorderChatInGroup: async (chatGroupId, chatId, position) => {
         return await apiClient.put(`${config.chatGroupsUri}/${chatGroupId}/chats/${chatId}/order`, {position});
+    },
+
+    /*
+     * The whole group, and the only way to write one.
+     *
+     * `PUT /chatgroups/{chatGroupId}` is a full update rather than a patch: both writable fields are
+     * taken exactly as sent. A body carrying only a new name silently unplaces the group, and one
+     * carrying only a rank is refused with a 400 because the missing name reads as blank. Taking the
+     * group itself rather than loose arguments is what makes both mistakes unrepresentable — a
+     * caller spreads the group it already holds and overrides the one field it means to change.
+     *
+     * `sortOrder` is a rank, not an index. The server stores the number as sent and renumbers no
+     * other row, so gaps and duplicates are legal and permanent, and rearranging several groups is
+     * one call per group whose rank actually changed.
+     */
+    updateChatGroup: async (chatGroup) => {
+        return await apiClient.put(`${config.chatGroupsUri}/${chatGroup.id}`, {
+            name: chatGroup.name,
+            sortOrder: chatGroup.sortOrder ?? null,
+        });
     },
 };
 

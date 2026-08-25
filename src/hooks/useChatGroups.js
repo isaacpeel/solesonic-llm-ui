@@ -53,7 +53,12 @@ function useChatGroups({active}) {
                     return;
                 }
 
-                /* A plain array, ordered by name then id. Rendered in that order, never re-sorted. */
+                /*
+                 * A plain array, rendered in the order it arrived and never re-sorted here. The
+                 * server orders it by `sortOrder` ascending with nulls last, then by name, then by
+                 * id — a client-side sort laid over that would only be a second place for the two
+                 * to disagree, and a name-only one would silently undo every arrangement.
+                 */
                 setGroups(Array.isArray(loadedGroups) ? loadedGroups : NO_GROUPS);
                 setGroupsError(null);
             } catch (caughtError) {
@@ -75,6 +80,29 @@ function useChatGroups({active}) {
 
     const reloadGroups = useCallback(() => {
         setGroupsReloadTrigger(trigger => trigger + 1);
+    }, []);
+
+    /*
+     * Wholesale replacement of the rendered group list, for an optimistic reorder and its rollback.
+     * The same shape `setGroupChatsDirectly` has one level down, for the same reason.
+     */
+    const setGroupsDirectly = useCallback((groupsOrUpdater) => {
+        setGroups(previousGroups => (
+            typeof groupsOrUpdater === "function" ? groupsOrUpdater(previousGroups) : groupsOrUpdater
+        ));
+    }, []);
+
+    /*
+     * Merges the authoritative groups an update answers with over the optimistic ones. A move takes
+     * a whole run of neighbours with it, so this takes an array rather than one group — settling
+     * them one at a time would redraw the list once per request.
+     */
+    const replaceGroups = useCallback((updatedGroups) => {
+        setGroups(previousGroups => previousGroups.map(group => {
+            const updatedGroup = (updatedGroups ?? []).find(candidate => candidate?.id === group.id);
+
+            return updatedGroup ? {...group, ...updatedGroup} : group;
+        }));
     }, []);
 
     const loadGroupPage = useCallback(async (chatGroupId, pageNumber) => {
@@ -272,6 +300,8 @@ function useChatGroups({active}) {
         groupsLoading,
         groupsError,
         reloadGroups,
+        setGroupsDirectly,
+        replaceGroups,
         chatsByGroupId,
         loadGroupChats,
         loadMoreGroupChats,

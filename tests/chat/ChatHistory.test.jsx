@@ -24,6 +24,7 @@ vi.mock('../../src/service/ChatGroupService.js', () => ({
         addChatToGroup: vi.fn(),
         removeChatFromGroup: vi.fn(),
         reorderChatInGroup: vi.fn(),
+        updateChatGroup: vi.fn(),
         deleteGroup: vi.fn(),
         findGroupChats: vi.fn(),
     },
@@ -182,6 +183,8 @@ function renderChatHistory({
     const setChatsDirectly = vi.fn();
 
     const reloadGroups = vi.fn();
+    const setGroupsDirectly = vi.fn();
+    const replaceGroups = vi.fn();
     const loadGroupChats = vi.fn();
     const loadMoreGroupChats = vi.fn();
     const reloadGroupChats = vi.fn();
@@ -208,6 +211,8 @@ function renderChatHistory({
         groupsLoading: false,
         groupsError: null,
         reloadGroups,
+        setGroupsDirectly,
+        replaceGroups,
         chatsByGroupId,
         loadGroupChats,
         loadMoreGroupChats,
@@ -249,6 +254,8 @@ function renderChatHistory({
         upsertChat,
         setChatsDirectly,
         reloadGroups,
+        setGroupsDirectly,
+        replaceGroups,
         loadGroupChats,
         loadMoreGroupChats,
         reloadGroupChats,
@@ -279,6 +286,8 @@ beforeEach(() => {
     chatGroupService.addChatToGroup.mockResolvedValue(null);
     chatGroupService.removeChatFromGroup.mockResolvedValue(null);
     chatGroupService.reorderChatInGroup.mockResolvedValue({id: 'chat-0', groupSortOrder: 0});
+    chatGroupService.updateChatGroup.mockReset();
+    chatGroupService.updateChatGroup.mockImplementation(async (chatGroup) => ({...chatGroup}));
     chatGroupService.deleteGroup.mockReset();
     chatGroupService.deleteGroup.mockResolvedValue(null);
     chatGroupService.findGroupChats.mockReset();
@@ -754,6 +763,26 @@ describe('ChatHistory conversation groups', () => {
         expect(labels).toEqual(['Message number 0', 'Message number 2']);
     });
 
+    /*
+     * The server orders by sortOrder ascending with nulls last, then name, then id. A client-side
+     * sort laid over that — a name-only one especially — would silently undo every arrangement.
+     */
+    it('renders the groups in the order the response arrived', () => {
+        const {container} = renderChatHistory({
+            chats: [],
+            hasMore: false,
+            groups: [
+                {id: 'group-3', name: 'Reading', sortOrder: 0},
+                {id: 'group-1', name: 'Work', sortOrder: 4},
+                {id: 'group-2', name: 'Personal', sortOrder: null},
+            ],
+        });
+
+        const groupHeaders = Array.from(container.querySelectorAll('.chat-group-header'));
+
+        expect(groupHeaders.map(header => header.textContent)).toEqual(['Reading', 'Work', 'Personal']);
+    });
+
     it('fetches a group first page on expand and renders its conversations indented', () => {
         const {container, loadGroupChats} = renderExpandedGroup(chatsOf(2));
 
@@ -796,14 +825,16 @@ describe('ChatHistory conversation groups', () => {
         expect(loadGroupChats).toHaveBeenCalledTimes(3);
     });
 
-    /* The API ships no rename endpoint, so there is still deliberately no rename here. */
-    it('offers a group delete and nothing else', () => {
+    /*
+     * Arranging is a gesture — the grip beside the menu is what moves a group — so the menu offers
+     * the two things a gesture cannot do and nothing else.
+     */
+    it('offers a group rename and a group delete, and nothing else', () => {
         const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
 
         const menu = openGroupMenu(container);
 
-        expect(menuItemLabels(menu)).toEqual(['Delete group']);
-        expect(menu.textContent).not.toMatch(/rename/i);
+        expect(menuItemLabels(menu)).toEqual(['Rename group', 'Delete group']);
     });
 });
 
@@ -811,7 +842,8 @@ describe('ChatHistory drag handles', () => {
     it('gives every conversation and every group a handle', () => {
         const {container} = renderExpandedGroup([chatFiledUnder('group-1')]);
 
-        expect(container.querySelectorAll('.chat-group-header .chat-history-drag-handle')).toHaveLength(2);
+        /* Beside the header button, not inside it — a button cannot nest within a button. */
+        expect(container.querySelectorAll('.chat-group-header-row > .chat-history-drag-handle')).toHaveLength(2);
         expect(container.querySelectorAll('.chat-item .chat-history-drag-handle')).toHaveLength(1);
     });
 
@@ -860,14 +892,292 @@ describe('ChatHistory drag handles', () => {
         expect(setChatId).not.toHaveBeenCalled();
     });
 
-    /* The API ships no ordering for groups, so a group is a place to drop and nothing more. */
-    it('refuses to drag a group', () => {
+    /* A group is both a place to drop a conversation and something that moves itself. */
+    it('lifts a group by its grip', () => {
         const {container} = renderExpandedGroup([chatFiledUnder('group-1')]);
 
-        /* The grip on a group header is a bare span; pressing it begins nothing. */
         startDraggingRow(container, 0);
 
-        expect(container.querySelectorAll('.chat-history-row-dragging')).toHaveLength(0);
+        expect(container.querySelectorAll('.chat-history-row-dragging').length).toBeGreaterThan(0);
+    });
+
+    /* The section travels as a unit, so its conversations lift with the header they belong to. */
+    it('lifts the conversations of a group with it', () => {
+        const {container} = renderExpandedGroup([chatFiledUnder('group-1')]);
+
+        startDraggingRow(container, 0);
+
+        const lifted = Array.from(container.querySelectorAll('.chat-history-row-dragging'));
+
+        expect(lifted.some(row => row.querySelector('.chat-group-header'))).toBe(true);
+        expect(lifted.some(row => row.querySelector('.chat-item-in-group'))).toBe(true);
+    });
+});
+
+const ARRANGED_GROUPS = [
+    {id: 'group-1', name: 'Work', sortOrder: 0},
+    {id: 'group-2', name: 'Personal', sortOrder: 1},
+    {id: 'group-3', name: 'Reading', sortOrder: 2},
+];
+
+/*
+ * Three collapsed groups above one dated conversation, so the rows are:
+ * 0,1,2 group headers, 3 the day header, 4 the conversation.
+ */
+function renderArrangedGroups() {
+    return renderChatHistory({chats: chatsOf(1), hasMore: false, groups: ARRANGED_GROUPS});
+}
+
+/* The group each update call was handed, flattened to what the assertions actually care about. */
+function updatedGroupRanks() {
+    return chatGroupService.updateChatGroup.mock.calls.map(
+        ([chatGroup]) => [chatGroup.id, chatGroup.name, chatGroup.sortOrder]
+    );
+}
+
+describe('ChatHistory ordering the groups', () => {
+    /*
+     * A rank is stated by the client and the server renumbers nothing behind it, so a move is the
+     * whole visible list renumbered from zero — one request per group the renumbering shifted.
+     */
+    it('renumbers the list and writes every group the move shifted', async () => {
+        const {container} = renderArrangedGroups();
+
+        dragRow(container, 2, 0, {edge: 'before'});
+
+        await waitFor(() => expect(chatGroupService.updateChatGroup).toHaveBeenCalledTimes(3));
+        expect(updatedGroupRanks()).toEqual([
+            ['group-3', 'Reading', 0],
+            ['group-1', 'Work', 1],
+            ['group-2', 'Personal', 2],
+        ]);
+    });
+
+    /* Counted with the dragged group taken out, which is how the drop arithmetic reads an index. */
+    it('counts the index with the dragged group taken out when it moves down', async () => {
+        const {container} = renderArrangedGroups();
+
+        dragRow(container, 0, 2, {edge: 'after'});
+
+        await waitFor(() => expect(chatGroupService.updateChatGroup).toHaveBeenCalledTimes(3));
+        expect(updatedGroupRanks()).toEqual([
+            ['group-2', 'Personal', 0],
+            ['group-3', 'Reading', 1],
+            ['group-1', 'Work', 2],
+        ]);
+    });
+
+    /* A move usually shifts a run of neighbours; the groups past it keep the rank they had. */
+    it('leaves a group the renumbering did not shift alone', async () => {
+        const {container} = renderArrangedGroups();
+
+        pressDragHandle(container, 1, 'ArrowUp');
+
+        await waitFor(() => expect(chatGroupService.updateChatGroup).toHaveBeenCalledTimes(2));
+        expect(updatedGroupRanks()).toEqual([
+            ['group-2', 'Personal', 0],
+            ['group-1', 'Work', 1],
+        ]);
+    });
+
+    /* Nothing is arranged until something is: the first drop states the whole list. */
+    it('ranks every group on the first arrangement of a list nobody has ordered', async () => {
+        const unplacedGroups = ARRANGED_GROUPS.map(chatGroup => ({...chatGroup, sortOrder: null}));
+
+        const {container} = renderChatHistory({
+            chats: chatsOf(1),
+            hasMore: false,
+            groups: unplacedGroups,
+        });
+
+        dragRow(container, 2, 0, {edge: 'before'});
+
+        await waitFor(() => expect(chatGroupService.updateChatGroup).toHaveBeenCalledTimes(3));
+        expect(updatedGroupRanks()).toEqual([
+            ['group-3', 'Reading', 0],
+            ['group-1', 'Work', 1],
+            ['group-2', 'Personal', 2],
+        ]);
+    });
+
+    it('issues no request for a drop that would leave the order as it is', () => {
+        const {container} = renderArrangedGroups();
+
+        dragRow(container, 0, 1, {edge: 'before'});
+
+        expect(chatGroupService.updateChatGroup).not.toHaveBeenCalled();
+    });
+
+    /* A group has nowhere to land but among other groups. */
+    it('ignores a drop on a conversation or a day header', () => {
+        const {container} = renderArrangedGroups();
+
+        dragRow(container, 0, 4, {edge: 'before'});
+        dragRow(container, 0, 3, {edge: 'before'});
+
+        expect(chatGroupService.updateChatGroup).not.toHaveBeenCalled();
+        expect(chatGroupService.reorderChatInGroup).not.toHaveBeenCalled();
+        expect(chatGroupService.removeChatFromGroup).not.toHaveBeenCalled();
+    });
+
+    /* The `+ New group` button builds a group around a conversation; a group is not one. */
+    it('offers nothing when a group is released on the new group button', () => {
+        const {container} = renderArrangedGroups();
+
+        dragRowOntoNewGroup(container, 0);
+
+        expect(chatGroupService.createGroup).not.toHaveBeenCalled();
+        expect(chatGroupService.updateChatGroup).not.toHaveBeenCalled();
+    });
+
+    /* Two separate columns behind two separate calls; arranging groups must not disturb chats. */
+    it('moves no conversation while it arranges the groups', async () => {
+        const {container} = renderArrangedGroups();
+
+        dragRow(container, 2, 0, {edge: 'before'});
+
+        await waitFor(() => expect(chatGroupService.updateChatGroup).toHaveBeenCalled());
+        expect(chatGroupService.reorderChatInGroup).not.toHaveBeenCalled();
+    });
+
+    it('redraws before the response and restores the order when a write fails', async () => {
+        chatGroupService.updateChatGroup.mockRejectedValue(new Error('nope'));
+
+        const {container, setGroupsDirectly} = renderArrangedGroups();
+
+        dragRow(container, 2, 0, {edge: 'before'});
+
+        /* Optimistic first, then the restore — the rendered order must not wait on the round trip. */
+        expect(setGroupsDirectly).toHaveBeenCalledTimes(1);
+
+        await waitFor(() => expect(setGroupsDirectly).toHaveBeenCalledTimes(2));
+        expect(setGroupsDirectly).toHaveBeenLastCalledWith(ARRANGED_GROUPS);
+        expect(toast.error).toHaveBeenCalled();
+    });
+
+    /* A 404 means the client's picture of the sidebar is stale, not that the move can be retried. */
+    it('refetches the group list when a move answers 404', async () => {
+        chatGroupService.updateChatGroup.mockRejectedValue(Object.assign(new Error('404'), {status: 404}));
+
+        const {container, reloadGroups} = renderArrangedGroups();
+
+        dragRow(container, 2, 0, {edge: 'before'});
+
+        await waitFor(() => expect(reloadGroups).toHaveBeenCalled());
+    });
+});
+
+/* Opens a group's kebab and picks Rename, which puts an editor where the header button was. */
+function startGroupRename(container, groupIndex = 0) {
+    openGroupMenu(container, groupIndex);
+    clickMenuItem('Rename group');
+
+    return container.querySelector('.chat-group-rename');
+}
+
+describe('ChatHistory renaming a group', () => {
+    it('opens an editor in the header, seeded with the group name', () => {
+        const {container} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        expect(editor).not.toBeNull();
+        expect(editor.value).toBe('Work');
+        /* The editor stands in for the header button rather than sitting beside it. */
+        expect(container.querySelectorAll('.chat-group-header')).toHaveLength(2);
+    });
+
+    /*
+     * The rank travels with the name because the endpoint is a full update: a body carrying only a
+     * name reads as `sortOrder: null` and drops the group out of the arrangement it was in.
+     */
+    it('sends the new name with the rank the group already had', async () => {
+        const {container} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        fireEvent.change(editor, {target: {value: 'Client work'}});
+        fireEvent.keyDown(editor, {key: 'Enter'});
+
+        await waitFor(() => expect(chatGroupService.updateChatGroup).toHaveBeenCalledWith({
+            id: 'group-1',
+            name: 'Client work',
+            sortOrder: 0,
+        }));
+    });
+
+    it('redraws the header before the response answers', () => {
+        const {container, replaceGroups} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        fireEvent.change(editor, {target: {value: 'Client work'}});
+        fireEvent.keyDown(editor, {key: 'Enter'});
+
+        expect(replaceGroups).toHaveBeenCalledWith([{id: 'group-1', name: 'Client work', sortOrder: 0}]);
+    });
+
+    it('issues no request when the name was not changed', () => {
+        const {container} = renderArrangedGroups();
+
+        fireEvent.keyDown(startGroupRename(container), {key: 'Enter'});
+
+        expect(chatGroupService.updateChatGroup).not.toHaveBeenCalled();
+    });
+
+    it('abandons the edit on Escape', () => {
+        const {container} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        fireEvent.change(editor, {target: {value: 'Client work'}});
+        fireEvent.keyDown(editor, {key: 'Escape'});
+
+        expect(container.querySelector('.chat-group-rename')).toBeNull();
+        expect(chatGroupService.updateChatGroup).not.toHaveBeenCalled();
+    });
+
+    it('puts the old name back and reports a rename that failed', async () => {
+        chatGroupService.updateChatGroup.mockRejectedValue(new Error('nope'));
+
+        const {container, replaceGroups} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        fireEvent.change(editor, {target: {value: 'Client work'}});
+        fireEvent.keyDown(editor, {key: 'Enter'});
+
+        await waitFor(() => expect(replaceGroups).toHaveBeenLastCalledWith([ARRANGED_GROUPS[0]]));
+        expect(toast.error).toHaveBeenCalled();
+    });
+
+    /* A refused name is worth another attempt, so it is seeded back rather than thrown away. */
+    it('reopens the editor on the name the server refused', async () => {
+        chatGroupService.updateChatGroup.mockRejectedValue(Object.assign(new Error('400'), {status: 400}));
+
+        const {container} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        fireEvent.change(editor, {target: {value: 'Client work'}});
+        fireEvent.keyDown(editor, {key: 'Enter'});
+
+        await waitFor(() => expect(container.querySelector('.chat-group-rename')).not.toBeNull());
+        expect(container.querySelector('.chat-group-rename').value).toBe('Client work');
+    });
+
+    it('refetches the group list when the rename answers 404', async () => {
+        chatGroupService.updateChatGroup.mockRejectedValue(Object.assign(new Error('404'), {status: 404}));
+
+        const {container, reloadGroups} = renderArrangedGroups();
+
+        const editor = startGroupRename(container);
+
+        fireEvent.change(editor, {target: {value: 'Client work'}});
+        fireEvent.keyDown(editor, {key: 'Enter'});
+
+        await waitFor(() => expect(reloadGroups).toHaveBeenCalled());
+        expect(container.querySelector('.chat-group-rename')).toBeNull();
     });
 });
 
