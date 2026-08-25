@@ -13,7 +13,7 @@
 .general-settings-item-label {
     font-weight: bold;
     margin-right: 10px;
-    min-width: 150px;
+    min-width: 220px;
     color: #333; /* Added dark color to ensure visibility against white background */
 }
 
