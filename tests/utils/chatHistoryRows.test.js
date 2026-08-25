@@ -158,6 +158,30 @@ describe('flattenChatGroupsToRows', () => {
         expect(rows[0].type).toBe(CHAT_HISTORY_HEADER_ROW);
     });
 
+    it('contributes a header row and nothing else for a day that has been collapsed', () => {
+        const rows = flattenChatGroupsToRows([
+            {...groupOf('2026-08-03', 'Today', [chatOf('chat-1', 'first')]), expanded: false},
+        ]);
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].type).toBe(CHAT_HISTORY_HEADER_ROW);
+        expect(rows[0].expanded).toBe(false);
+    });
+
+    /* Only a day the user has closed says anything about it, so silence has to mean open. */
+    it('treats a day that says nothing about it as open', () => {
+        const rows = flattenChatGroupsToRows([groupOf('2026-08-03', 'Today', [chatOf('chat-1', 'first')])]);
+
+        expect(rows).toHaveLength(2);
+        expect(rows[0].expanded).toBe(true);
+    });
+
+    it('carries the day key onto its header, so a collapse can name the day', () => {
+        const rows = flattenChatGroupsToRows([groupOf('2026-08-03', 'Today', [])]);
+
+        expect(rows[0].dayKey).toBe('2026-08-03');
+    });
+
     it('returns no rows for empty or missing input', () => {
         expect(flattenChatGroupsToRows([])).toEqual([]);
         expect(flattenChatGroupsToRows(undefined)).toEqual([]);

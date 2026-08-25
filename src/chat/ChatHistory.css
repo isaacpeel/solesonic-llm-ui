@@ -82,12 +82,49 @@
     padding-top: 20px;
 }
 
+/*
+ * A day bucket collapses the way a conversation group does, so its header is a button — stripped of
+ * every default a button brings, because the row's height is the one the virtualizer measured and
+ * placed every row below it against.
+ */
 .date-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 0 0 8px;
+    border: none;
+    border-bottom: 2px solid var(--border-color);
+    border-radius: 0;
+    background: none;
+    color: var(--text-color); /* Softer text */
+    font-family: inherit;
     font-size: 1.2rem;
     font-weight: bold;
-    color: var(--text-color); /* Softer text */
-    border-bottom: 2px solid var(--border-color);
-    padding-bottom: 8px;
+    line-height: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+/* One icon, rotated rather than swapped, so the row never reflows as a day opens. */
+.date-header-chevron {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    transition: transform var(--transition-speed);
+}
+
+.date-header-chevron-expanded {
+    transform: rotate(90deg);
+}
+
+/* min-width: 0 is what lets a flex child shrink far enough to actually ellipsize. */
+.date-header-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /*

@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from "react";
 import {useNavigate} from "react-router";
 import {useVirtualizer} from "@tanstack/react-virtual";
+import {ChevronRightIcon} from "@heroicons/react/24/solid";
 import {MdDragIndicator} from "react-icons/md";
 import {toast} from "react-toastify";
 import log from "loglevel";
@@ -142,6 +143,15 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const [emptyPageAttempts, setEmptyPageAttempts] = useState(0);
 
     /*
+     * The day buckets the user has closed, held the other way round from a conversation group's
+     * expanded set: a group starts collapsed because expanding it is what fetches its page, while a
+     * day bucket holds conversations that are already here and is open until it is closed. Keyed by
+     * day rather than by index, so a page landing above a closed section leaves it closed. Not
+     * persisted, for the same reason a group's state is not.
+     */
+    const [collapsedDayKeys, setCollapsedDayKeys] = useState(() => new Set());
+
+    /*
      * Memoized on the accumulated pages rather than recomputed per render: grouping sorts every
      * bucket and then the buckets themselves, and the drawer re-renders on every parent state
      * change, not just when a page lands.
@@ -156,11 +166,16 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      */
     const dayGroups = useMemo(() => groupChatsByDay(ungrouped), [ungrouped]);
 
+    const daySections = useMemo(
+        () => dayGroups.map(dayGroup => ({...dayGroup, expanded: !collapsedDayKeys.has(dayGroup.key)})),
+        [dayGroups, collapsedDayKeys],
+    );
+
     const chatGroupSections = chatGroups.chatGroupSections;
 
     const rows = useMemo(
-        () => flattenChatGroupsToRows([...chatGroupSections, ...dayGroups]),
-        [chatGroupSections, dayGroups],
+        () => flattenChatGroupsToRows([...chatGroupSections, ...daySections]),
+        [chatGroupSections, daySections],
     );
 
     const ungroupedChatCount = ungrouped.length;
@@ -260,6 +275,20 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         setEmptyPageAttempts(attempts => attempts + 1);
         loadMore();
     }, [drawerOpen, hasMore, loading, ungroupedChatCount, emptyPageAttempts, loadMore]);
+
+    const toggleDaySection = (dayKey) => {
+        setCollapsedDayKeys(previousKeys => {
+            const nextKeys = new Set([...previousKeys]);
+
+            if (nextKeys.has(dayKey)) {
+                nextKeys.delete(dayKey);
+            } else {
+                nextKeys.add(dayKey);
+            }
+
+            return nextKeys;
+        });
+    };
 
     const handleChatClick = (chatId) => {
         /* A row being renamed is an editor, not a link — clicking its padding must not navigate. */
@@ -492,7 +521,23 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      */
     const renderRow = (row) => {
         if (row.type === CHAT_HISTORY_HEADER_ROW) {
-            return <div className="date-header">{row.label}</div>;
+            return (
+                <button
+                    type="button"
+                    className="date-header"
+                    aria-expanded={row.expanded}
+                    onClick={() => toggleDaySection(row.dayKey)}
+                >
+                    <ChevronRightIcon
+                        aria-hidden="true"
+                        className={row.expanded
+                            ? "date-header-chevron date-header-chevron-expanded"
+                            : "date-header-chevron"}
+                    />
+
+                    <span className="date-header-label">{row.label}</span>
+                </button>
+            );
         }
 
         if (isChatGroupRow(row)) {

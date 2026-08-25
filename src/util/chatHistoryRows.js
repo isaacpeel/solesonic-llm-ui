@@ -113,7 +113,7 @@ export function chatFromRow(row) {
  * property through per feature does not scale.
  *
  * @param {Array<{key?: string, label?: string, chats?: Array, chatGroupId?: string, expanded?: boolean, loading?: boolean, hasMore?: boolean, count?: number|null}>} sections
- * @returns {Array<{type: string, key: string, label: string, chatId?: *, fullLabel?: string, chat?: *, chatGroupId?: string, firstInList?: boolean}>}
+ * @returns {Array<{type: string, key: string, label: string, chatId?: *, fullLabel?: string, chat?: *, chatGroupId?: string, dayKey?: string, expanded?: boolean, loading?: boolean, count?: number|null, firstInList?: boolean}>}
  */
 export function flattenChatGroupsToRows(sections) {
     const rows = [];
@@ -124,12 +124,25 @@ export function flattenChatGroupsToRows(sections) {
             continue;
         }
 
+        /*
+         * A day bucket collapses the way a conversation group does, but starts the other way round:
+         * the drawer's whole point is the timeline, so a day is open unless the user has closed it
+         * and the section says so outright.
+         */
+        const expanded = section.expanded !== false;
+
         rows.push({
             type: CHAT_HISTORY_HEADER_ROW,
             key: `header:${section.key}`,
+            dayKey: section.key,
             label: section.label,
+            expanded: expanded,
             firstInList: rows.length === 0,
         });
+
+        if (!expanded) {
+            continue;
+        }
 
         for (const chat of section.chats ?? []) {
             rows.push(chatRow(chat, null));

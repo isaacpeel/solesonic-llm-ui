@@ -346,6 +346,69 @@ describe('ChatHistory virtualization', () => {
     });
 });
 
+/*
+ * A day bucket collapses the way a conversation group does, but starts the other way round: a group
+ * is closed until it is opened, because opening it is what fetches its page, while a day holds
+ * conversations that are already here.
+ */
+describe('ChatHistory collapsing a day', () => {
+    function chatsAcrossTwoDays() {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10).toISOString();
+        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 10).toISOString();
+
+        return [
+            {id: 'chat-today', name: null, timestamp: today, chatMessages: [{message: 'Today message'}]},
+            {id: 'chat-yesterday', name: null, timestamp: yesterday, chatMessages: [{message: 'Yesterday message'}]},
+        ];
+    }
+
+    function dayHeaders(container) {
+        return Array.from(container.querySelectorAll('.date-header'));
+    }
+
+    function rowLabels(container) {
+        return Array.from(container.querySelectorAll('.chat-item-label')).map(label => label.textContent);
+    }
+
+    it('opens every day to begin with', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3)});
+
+        expect(container.querySelector('.date-header').getAttribute('aria-expanded')).toBe('true');
+        expect(container.querySelectorAll('.chat-item')).toHaveLength(3);
+    });
+
+    it('takes the day\'s conversations off the list and leaves its header', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3)});
+
+        fireEvent.click(container.querySelector('.date-header'));
+
+        expect(container.querySelectorAll('.chat-item')).toHaveLength(0);
+        expect(dayHeaders(container)).toHaveLength(1);
+        expect(container.querySelector('.date-header').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('brings them back on the next click', () => {
+        const {container} = renderChatHistory({chats: chatsOf(3)});
+
+        fireEvent.click(container.querySelector('.date-header'));
+        fireEvent.click(container.querySelector('.date-header'));
+
+        expect(container.querySelectorAll('.chat-item')).toHaveLength(3);
+    });
+
+    it('closes only the day that was clicked', () => {
+        const {container} = renderChatHistory({chats: chatsAcrossTwoDays()});
+
+        expect(dayHeaders(container).map(header => header.textContent)).toEqual(['Today', 'Yesterday']);
+
+        fireEvent.click(container.querySelectorAll('.date-header')[0]);
+
+        expect(rowLabels(container)).toEqual(['Yesterday message']);
+        expect(dayHeaders(container)).toHaveLength(2);
+    });
+});
+
 describe('ChatHistory infinite scroll', () => {
     it('asks for the next page when the window reaches the end of the list', async () => {
         const {loadMore} = renderChatHistory({chats: chatsOf(3), hasMore: true});
