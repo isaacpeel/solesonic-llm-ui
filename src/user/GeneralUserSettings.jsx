@@ -86,50 +86,53 @@ const GeneralUserSettings = () => {
             <ToastContainer />
             <h2>General Settings</h2>
             <form onSubmit={handleSubmit}>
-                <div className="general-settings-item">
-                    <label htmlFor="chatSimilarityThreshold" className="general-settings-item-label">
-                        Chat Similarity Threshold:
-                    </label>
-                    <input
-                        type="number"
-                        id="chatSimilarityThreshold"
-                        value={chatSimilarityThreshold}
-                        onChange={handleChatSimilarityThresholdChange}
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        className="general-settings-input"
-                    />
-                </div>
-                <div className="general-settings-item">
-                    <label htmlFor="userSimilarityThreshold" className="general-settings-item-label">
-                        User Similarity Threshold:
-                    </label>
-                    <input
-                        type="number"
-                        id="userSimilarityThreshold"
-                        value={userSimilarityThreshold}
-                        onChange={handleUserSimilarityThresholdChange}
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        className="general-settings-input"
-                    />
-                </div>
-                <div className="general-settings-item">
-                    <label htmlFor="globalSimilarityThreshold" className="general-settings-item-label">
-                        Global Similarity Threshold:
-                    </label>
-                    <input
-                        type="number"
-                        id="globalSimilarityThreshold"
-                        value={globalSimilarityThreshold}
-                        onChange={handleGlobalSimilarityThresholdChange}
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        className="general-settings-input"
-                    />
+                <h3 className="general-settings-section-heading">Similarity Threshold</h3>
+                <div className="general-settings-threshold-group">
+                    <div className="general-settings-item">
+                        <label htmlFor="chatSimilarityThreshold" className="general-settings-item-label">
+                            Chat
+                        </label>
+                        <input
+                            type="number"
+                            id="chatSimilarityThreshold"
+                            value={chatSimilarityThreshold}
+                            onChange={handleChatSimilarityThresholdChange}
+                            step="0.01"
+                            min="0"
+                            max="1"
+                            className="general-settings-input"
+                        />
+                    </div>
+                    <div className="general-settings-item">
+                        <label htmlFor="userSimilarityThreshold" className="general-settings-item-label">
+                            User
+                        </label>
+                        <input
+                            type="number"
+                            id="userSimilarityThreshold"
+                            value={userSimilarityThreshold}
+                            onChange={handleUserSimilarityThresholdChange}
+                            step="0.01"
+                            min="0"
+                            max="1"
+                            className="general-settings-input"
+                        />
+                    </div>
+                    <div className="general-settings-item">
+                        <label htmlFor="globalSimilarityThreshold" className="general-settings-item-label">
+                            Global
+                        </label>
+                        <input
+                            type="number"
+                            id="globalSimilarityThreshold"
+                            value={globalSimilarityThreshold}
+                            onChange={handleGlobalSimilarityThresholdChange}
+                            step="0.01"
+                            min="0"
+                            max="1"
+                            className="general-settings-input"
+                        />
+                    </div>
                 </div>
                 <div className="general-settings-description">
                     Similarity thresholds determine how closely a document must match a query to be included in results,
