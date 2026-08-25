@@ -158,7 +158,6 @@ function ChatMessage({message, onExpandImage}) {
                         <span className="message-model-name">{modelName}</span>
                         <MessageResponseMetadata responseMetadata={message.responseMetadata}/>
                         <MessageCopyButton text={message.text}/>
-                        <MessageTimestamp timestamp={message.timestamp} nowMilliseconds={nowMilliseconds}/>
                     </div>
                 </div>
             ) : messageCard}

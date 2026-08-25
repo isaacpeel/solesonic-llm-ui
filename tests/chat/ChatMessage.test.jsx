@@ -421,7 +421,7 @@ describe('ChatMessage', () => {
             await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdown));
         });
 
-        it('renders response metadata tokens/sec headline beside the model name', () => {
+        it('renders all response metadata fields inline beside the model name', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 responseMetadata: {
@@ -436,11 +436,10 @@ describe('ChatMessage', () => {
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
             expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('34.7 tok/s');
-            expect(responseMetadata.getAttribute('title')).toContain('Prompt tokens: 412');
+            expect(responseMetadata.textContent).toBe('412→128 tok (540) · 34.7 tok/s · TTFT 380 ms · 3.7 s');
         });
 
-        it('falls back to duration when tokensPerSecond is null', () => {
+        it('omits tok/s and shows a missing-value placeholder for token counts when tokensPerSecond is null', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 responseMetadata: {
@@ -454,8 +453,7 @@ describe('ChatMessage', () => {
             })}/>);
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata.textContent).toBe('3.7 s');
-            expect(responseMetadata.getAttribute('title')).toContain('Prompt tokens: —');
+            expect(responseMetadata.textContent).toBe('—→— tok (—) · TTFT 380 ms · 3.7 s');
         });
 
         it('renders no response metadata element when the message carries none', () => {

@@ -15,25 +15,22 @@ function formatMillisAsDuration(value) {
 }
 
 /*
- * durationMillis is the one field the backend guarantees on every route, token-reporting or
- * not, so it is the fallback headline whenever tokensPerSecond is null (delegated A2A turns).
+ * All fields shown inline, not tucked behind a hover tooltip — the whole point is to be visible
+ * at a glance (and in a screenshot). tokensPerSecond is omitted when null (delegated A2A turns
+ * do not report it); durationMillis is the one field the backend guarantees on every route.
  */
-function buildHeadline({tokensPerSecond, durationMillis}) {
+function buildMetadataText({promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis}) {
+    const segments = [
+        `tok:${formatTokenCount(totalTokens)}`,
+    ];
+
     if (typeof tokensPerSecond === 'number') {
-        return `${tokensPerSecond.toFixed(1)} tok/s`;
+        segments.push(`${tokensPerSecond.toFixed(1)} tok/s`);
     }
 
-    return formatMillisAsDuration(durationMillis);
-}
+    segments.push(`TTFT:${formatMillisAsDuration(timeToFirstTokenMillis)}`);
 
-function buildTooltip({promptTokens, completionTokens, totalTokens, timeToFirstTokenMillis, durationMillis}) {
-    return [
-        `Prompt tokens: ${formatTokenCount(promptTokens)}`,
-        `Completion tokens: ${formatTokenCount(completionTokens)}`,
-        `Total tokens: ${formatTokenCount(totalTokens)}`,
-        `Time to first token: ${formatMillisAsDuration(timeToFirstTokenMillis)}`,
-        `Duration: ${formatMillisAsDuration(durationMillis)}`,
-    ].join('\n');
+    return segments.join(' · ');
 }
 
 /*
@@ -47,8 +44,8 @@ function MessageResponseMetadata({responseMetadata}) {
     }
 
     return (
-        <span className="message-response-metadata" title={buildTooltip(responseMetadata)}>
-            {buildHeadline(responseMetadata)}
+        <span className="message-response-metadata">
+            {buildMetadataText(responseMetadata)}
         </span>
     );
 }
