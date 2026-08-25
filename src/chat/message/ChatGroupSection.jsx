@@ -8,7 +8,7 @@ import {
     CHAT_GROUP_EMPTY_ROW,
     CHAT_GROUP_HEADER_ROW,
     CHAT_GROUP_LOAD_MORE_ROW,
-} from "../util/chatHistoryRows.js";
+} from "../../util/chatHistoryRows.js";
 
 const GROUP_DRAG_HANDLE_HINT = "Drag to reorder, or use the arrow keys";
 

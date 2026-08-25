@@ -8,7 +8,7 @@ import {createPortal} from "react-dom";
 import "./ChatRowMenu.css";
 import "./ChatDropActionMenu.css";
 import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
-import {handleDialogKeyDown} from "../util/dialogFocus.js";
+import {handleDialogKeyDown} from "../../util/dialogFocus.js";
 
 const MENU_WIDTH = 236;
 

@@ -11,7 +11,7 @@ vi.mock('loglevel', () => ({
     default: {error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()},
 }));
 
-import CreateChatGroupDialog from '../../src/chat/CreateChatGroupDialog.jsx';
+import CreateChatGroupDialog from '../../src/chat/message/CreateChatGroupDialog.jsx';
 import chatGroupService from '../../src/service/ChatGroupService.js';
 
 /* Portalled to document.body, so nothing this component renders is inside the render container. */

@@ -48,7 +48,7 @@ vi.mock('react-router', async (importOriginal) => {
     return {...actual, useNavigate: () => navigateSpy};
 });
 
-import ChatHistory from '../../src/chat/ChatHistory.jsx';
+import ChatHistory from '../../src/chat/message/ChatHistory.jsx';
 import {toast} from 'react-toastify';
 import {SharedDataContext} from '../../src/context/SharedDataContext.jsx';
 import usePagedChatHistory from '../../src/hooks/usePagedChatHistory.js';

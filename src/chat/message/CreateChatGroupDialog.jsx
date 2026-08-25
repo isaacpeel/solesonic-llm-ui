@@ -4,8 +4,8 @@ import log from "loglevel";
 
 import "./CreateChatGroupDialog.css";
 import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
-import {handleDialogKeyDown} from "../util/dialogFocus.js";
-import chatGroupService from "../service/ChatGroupService.js";
+import {handleDialogKeyDown} from "../../util/dialogFocus.js";
+import chatGroupService from "../../service/ChatGroupService.js";
 
 /* Matches the server's column limit, so a name long enough to be rejected cannot be typed. */
 const MAXIMUM_GROUP_NAME_LENGTH = 255;

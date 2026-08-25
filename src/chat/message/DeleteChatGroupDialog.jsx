@@ -4,9 +4,9 @@ import log from "loglevel";
 
 import "./DeleteChatGroupDialog.css";
 import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
-import {handleDialogKeyDown} from "../util/dialogFocus.js";
-import chatGroupService from "../service/ChatGroupService.js";
-import chatService from "../service/ChatService.js";
+import {handleDialogKeyDown} from "../../util/dialogFocus.js";
+import chatGroupService from "../../service/ChatGroupService.js";
+import chatService from "../../service/ChatService.js";
 
 const DELETE_GROUP_FAILED_ERROR = "Could not delete the group. Please try again.";
 
@@ -209,8 +209,6 @@ function DeleteChatGroupDialog({
 
                 <p className="delete-chat-group-dialog-body">
                     <span className="delete-chat-group-dialog-label">{`"${label}"`}</span>
-                    can be removed on its own, which leaves its conversations in place and returns
-                    them to the date-ordered list. Deleting the conversations as well cannot be undone.
                 </p>
 
                 {progress && (
@@ -240,7 +238,7 @@ function DeleteChatGroupDialog({
                         disabled={busy}
                         onClick={() => confirm(false)}
                     >
-                        Delete group only
+                        Delete
                     </button>
 
                     <button
@@ -249,7 +247,7 @@ function DeleteChatGroupDialog({
                         disabled={busy}
                         onClick={() => confirm(true)}
                     >
-                        Delete group and conversations
+                        Delete all
                     </button>
                 </div>
             </div>

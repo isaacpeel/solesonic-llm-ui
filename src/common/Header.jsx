@@ -4,7 +4,7 @@ import {useSharedData} from "../context/useSharedData.jsx";
 import UserDialog from "../user/UserDialog.jsx";
 import {ArrowRightEndOnRectangleIcon, ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid/index.js";
 import {PencilSquareIcon} from "@heroicons/react/24/solid/index.js";
-import ChatHistory from "../chat/ChatHistory.jsx";
+import ChatHistory from "../chat/message/ChatHistory.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 
 const Header = () => {

@@ -12,7 +12,7 @@ vi.mock('loglevel', () => ({
     default: {error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()},
 }));
 
-import DeleteChatDialog from '../../src/chat/DeleteChatDialog.jsx';
+import DeleteChatDialog from '../../src/chat/message/DeleteChatDialog.jsx';
 import chatService from '../../src/service/ChatService.js';
 
 /* The dialog is portalled to document.body, so it is never inside the render container. */

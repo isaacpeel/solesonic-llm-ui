@@ -13,11 +13,11 @@ import ChatGroupDialogs from "./ChatGroupDialogs.jsx";
 import ChatGroupSection, {isChatGroupRow} from "./ChatGroupSection.jsx";
 import ChatNameInput from "./ChatNameInput.jsx";
 import DeleteChatDialog from "./DeleteChatDialog.jsx";
-import {useSharedData} from "../context/useSharedData.jsx";
-import usePagedChatHistory from "../hooks/usePagedChatHistory.js";
-import useChatGroupSections from "../hooks/useChatGroupSections.js";
-import chatService from "../service/ChatService.js";
-import {groupChatsByDay, partitionGroupedChats} from "../util/chatHistoryGrouping.js";
+import {useSharedData} from "../../context/useSharedData.jsx";
+import usePagedChatHistory from "../../hooks/usePagedChatHistory.js";
+import useChatGroupSections from "../../hooks/useChatGroupSections.js";
+import chatService from "../../service/ChatService.js";
+import {groupChatsByDay, partitionGroupedChats} from "../../util/chatHistoryGrouping.js";
 import {
     CHAT_HISTORY_HEADER_ROW,
     chatFromRow,
@@ -25,14 +25,14 @@ import {
     chatHistoryRowLabel,
     estimateChatHistoryRowSize,
     flattenChatGroupsToRows,
-} from "../util/chatHistoryRows.js";
+} from "../../util/chatHistoryRows.js";
 import {
     DROP_AFTER,
     DROP_BEFORE,
     DROP_ONTO,
     NEW_GROUP_DROP_ATTRIBUTE,
-} from "../util/chatHistoryDrag.js";
-import useChatHistoryDrag from "../hooks/useChatHistoryDrag.js";
+} from "../../util/chatHistoryDrag.js";
+import useChatHistoryDrag from "../../hooks/useChatHistoryDrag.js";
 
 /* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
 const OVERSCAN_ROWS = 4;

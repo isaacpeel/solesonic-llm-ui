@@ -4,8 +4,8 @@ import log from "loglevel";
 
 import "./DeleteChatDialog.css";
 import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
-import {handleDialogKeyDown} from "../util/dialogFocus.js";
-import chatService from "../service/ChatService.js";
+import {handleDialogKeyDown} from "../../util/dialogFocus.js";
+import chatService from "../../service/ChatService.js";
 
 const DELETE_FAILED_ERROR = "Could not delete the conversation. Please try again.";
 
