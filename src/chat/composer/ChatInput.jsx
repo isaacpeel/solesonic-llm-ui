@@ -4,7 +4,7 @@ import './ChatInput.css';
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
-import {ACCEPTED_IMAGE_CONTENT_TYPES} from '../../util/imageValidation.js';
+import {ACCEPTED_ATTACHMENT_CONTENT_TYPES} from '../../util/imageValidation.js';
 
 function ChatInput({
     loading,
@@ -67,7 +67,7 @@ function ChatInput({
     /*
      * Pasting is the primary attach path, and it is the one handler that cannot move into
      * ComposerAttachments — the paste target has to be the textarea itself. A paste
-     * carrying both text and an image keeps the text.
+     * carrying both text and a file keeps the text.
      */
     const handlePaste = (event) => {
         if (loading || !addFiles) {
@@ -75,12 +75,12 @@ function ChatInput({
         }
 
         const clipboardItems = Array.from(event.clipboardData?.items || []);
-        const imageFiles = clipboardItems
-            .filter((clipboardItem) => clipboardItem.kind === 'file' && ACCEPTED_IMAGE_CONTENT_TYPES.includes(clipboardItem.type))
+        const attachableFiles = clipboardItems
+            .filter((clipboardItem) => clipboardItem.kind === 'file' && ACCEPTED_ATTACHMENT_CONTENT_TYPES.includes(clipboardItem.type))
             .map((clipboardItem) => clipboardItem.getAsFile())
             .filter((clipboardFile) => !!clipboardFile);
 
-        if (imageFiles.length === 0) {
+        if (attachableFiles.length === 0) {
             return;
         }
 
@@ -90,7 +90,7 @@ function ChatInput({
             event.preventDefault();
         }
 
-        addFiles(imageFiles);
+        addFiles(attachableFiles);
     };
 
     return (

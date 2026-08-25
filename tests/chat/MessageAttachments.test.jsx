@@ -99,4 +99,31 @@ describe('MessageAttachments', () => {
 
         expect(screen.queryByLabelText('Remove one.png')).toBeNull();
     });
+
+    it('renders a document attachment as a file icon rather than an image', () => {
+        const {container} = render(
+            <MessageAttachments attachments={[{id: 'a1', fileName: 'notes.pdf', contentType: 'application/pdf'}]}/>
+        );
+
+        expect(container.querySelector('.attachment-thumbnail-file')).toBeTruthy();
+        expect(container.querySelector('img')).toBeNull();
+    });
+
+    it('infers a document attachment from its file name when no content type is given', () => {
+        const {container} = render(<MessageAttachments attachments={[{id: 'a1', fileName: 'notes.pdf'}]}/>);
+
+        expect(container.querySelector('.attachment-thumbnail-file')).toBeTruthy();
+    });
+
+    it('offers no expand control for a document attachment even with an onExpand handler', () => {
+        const onExpand = vi.fn();
+        render(
+            <MessageAttachments
+                attachments={[{id: 'a1', fileName: 'notes.pdf', contentType: 'application/pdf'}]}
+                onExpand={onExpand}
+            />
+        );
+
+        expect(screen.queryByLabelText('Expand notes.pdf')).toBeNull();
+    });
 });

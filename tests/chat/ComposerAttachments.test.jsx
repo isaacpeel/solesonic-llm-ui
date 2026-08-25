@@ -104,7 +104,7 @@ describe('ComposerAttachments', () => {
     it('disables the attach button while loading', () => {
         renderComposer({loading: true});
 
-        expect(screen.getByLabelText('Attach an image').disabled).toBe(true);
+        expect(screen.getByLabelText('Attach a file').disabled).toBe(true);
     });
 
     it('disables the attach button at the cap', () => {
@@ -117,7 +117,7 @@ describe('ComposerAttachments', () => {
             ],
         });
 
-        expect(screen.getByLabelText('Attachment limit of 4 images reached').disabled).toBe(true);
+        expect(screen.getByLabelText('Attachment limit of 4 files reached').disabled).toBe(true);
     });
 
     it('opens a single caption input for the toggled entry and reports the state upward', () => {

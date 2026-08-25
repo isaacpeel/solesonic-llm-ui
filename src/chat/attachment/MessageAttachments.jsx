@@ -24,6 +24,7 @@ function MessageAttachment({attachment, onExpand}) {
         <AttachmentThumbnail
             objectUrl={objectUrl}
             fileName={attachment.fileName}
+            contentType={attachment.contentType}
             description={attachment.description}
             status={loading ? 'uploading' : 'ready'}
             onExpand={objectUrl && onExpand ? () => onExpand({...attachment, objectUrl}) : undefined}

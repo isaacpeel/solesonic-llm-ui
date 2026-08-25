@@ -132,32 +132,34 @@ The UI communicates with the Solesonic backend using REST and SSE streaming. Aut
   - MCP `notifications/progress` frames are detected ahead of the event switch and rendered as
     the message’s step log rather than as reply content
 
-### Image Attachments
+### Attachments
 
-Users can attach up to four images per message by pasting into the composer, dropping onto it,
-or using the paperclip button. PNG, JPEG, GIF and WebP are accepted up to 20MB; anything over
-5MB is downscaled client-side (`src/util/downscaleImage.js`) because that is the limit the
-vision model can read. Animated GIFs are never downscaled — canvas re-encoding would flatten
-them to a single frame.
+Users can attach up to four files per message by pasting into the composer, dropping onto it,
+or using the paperclip button. Accepted types (`src/util/imageValidation.js`) are PNG, JPEG,
+GIF, WebP, PDF, plain text, Markdown, HTML, CSV, XML, JSON and RTF, up to 20MB each. Images over
+5MB are downscaled client-side (`src/util/downscaleImage.js`) because that is the limit the
+vision model can read; non-image files are uploaded as-is. Animated GIFs are never downscaled —
+canvas re-encoding would flatten them to a single frame. Attachments whose type cannot be
+previewed render as a generic file icon (`AttachmentThumbnail`) rather than a thumbnail.
 
 Flow:
 
-1. Each selected image is uploaded immediately to `POST /attachments`
+1. Each selected file is uploaded immediately to `POST /attachments`
    (`src/service/AttachmentService.js`) and appears in the composer tray
    (`src/hooks/useAttachmentTray.js`). Removing one issues a `DELETE`.
 2. A caption is stored as the attachment’s `description`. The backend only accepts it on the
    initial multipart upload, so a caption typed after staging is committed on send by
-   re-staging the image and deleting the superseded copy. The new upload always completes
-   before the old id is deleted, so a failure loses the caption rather than the image.
+   re-staging the file and deleting the superseded copy. The new upload always completes
+   before the old id is deleted, so a failure loses the caption rather than the file.
 3. On send, the staged ids go out as `attachmentIds` on the chat payload — omitted entirely
    when nothing is attached.
 4. The tray is cleared only once an `init` frame arrives. If the stream ends without one,
    nothing was bound server-side, so the ids are still valid: the message text and the tray are
    both restored for a retry.
-5. Sent images render on their `USER` bubble via `MessageAttachments`, resolving through a
-   ref-counted blob-URL cache (`src/util/attachmentObjectUrlCache.js`) so an image is fetched
-   at most once and an optimistic bubble reuses the bytes it already has. Clicking a thumbnail
-   opens a focus-trapped lightbox.
+5. Sent attachments render on their `USER` bubble via `MessageAttachments`, resolving through a
+   ref-counted blob-URL cache (`src/util/attachmentObjectUrlCache.js`) so a file is fetched
+   at most once and an optimistic bubble reuses the bytes it already has. Clicking an image
+   thumbnail opens a focus-trapped lightbox; non-image attachments have no lightbox.
 
 Staged ids are kept in `sessionStorage` scoped by chat id and revalidated against the server on
 restore, so a reload does not resurrect an attachment the backend has already discarded.

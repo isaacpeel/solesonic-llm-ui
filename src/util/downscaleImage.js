@@ -61,6 +61,10 @@ export async function downscaleImage(candidateFile) {
         return candidateFile;
     }
 
+    if (!candidateFile.type?.startsWith('image/')) {
+        return candidateFile;
+    }
+
     if (CONTENT_TYPES_EXEMPT_FROM_DOWNSCALE.includes(candidateFile.type)) {
         return candidateFile;
     }

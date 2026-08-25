@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {PaperClipIcon} from '@heroicons/react/20/solid';
 import AttachmentTray from '../attachment/AttachmentTray.jsx';
-import {ACCEPTED_IMAGE_ACCEPT_ATTRIBUTE, MAX_ATTACHMENTS_PER_MESSAGE} from '../../util/imageValidation.js';
+import {ACCEPTED_ATTACHMENT_ACCEPT_ATTRIBUTE, MAX_ATTACHMENTS_PER_MESSAGE} from '../../util/imageValidation.js';
 import './ComposerAttachments.css';
 
 function ComposerAttachments({
@@ -134,8 +134,8 @@ function ComposerAttachments({
                     className="composer-attach-button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={loading || isAtCap}
-                    aria-label={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} images reached` : 'Attach an image'}
-                    title={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} images reached` : 'Attach an image'}
+                    aria-label={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} files reached` : 'Attach a file'}
+                    title={isAtCap ? `Attachment limit of ${MAX_ATTACHMENTS_PER_MESSAGE} files reached` : 'Attach a file'}
                 >
                     <PaperClipIcon/>
                 </button>
@@ -148,7 +148,7 @@ function ComposerAttachments({
                 className="composer-attachment-file-input"
                 type="file"
                 multiple
-                accept={ACCEPTED_IMAGE_ACCEPT_ATTRIBUTE}
+                accept={ACCEPTED_ATTACHMENT_ACCEPT_ATTRIBUTE}
                 onChange={handleFileInputChange}
                 tabIndex={-1}
                 aria-hidden="true"

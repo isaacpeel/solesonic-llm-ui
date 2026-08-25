@@ -538,11 +538,11 @@ describe('useChatStream with attachments', () => {
         await submitWith(result, 'look at these');
 
         const aiPlaceholder = setChatHistory.mock.calls[0][0][1];
-        expect(aiPlaceholder.notifications).toEqual(['Reading 2 images…']);
+        expect(aiPlaceholder.notifications).toEqual(['Reading 2 files…']);
         expect(aiPlaceholder.hasSeededNotification).toBe(true);
     });
 
-    it('uses the singular form for one image', async () => {
+    it('uses the singular form for one file', async () => {
         options.attachmentTray = makeAttachmentTray({
             commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
         });
@@ -550,7 +550,7 @@ describe('useChatStream with attachments', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'look at this');
 
-        expect(setChatHistory.mock.calls[0][0][1].notifications).toEqual(['Reading 1 image…']);
+        expect(setChatHistory.mock.calls[0][0][1].notifications).toEqual(['Reading 1 file…']);
     });
 
     it('seeds nothing when no attachments were sent', async () => {

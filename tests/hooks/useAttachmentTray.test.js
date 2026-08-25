@@ -90,12 +90,28 @@ describe('addFiles', () => {
         const {result} = renderHook(() => useAttachmentTray());
 
         await act(async () => {
-            result.current.addFiles([fakeFile({name: 'notes.pdf', type: 'application/pdf'})]);
+            result.current.addFiles([fakeFile({name: 'archive.zip', type: 'application/zip'})]);
         });
 
         expect(result.current.trayEntries).toHaveLength(0);
-        expect(result.current.trayError).toContain('PNG, JPEG, GIF and WebP');
+        expect(result.current.trayError).toContain('not supported');
         expect(attachmentService.stageAttachment).not.toHaveBeenCalled();
+    });
+
+    it('stages an accepted document and marks it ready', async () => {
+        const {result} = renderHook(() => useAttachmentTray());
+
+        await act(async () => {
+            result.current.addFiles([fakeFile({name: 'notes.pdf', type: 'application/pdf'})]);
+        });
+
+        expect(result.current.trayEntries).toHaveLength(1);
+        expect(result.current.trayEntries[0]).toMatchObject({
+            fileName: 'notes.pdf',
+            contentType: 'application/pdf',
+            status: 'ready',
+            attachmentId: 'attachment-1',
+        });
     });
 
     it('caps the tray at four images and says how many were dropped', async () => {
@@ -132,7 +148,7 @@ describe('addFiles', () => {
         });
 
         expect(result.current.trayEntries).toHaveLength(4);
-        expect(result.current.trayError).toContain('up to 4 images');
+        expect(result.current.trayError).toContain('up to 4 files');
     });
 
     it('lets one upload fail without blocking the others', async () => {

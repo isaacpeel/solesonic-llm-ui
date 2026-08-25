@@ -11,7 +11,7 @@ import {
 } from '../util/attachmentDraftStorage.js';
 import {
     MAX_ATTACHMENTS_PER_MESSAGE,
-    validateImageFile,
+    validateAttachmentFile,
     withInferredContentType,
 } from '../util/imageValidation.js';
 
@@ -28,12 +28,12 @@ const STALE_ATTACHMENT_STATUSES = [404, 409];
 function messageForUploadFailure(caughtError) {
     switch (caughtError?.status) {
         case 415:
-            return 'That image type is not supported';
+            return 'That file type is not supported';
         case 413:
-            return 'That image is too large to upload';
+            return 'That file is too large to upload';
         case 409:
         case 404:
-            return 'This image is no longer available, please re-attach it';
+            return 'This file is no longer available, please re-attach it';
         case 401:
             return 'Your session expired while uploading';
         default:
@@ -112,7 +112,7 @@ function useAttachmentTray({chatId} = {}) {
         const availableSlots = MAX_ATTACHMENTS_PER_MESSAGE - trayEntriesRef.current.length;
 
         if (availableSlots <= 0) {
-            setTrayError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} images per message`);
+            setTrayError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message`);
             return;
         }
 
@@ -127,7 +127,7 @@ function useAttachmentTray({chatId} = {}) {
             }
 
             const typedFile = withInferredContentType(candidateFile);
-            const validationResult = validateImageFile(typedFile);
+            const validationResult = validateAttachmentFile(typedFile);
 
             if (!validationResult.valid) {
                 rejectionReasons.push(`${typedFile?.name || 'That file'}: ${validationResult.reason}`);
@@ -154,7 +154,7 @@ function useAttachmentTray({chatId} = {}) {
         const problemMessages = [...rejectionReasons];
 
         if (droppedForCapCount > 0) {
-            problemMessages.push(`${droppedForCapCount} image${droppedForCapCount === 1 ? ' was' : 's were'} not attached — the limit is ${MAX_ATTACHMENTS_PER_MESSAGE} per message`);
+            problemMessages.push(`${droppedForCapCount} file${droppedForCapCount === 1 ? ' was' : 's were'} not attached — the limit is ${MAX_ATTACHMENTS_PER_MESSAGE} per message`);
         }
 
         setTrayError(problemMessages.length > 0 ? problemMessages.join('. ') : null);

@@ -22,7 +22,7 @@ const TERMINAL_STREAM_EVENTS = [DONE, ERROR, ELICITATION];
  * guarantees the image never gets read.
  */
 const VISION_WARMUP_NOTICE_DELAY_MILLISECONDS = 20000;
-const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the vision model may be warming up…';
+const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the model may be warming up…';
 
 function useChatStream({
     chatId,
@@ -175,7 +175,7 @@ function useChatStream({
          * Seed one local step so that gap is not silent; the first real frame replaces it.
          */
         const seededNotifications = attachmentIds.length > 0
-            ? [`Reading ${attachmentIds.length} ${attachmentIds.length === 1 ? 'image' : 'images'}…`]
+            ? [`Reading ${attachmentIds.length} ${attachmentIds.length === 1 ? 'file' : 'files'}…`]
             : [];
 
         const aiPlaceholder = {
@@ -300,8 +300,8 @@ function useChatStream({
                 attachmentTray?.restoreTray(settledEntries);
                 setError(new Error(
                     selectedCommand
-                        ? 'Your message could not be sent. Your text and images have been restored — please re-select the command and try again.'
-                        : 'Your message could not be sent. Your text and images have been restored — please try again.'
+                        ? 'Your message could not be sent. Your text and attachments have been restored — please re-select the command and try again.'
+                        : 'Your message could not be sent. Your text and attachments have been restored — please try again.'
                 ));
 
                 return;
@@ -336,7 +336,7 @@ function useChatStream({
 
             if (entriesWithLostCaptions.length > 0) {
                 const affectedFileNames = entriesWithLostCaptions.map((entry) => entry.fileName).join(', ');
-                setAttachmentNotice(`Your note on ${affectedFileNames} could not be saved. The image was still sent.`);
+                setAttachmentNotice(`Your note on ${affectedFileNames} could not be saved. The file was still sent.`);
             }
         } catch (caughtError) {
             if (caughtError.name === 'AbortError') {
