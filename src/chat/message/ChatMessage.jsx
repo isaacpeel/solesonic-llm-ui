@@ -7,6 +7,7 @@ import MessageAttachments from "../attachment/MessageAttachments.jsx";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
 import MessageCopyButton from "./MessageCopyButton.jsx";
 import MessageTimestamp from "./MessageTimestamp.jsx";
+import MessageResponseMetadata from "./MessageResponseMetadata.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -16,8 +17,8 @@ export const AI = "ASSISTANT";
 export const SYSTEM = "SYSTEM";
 
 const TYPE_COLORS = {
-    [USER]:   {bgColor: '#e0e0e0', textColor: '#000'},
-    [AI]:     {bgColor: '#4a4a4a', textColor: '#dedede'},
+    [USER]: {bgColor: '#e0e0e0', textColor: '#000'},
+    [AI]: {bgColor: '#4a4a4a', textColor: '#dedede'},
     [SYSTEM]: {bgColor: '#3b4d61', textColor: '#ffffff'},
 };
 
@@ -155,6 +156,7 @@ function ChatMessage({message, onExpandImage}) {
                     {messageCard}
                     <div className="message-actions">
                         <span className="message-model-name">{modelName}</span>
+                        <MessageResponseMetadata responseMetadata={message.responseMetadata}/>
                         <MessageCopyButton text={message.text}/>
                         <MessageTimestamp timestamp={message.timestamp} nowMilliseconds={nowMilliseconds}/>
                     </div>

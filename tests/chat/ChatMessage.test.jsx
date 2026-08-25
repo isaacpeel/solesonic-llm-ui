@@ -16,44 +16,44 @@ function buildMessage(overrides) {
 describe('ChatMessage', () => {
     describe('message type rendering', () => {
         it('renders USER message with USER type class', () => {
-            const {container} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'Hello'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'Hello'})}/>);
             expect(container.querySelector('.chat-message-container.USER')).not.toBeNull();
         });
 
         it('does not render info-icon wrapper for USER messages', () => {
-            const {container} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'Hello'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'Hello'})}/>);
             expect(container.querySelector('.info-icon-wrapper')).toBeNull();
         });
 
         it('renders AI message with ASSISTANT type class', () => {
-            const {container} = render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Hi there'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Hi there'})}/>);
             expect(container.querySelector('.chat-message-container.ASSISTANT')).not.toBeNull();
         });
 
         it('renders info-icon wrapper for AI messages', () => {
-            const {container} = render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Hi'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Hi'})}/>);
             expect(container.querySelector('.info-icon-wrapper')).not.toBeNull();
         });
 
         it('renders SYSTEM message with SYSTEM type class', () => {
-            const {container} = render(<ChatMessage message={buildMessage({type: 'SYSTEM', text: 'System info'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({type: 'SYSTEM', text: 'System info'})}/>);
             expect(container.querySelector('.chat-message-container.SYSTEM')).not.toBeNull();
         });
 
         it('renders info-icon wrapper for SYSTEM messages', () => {
-            const {container} = render(<ChatMessage message={buildMessage({type: 'SYSTEM', text: 'System info'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({type: 'SYSTEM', text: 'System info'})}/>);
             expect(container.querySelector('.info-icon-wrapper')).not.toBeNull();
         });
     });
 
     describe('placeholder', () => {
         it('shows "Thinking..." when AI message is streaming with no text and no notifications', () => {
-            render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: '', isStreaming: true})} />);
+            render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: '', isStreaming: true})}/>);
             expect(screen.getByText('Thinking...')).toBeDefined();
         });
 
         it('does not show placeholder when text is present', () => {
-            render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Some text', isStreaming: true})} />);
+            render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Some text', isStreaming: true})}/>);
             expect(screen.queryByText('Thinking...')).toBeNull();
         });
 
@@ -63,7 +63,7 @@ describe('ChatMessage', () => {
                 text: '',
                 isStreaming: true,
                 notifications: ['Step 1'],
-            })} />);
+            })}/>);
             expect(screen.queryByText('Thinking...')).toBeNull();
         });
     });
@@ -74,7 +74,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Do you accept?',
                 elicitationResponse: 'accept',
-            })} />);
+            })}/>);
             expect(container.querySelector('.elicitation-resolved')).not.toBeNull();
         });
 
@@ -83,7 +83,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Do you accept?',
                 elicitationResponse: 'accept',
-            })} />);
+            })}/>);
             expect(container.querySelector('.elicitation-resolved-badge--positive')).not.toBeNull();
         });
 
@@ -92,7 +92,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Continue?',
                 elicitationResponse: 'yes',
-            })} />);
+            })}/>);
             expect(container.querySelector('.elicitation-resolved-badge--positive')).not.toBeNull();
         });
 
@@ -101,7 +101,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Do you accept?',
                 elicitationResponse: 'decline',
-            })} />);
+            })}/>);
             expect(container.querySelector('.elicitation-resolved-badge--negative')).not.toBeNull();
         });
 
@@ -110,7 +110,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Continue?',
                 elicitationResponse: 'no',
-            })} />);
+            })}/>);
             expect(container.querySelector('.elicitation-resolved-badge--negative')).not.toBeNull();
         });
 
@@ -119,7 +119,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Question?',
                 elicitationResponse: 'maybe',
-            })} />);
+            })}/>);
             expect(container.querySelector('.elicitation-resolved-badge--neutral')).not.toBeNull();
         });
 
@@ -128,7 +128,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Question?',
                 elicitationResponse: 'ACCEPT',
-            })} />);
+            })}/>);
             expect(screen.getByText('✓ Accept')).toBeDefined();
         });
 
@@ -137,7 +137,7 @@ describe('ChatMessage', () => {
                 type: 'SYSTEM',
                 text: 'Do you agree?',
                 elicitationResponse: 'yes',
-            })} />);
+            })}/>);
             expect(screen.getByText('Do you agree?')).toBeDefined();
         });
     });
@@ -149,7 +149,7 @@ describe('ChatMessage', () => {
                 text: 'Done',
                 isStreaming: false,
                 notifications: ['Step 1'],
-            })} />);
+            })}/>);
             expect(container.querySelector('.notification-log')).not.toBeNull();
         });
 
@@ -158,7 +158,7 @@ describe('ChatMessage', () => {
                 type: 'USER',
                 text: 'Hello',
                 notifications: ['Step 1'],
-            })} />);
+            })}/>);
             expect(container.querySelector('.notification-log')).toBeNull();
         });
 
@@ -168,7 +168,7 @@ describe('ChatMessage', () => {
                 text: 'Do you accept?',
                 elicitationResponse: 'yes',
                 notifications: ['Step 1'],
-            })} />);
+            })}/>);
             expect(container.querySelector('.notification-log')).toBeNull();
         });
     });
@@ -179,7 +179,7 @@ describe('ChatMessage', () => {
                 type: 'ASSISTANT',
                 text: 'Hello **world**',
                 isStreaming: false,
-            })} />);
+            })}/>);
             expect(container.querySelector('.markdown-body')).not.toBeNull();
         });
 
@@ -188,7 +188,7 @@ describe('ChatMessage', () => {
                 type: 'ASSISTANT',
                 text: '[click here](https://example.com)',
                 isStreaming: false,
-            })} />);
+            })}/>);
             const anchor = container.querySelector('a');
             expect(anchor).not.toBeNull();
             expect(anchor.getAttribute('target')).toBe('_blank');
@@ -202,7 +202,7 @@ describe('ChatMessage', () => {
                 type: 'USER',
                 text: 'look at this',
                 attachments: [{id: 'a1', fileName: 'one.png', localObjectUrl: 'blob:local-1'}],
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-attachments')).not.toBeNull();
             expect(screen.getByAltText('one.png')).toBeTruthy();
@@ -213,7 +213,7 @@ describe('ChatMessage', () => {
                 type: 'ASSISTANT',
                 text: 'here is my answer',
                 attachments: [{id: 'a1', fileName: 'one.png', localObjectUrl: 'blob:local-1'}],
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-attachments')).toBeNull();
         });
@@ -223,13 +223,13 @@ describe('ChatMessage', () => {
                 type: 'USER',
                 text: 'plain',
                 attachments: [],
-            })} />);
+            })}/>);
             expect(emptyContainer.querySelector('.message-attachments')).toBeNull();
 
             const {container: missingContainer} = render(<ChatMessage message={buildMessage({
                 type: 'USER',
                 text: 'plain',
-            })} />);
+            })}/>);
             expect(missingContainer.querySelector('.message-attachments')).toBeNull();
         });
 
@@ -237,7 +237,7 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'I am not sure which flowers you mean.',
                 visionStepUnconfirmed: true,
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-vision-unconfirmed')).not.toBeNull();
         });
@@ -246,14 +246,14 @@ describe('ChatMessage', () => {
             const {container: confirmedContainer} = render(<ChatMessage message={buildMessage({
                 text: 'Those are hydrangeas.',
                 visionStepUnconfirmed: false,
-            })} />);
+            })}/>);
             expect(confirmedContainer.querySelector('.message-vision-unconfirmed')).toBeNull();
 
             const {container: userContainer} = render(<ChatMessage message={buildMessage({
                 type: 'USER',
                 text: 'what are these',
                 visionStepUnconfirmed: true,
-            })} />);
+            })}/>);
             expect(userContainer.querySelector('.message-vision-unconfirmed')).toBeNull();
         });
 
@@ -262,7 +262,7 @@ describe('ChatMessage', () => {
                 type: 'USER',
                 text: 'what is wrong here',
                 attachments: [{id: 'a1', fileName: 'one.png', localObjectUrl: 'blob:local-1'}],
-            })} />);
+            })}/>);
 
             expect(screen.getByText('what is wrong here')).toBeTruthy();
             expect(screen.getByAltText('one.png')).toBeTruthy();
@@ -289,12 +289,12 @@ describe('ChatMessage', () => {
         });
 
         it('renders on a finished ASSISTANT message', () => {
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
             expect(container.querySelector('.message-copy-button')).not.toBeNull();
         });
 
         it('renders in an action row beneath the card', () => {
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
             expect(wrapper).not.toBeNull();
@@ -306,7 +306,7 @@ describe('ChatMessage', () => {
 
         /* Touch devices have no hover to reveal with, so a tap on the message stands in. */
         it('marks the action row revealed once the message is clicked', () => {
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
             expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
@@ -318,7 +318,7 @@ describe('ChatMessage', () => {
 
         /* The row goes back to being hover-driven the moment the pointer leaves, copied or not. */
         it('clears the revealed flag when the pointer leaves a message it just copied', async () => {
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
             fireEvent.click(wrapper.querySelector('.message-copy-button'));
@@ -336,7 +336,7 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 timestamp: twoDaysAgo,
-            })} />);
+            })}/>);
 
             const timestamp = container.querySelector('.message-actions .message-timestamp');
             expect(timestamp).not.toBeNull();
@@ -345,7 +345,7 @@ describe('ChatMessage', () => {
 
         /* An unparseable or absent stamp must leave the copy button alone, not print "Invalid Date". */
         it('renders no timestamp when the message carries none', () => {
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             expect(container.querySelector('.message-timestamp')).toBeNull();
             expect(container.querySelector('.message-copy-button')).not.toBeNull();
@@ -355,7 +355,7 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 type: 'USER',
                 text: 'my question',
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-with-actions')).toBeNull();
             expect(container.querySelector('.message')).not.toBeNull();
@@ -365,7 +365,7 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'partial',
                 isStreaming: true,
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-copy-button')).toBeNull();
         });
@@ -374,19 +374,19 @@ describe('ChatMessage', () => {
             const {container: userContainer} = render(<ChatMessage message={buildMessage({
                 type: 'USER',
                 text: 'my question',
-            })} />);
+            })}/>);
             expect(userContainer.querySelector('.message-copy-button')).toBeNull();
 
             const {container: systemContainer} = render(<ChatMessage message={buildMessage({
                 type: 'SYSTEM',
                 text: 'system info',
-            })} />);
+            })}/>);
             expect(systemContainer.querySelector('.message-copy-button')).toBeNull();
 
             const {container: elicitationContainer} = render(<ChatMessage message={buildMessage({
                 text: 'Do you accept?',
                 elicitationResponse: 'accept',
-            })} />);
+            })}/>);
             expect(elicitationContainer.querySelector('.message-copy-button')).toBeNull();
         });
 
@@ -394,7 +394,7 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: '   ',
                 notifications: ['Step 1'],
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-copy-button')).toBeNull();
         });
@@ -404,7 +404,7 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'Hi! How can I assist you today?',
                 ephemeral: true,
-            })} />);
+            })}/>);
 
             expect(container.querySelector('.message-with-actions')).toBeNull();
             expect(container.querySelector('.message-actions')).toBeNull();
@@ -414,15 +414,58 @@ describe('ChatMessage', () => {
         /* The bubble shows rendered HTML; the clipboard must get the markdown behind it. */
         it('copies the raw markdown rather than the rendered text', async () => {
             const markdown = '## Heading\n\n- one\n- two\n\n`code`';
-            const {container} = render(<ChatMessage message={buildMessage({text: markdown})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: markdown})}/>);
 
             fireEvent.click(container.querySelector('.message-copy-button'));
 
             await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdown));
         });
 
+        it('renders response metadata tokens/sec headline beside the model name', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    promptTokens: 412,
+                    completionTokens: 128,
+                    totalTokens: 540,
+                    tokensPerSecond: 34.7,
+                    timeToFirstTokenMillis: 380,
+                    durationMillis: 3690,
+                },
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('34.7 tok/s');
+            expect(responseMetadata.getAttribute('title')).toContain('Prompt tokens: 412');
+        });
+
+        it('falls back to duration when tokensPerSecond is null', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    promptTokens: null,
+                    completionTokens: null,
+                    totalTokens: null,
+                    tokensPerSecond: null,
+                    timeToFirstTokenMillis: 380,
+                    durationMillis: 3690,
+                },
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata.textContent).toBe('3.7 s');
+            expect(responseMetadata.getAttribute('title')).toContain('Prompt tokens: —');
+        });
+
+        it('renders no response metadata element when the message carries none', () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
+
+            expect(container.querySelector('.message-response-metadata')).toBeNull();
+        });
+
         it('confirms on the button once the copy resolves', async () => {
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             fireEvent.click(container.querySelector('.message-copy-button'));
 
@@ -431,7 +474,7 @@ describe('ChatMessage', () => {
 
         it('leaves the button unconfirmed when the clipboard write rejects', async () => {
             writeText.mockRejectedValue(new Error('denied'));
-            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})} />);
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             fireEvent.click(container.querySelector('.message-copy-button'));
 

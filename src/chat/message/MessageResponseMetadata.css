@@ -1,0 +1,11 @@
+/*
+ * Sits beside .message-model-name in .message-actions, which owns the reveal. Muted and small
+ * like the timestamp — a hover detail, not part of the answer.
+ */
+.message-response-metadata {
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--text-color);
+    opacity: 0.55;
+}

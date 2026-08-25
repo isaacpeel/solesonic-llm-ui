@@ -151,6 +151,14 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
                     text: finalText,
                     model: response?.message?.model ?? newHistory[lastIndex].model,
                     /*
+                     * Lives on `message`, next to `model` and `generatedImages` — not a sibling
+                     * of `message` on the envelope. `null` on a cancelled turn (the whole object,
+                     * not just its fields) — kept as-is rather than falling back, since a
+                     * cancelled turn has nothing meaningful to report and MessageResponseMetadata
+                     * already renders nothing for a null value.
+                     */
+                    responseMetadata: response?.message?.responseMetadata ?? null,
+                    /*
                      * The turn is only stamped here, not when the placeholder is pushed — a long
                      * answer would otherwise land already reading "2 minutes ago". Prefers the
                      * server's own stamp so a reload does not shift the label.
@@ -403,6 +411,8 @@ async function fetchFormattedChatMessages(chatId) {
             type: message.messageType,
             text: message.message,
             model: message.model,
+            /* Persisted alongside model/generatedImages, so a reloaded turn shows it too. */
+            responseMetadata: message.responseMetadata ?? null,
             messageId: message.id,
             /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
             timestamp: message.timestamp,

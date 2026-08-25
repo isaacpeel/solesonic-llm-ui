@@ -72,7 +72,16 @@ describe('useChatHistory', () => {
             const setHistoryUpdater = sharedState.setChatHistory.mock.calls[0][0];
             const mergedHistory = setHistoryUpdater([]);
             expect(mergedHistory).toEqual([
-                {type: AI, text: 'hello', model: 'model-1', messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
+                {
+                    type: AI,
+                    text: 'hello',
+                    model: 'model-1',
+                    responseMetadata: null,
+                    messageId: 'msg-1',
+                    attachments: [],
+                    generatedImages: [],
+                    _key: 'msg-1'
+                },
             ]);
         });
     });
@@ -101,11 +110,21 @@ describe('useChatHistory', () => {
         const mergedHistory = setHistoryUpdater(sharedState.chatHistory);
 
         expect(mergedHistory).toEqual([
-            {type: 'USER', text: 'question', model: undefined, messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
+            {
+                type: 'USER',
+                text: 'question',
+                model: undefined,
+                responseMetadata: null,
+                messageId: 'msg-1',
+                attachments: [],
+                generatedImages: [],
+                _key: 'msg-1'
+            },
             {
                 type: AI,
                 text: 'answer',
                 model: 'model-1',
+                responseMetadata: null,
                 messageId: 'msg-2',
                 attachments: [],
                 generatedImages: [],
@@ -163,6 +182,34 @@ describe('useChatHistory', () => {
         const updatedHistory = updater([{type: AI, text: 'old text', model: 'old-model', _key: 'ai-1'}]);
         expect(updatedHistory[0].text).toBe('old text');
         expect(updatedHistory[0].model).toBe('gpt-4');
+    });
+
+    it('finalizeLastAIMessage captures responseMetadata from message.responseMetadata on the done payload', () => {
+        const {result} = renderHook(() => useChatHistory());
+        const responseMetadata = {
+            promptTokens: 412,
+            completionTokens: 128,
+            totalTokens: 540,
+            tokensPerSecond: 34.7,
+            timeToFirstTokenMillis: 380,
+            durationMillis: 3690,
+        };
+
+        result.current.finalizeLastAIMessage({message: {message: 'answer', model: 'gpt-4', responseMetadata}});
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const updatedHistory = updater([{type: AI, text: 'old', _key: 'ai-1'}]);
+        expect(updatedHistory[0].responseMetadata).toEqual(responseMetadata);
+    });
+
+    it('finalizeLastAIMessage stores a null responseMetadata for a cancelled turn', () => {
+        const {result} = renderHook(() => useChatHistory());
+
+        result.current.finalizeLastAIMessage({message: {message: 'answer', model: 'gpt-4', responseMetadata: null}});
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const updatedHistory = updater([{type: AI, text: 'old', _key: 'ai-1'}]);
+        expect(updatedHistory[0].responseMetadata).toBeNull();
     });
 
     it('ensureChatIdFromResponse', () => {
@@ -354,7 +401,16 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         const result = updater(previousHistory);
 
         expect(result).toEqual([
-            {type: AI, text: 'answer', model: 'gpt-4', messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
+            {
+                type: AI,
+                text: 'answer',
+                model: 'gpt-4',
+                responseMetadata: null,
+                messageId: 'msg-1',
+                attachments: [],
+                generatedImages: [],
+                _key: 'msg-1'
+            },
         ]);
     });
 
@@ -608,7 +664,12 @@ describe('attachment-aware chat history', () => {
             chatService.findChatDetails.mockResolvedValue({
                 chatMessages: [
                     {id: 'msg-1', messageType: 'USER', message: 'look', attachments: [{id: 'attachment-1'}]},
-                    {id: 'msg-2', messageType: AI, message: '', progressData: {message: 'Reading attached image a.png'}},
+                    {
+                        id: 'msg-2',
+                        messageType: AI,
+                        message: '',
+                        progressData: {message: 'Reading attached image a.png'}
+                    },
                     {id: 'msg-3', messageType: AI, message: 'I see a banner'},
                 ],
             });
@@ -621,6 +682,48 @@ describe('attachment-aware chat history', () => {
             expect(mappedHistory).toHaveLength(2);
             expect(mappedHistory[0].attachments).toEqual([{id: 'attachment-1'}]);
             expect(mappedHistory[1].notifications).toEqual(['Reading attached image a.png']);
+        });
+    });
+
+    describe('responseMetadata mapping', () => {
+        it('carries responseMetadata through from a fetched AI message', async () => {
+            sharedState.chatId = 'chat-1';
+            const responseMetadata = {
+                promptTokens: 412,
+                completionTokens: 128,
+                totalTokens: 540,
+                tokensPerSecond: 34.7,
+                timeToFirstTokenMillis: 380,
+                durationMillis: 3690,
+            };
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: AI, message: 'answer', model: 'gpt-4', responseMetadata},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].responseMetadata).toEqual(responseMetadata);
+        });
+
+        it('normalises a missing responseMetadata field to null', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: AI, message: 'answer', model: 'gpt-4'},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].responseMetadata).toBeNull();
         });
     });
 
