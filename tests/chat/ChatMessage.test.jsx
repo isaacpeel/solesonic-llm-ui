@@ -269,6 +269,34 @@ describe('ChatMessage', () => {
         });
     });
 
+    describe('model name', () => {
+        it('prefers the model name from responseMetadata over the top-level model field', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                model: 'legacy-model',
+                responseMetadata: {model: 'gpt-4o'},
+            })}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('gpt-4o');
+        });
+
+        it('falls back to the top-level model field when responseMetadata carries none', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                model: 'legacy-model',
+                responseMetadata: {},
+            })}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('legacy-model');
+        });
+
+        it('falls back to "AI Assistant" when neither field carries a model', () => {
+            const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('AI Assistant');
+        });
+    });
+
     describe('copy button', () => {
         let writeText;
         let originalClipboardDescriptor;

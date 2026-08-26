@@ -38,7 +38,7 @@ function ChatMessage({message, onExpandImage}) {
     const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
 
     const containerClass = isElicitation ? SYSTEM : message.type;
-    const modelName = message.model || 'AI Assistant';
+    const modelName = message.responseMetadata?.model || message.model || 'AI Assistant';
     const cardClassName = isElicitation ? 'SYSTEM elicitation-resolved' : message.type;
     const typeColors = isElicitation ? TYPE_COLORS[SYSTEM] : (TYPE_COLORS[message.type] || TYPE_COLORS[SYSTEM]);
 
