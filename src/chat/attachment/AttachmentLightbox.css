@@ -5,7 +5,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 12px;
     background-color: rgba(0, 0, 0, 0.75);
 }
 
@@ -15,15 +15,22 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    max-width: 90vw;
-    max-height: 90vh;
+    max-width: 98vw;
+    max-height: 98vh;
 }
 
 .attachment-lightbox-image {
     max-width: 100%;
-    max-height: 80vh;
+    max-height: 92vh;
     object-fit: contain;
     border-radius: 4px;
+}
+
+.attachment-lightbox-caption-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    max-width: 100%;
 }
 
 .attachment-lightbox-caption {
@@ -33,6 +40,15 @@
     line-height: 1.4;
     text-align: center;
     color: #ffffff;
+}
+
+.attachment-lightbox-caption-row .message-copy-button svg {
+    color: #ffffff;
+    opacity: 0.7;
+}
+
+.attachment-lightbox-caption-row .message-copy-button:hover svg {
+    opacity: 1;
 }
 
 .attachment-lightbox-close {

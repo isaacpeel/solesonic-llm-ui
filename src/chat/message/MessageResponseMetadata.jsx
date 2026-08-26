@@ -33,13 +33,21 @@ function buildMetadataText({promptTokens, completionTokens, totalTokens, tokensP
     return segments.join(' · ');
 }
 
+function hasAnyMetadataValue(responseMetadata) {
+    const {promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis} = responseMetadata;
+
+    return [promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis]
+        .some((value) => typeof value === 'number');
+}
+
 /*
  * Sits beside the model name in .message-actions. Absent entirely on a cancelled turn (the
- * whole responseMetadata object is null there) or on a message never sent through the `done`
- * event at all — e.g. one loaded from history before the backend added this field.
+ * whole responseMetadata object is null there), on a message never sent through the `done`
+ * event at all — e.g. one loaded from history before the backend added this field — or when
+ * every field on the object came back empty.
  */
 function MessageResponseMetadata({responseMetadata}) {
-    if (!responseMetadata) {
+    if (!responseMetadata || !hasAnyMetadataValue(responseMetadata)) {
         return null;
     }
 
