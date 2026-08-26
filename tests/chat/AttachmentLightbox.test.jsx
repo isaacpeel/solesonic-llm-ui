@@ -43,7 +43,13 @@ describe('AttachmentLightbox', () => {
 
         expect(container.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('the error banner');
         expect(screen.getByAltText('the error banner')).toBeTruthy();
-        expect(screen.getByText('the error banner')).toBeTruthy();
+    });
+
+    it('shows nothing but the image itself, even when a description is present', () => {
+        const {container} = renderLightbox({description: 'the error banner'});
+
+        expect(container.querySelector('.attachment-lightbox-caption')).toBeNull();
+        expect(container.querySelector('.message-copy-button')).toBeNull();
     });
 
     it('closes on Escape', () => {

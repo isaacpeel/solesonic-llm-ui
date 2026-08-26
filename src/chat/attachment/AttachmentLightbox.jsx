@@ -1,6 +1,5 @@
 import {useEffect, useRef} from 'react';
 import {XMarkIcon} from '@heroicons/react/20/solid';
-import MessageCopyButton from '../message/MessageCopyButton.jsx';
 import './AttachmentLightbox.css';
 
 /*
@@ -73,13 +72,6 @@ function AttachmentLightbox({attachment, onClose}) {
                     src={attachment.objectUrl}
                     alt={altText}
                 />
-
-                {attachment.description && (
-                    <div className="attachment-lightbox-caption-row">
-                        <p className="attachment-lightbox-caption">{attachment.description}</p>
-                        <MessageCopyButton text={attachment.description}/>
-                    </div>
-                )}
             </div>
         </div>
     );
