@@ -14,12 +14,28 @@ function formatMillisAsDuration(value) {
     return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s`;
 }
 
-/*
- * All fields shown inline, not tucked behind a hover tooltip — the whole point is to be visible
- * at a glance (and in a screenshot). tokensPerSecond is omitted when null (delegated A2A turns
- * do not report it); durationMillis is the one field the backend guarantees on every route.
- */
-function buildMetadataText({promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis}) {
+function calculateTokensPerSecond(promptTokens, totalTokens, promptMillis) {
+    if (
+        typeof promptTokens !== 'number'
+        || typeof totalTokens !== 'number'
+        || typeof promptMillis !== 'number'
+    ) {
+        return null;
+    }
+
+    const completionTokens = totalTokens - promptTokens;
+
+    if (completionTokens <= 0 || promptMillis <= 0) {
+        return null;
+    }
+
+    return completionTokens / (promptMillis / 1000);
+}
+
+function buildMetadataText({promptTokens, totalTokens, promptMillis}) {
+
+    const tokensPerSecond = calculateTokensPerSecond(promptTokens, totalTokens, promptMillis);
+
     const segments = [
         `tok:${formatTokenCount(totalTokens)}`,
     ];
@@ -28,7 +44,7 @@ function buildMetadataText({promptTokens, completionTokens, totalTokens, tokensP
         segments.push(`${tokensPerSecond.toFixed(1)} tok/s`);
     }
 
-    segments.push(`TTFT:${formatMillisAsDuration(timeToFirstTokenMillis)}`);
+    segments.push(`dur:${formatMillisAsDuration(promptMillis)}`);
 
     return segments.join(' · ');
 }
