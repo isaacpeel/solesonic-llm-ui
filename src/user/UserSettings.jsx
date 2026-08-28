@@ -3,8 +3,6 @@ import {useNavigate} from "react-router";
 
 import "./UserSettings.css";
 import RagManagement from "../train/RagManagement.jsx";
-import ModelSettings from "./ModelSettings.jsx";
-import OllamaModelSettings from "./OllamaModelSettings.jsx";
 import { useLocation } from 'react-router';
 
 import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
@@ -46,18 +44,6 @@ const UserSettings = () => {
                         <RagManagement/>
                     </RoleGuard>
                 );
-            case "modelSettings":
-                return (
-                    <RoleGuard role={ROLES.MODEL_SELECT} fallback={<p>You do not have permission to view this setting.</p>}>
-                        <ModelSettings/>
-                    </RoleGuard>
-                );
-            case "ollamaModelSettings":
-                return (
-                    <RoleGuard role={ROLES.MODEL_ADMIN} fallback={<p>You do not have permission to view this setting.</p>}>
-                        <OllamaModelSettings/>
-                    </RoleGuard>
-                );
             case "atlassianSettings":
                 return <AtlassianSettings/>;
             case "googleSettings":
@@ -76,26 +62,6 @@ const UserSettings = () => {
                     <div className="settings-sidebar-header">
                         Settings
                     </div>
-                    <RoleGuard role={ROLES.MODEL_SELECT}>
-                        <div
-                            className={`settings-sidebar-item ${selectedSetting === "modelSettings" ? "selected" : ""}`}
-                            onClick={() => setSelectedSetting("modelSettings")}>
-                            <div className="settings-sidebar-icon">
-                                <Cog6ToothIcon/>
-                            </div>
-                            <div className="settings-sidebar-item-label">Chat Model</div>
-                        </div>
-                    </RoleGuard>
-                    <RoleGuard role={ROLES.MODEL_ADMIN}>
-                        <div
-                            className={`settings-sidebar-item ${selectedSetting === "ollamaModelSettings" ? "selected" : ""}`}
-                            onClick={() => setSelectedSetting("ollamaModelSettings")}>
-                            <div className="settings-sidebar-icon">
-                                <ServerIcon/>
-                            </div>
-                            <div className="settings-sidebar-item-label">Ollama Models</div>
-                        </div>
-                    </RoleGuard>
                     <div
                         className={`settings-sidebar-item ${selectedSetting === "generalUserSettings" ? "selected" : ""}`}
                         onClick={() => setSelectedSetting("generalUserSettings")}>
