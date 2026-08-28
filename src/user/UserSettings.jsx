@@ -5,7 +5,7 @@ import "./UserSettings.css";
 import RagManagement from "../train/RagManagement.jsx";
 import { useLocation } from 'react-router';
 
-import {XMarkIcon, Cog6ToothIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon, ServerIcon} from "@heroicons/react/24/solid";
+import {XMarkIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon} from "@heroicons/react/24/solid";
 import { SiAtlassian, SiGoogle } from 'react-icons/si';
 
 import atlassianAuthService from "../service/AtlassianAuthService.js";
