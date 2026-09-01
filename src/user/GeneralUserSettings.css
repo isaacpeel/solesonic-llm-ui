@@ -8,7 +8,7 @@
 
 .general-settings-section-heading {
     margin: 0 0 10px;
-    color: #333; /* Added dark color to ensure visibility against white background */
+    color: #e3d8d8;
 }
 
 .general-settings-threshold-group {
@@ -36,8 +36,8 @@
     border: 1px solid #ccc;
     border-radius: 4px;
     width: 100px;
-    color: #333 !important; /* Added dark text color with !important to override Tailwind */
-    background-color: white !important; /* Explicitly set background color with !important to override Tailwind */
+    color: #333 !important;
+    background-color: white !important;
 }
 
 @media (min-width: 480px) {
