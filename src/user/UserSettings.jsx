@@ -1,4 +1,4 @@
-import {useState, useEffect, useRef} from "react";
+import {useState} from "react";
 import {useNavigate} from "react-router";
 
 import "./UserSettings.css";
@@ -8,7 +8,6 @@ import { useLocation } from 'react-router';
 import {XMarkIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon} from "@heroicons/react/24/solid";
 import { SiAtlassian, SiGoogle } from 'react-icons/si';
 
-import atlassianAuthService from "../service/AtlassianAuthService.js";
 import AtlassianSettings from "./AtlassianSettings.jsx";
 import GoogleSettings from "./GoogleSettings.jsx";
 import GeneralUserSettings from "./GeneralUserSettings.jsx";
@@ -19,22 +18,6 @@ const UserSettings = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [selectedSetting, setSelectedSetting] = useState(location.state?.panel || "generalUserSettings");
-    const useCallback = useRef(true);
-
-    useEffect(() => {
-        const queryParams = new URLSearchParams(location.search || "");
-        const code = queryParams.get('code');
-
-        const callback = async (callbackToken) => {
-            return atlassianAuthService.authCallback(callbackToken);
-        };
-
-        if (code && useCallback) {
-            callback(code).then(() => {
-                useCallback.current = false;
-            });
-        }
-    }, [location.search, useCallback]);
 
     const renderContent = () => {
         switch (selectedSetting) {

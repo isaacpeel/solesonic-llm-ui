@@ -1,8 +1,7 @@
-import {render, waitFor, fireEvent} from '@testing-library/react';
+import {render, fireEvent} from '@testing-library/react';
 import {MemoryRouter, Routes, Route} from 'react-router';
 import UserSettings from '../../src/user/UserSettings.jsx';
 import {describe, it, vi, expect, beforeEach, afterEach} from 'vitest';
-import AtlassianAuthService from "../../src/service/AtlassianAuthService.js";
 import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
 import { ROLES } from '../../src/authorizer/roles.js';
 
@@ -136,34 +135,6 @@ describe('UserSettings', () => {
 
     afterEach(() => {
         vi.clearAllMocks();
-    });
-
-    it('calls authCallback once per mount when the page is refreshed', async () => {
-        const initialRoute = '/settings/?code=12345';
-
-        const {rerender} = render(
-            <MemoryRouter initialEntries={[initialRoute]}>
-                <Routes>
-                    <Route path="/settings" element={<UserSettings/>}/>
-                </Routes>
-            </MemoryRouter>
-        );
-
-        const mockAuthCallback = AtlassianAuthService.authCallback;
-
-        await waitFor(() => expect(mockAuthCallback).toHaveBeenCalledTimes(1));
-
-        expect(mockAuthCallback).toHaveBeenCalledWith('12345');
-
-        rerender(
-            <MemoryRouter initialEntries={[initialRoute]}>
-                <Routes>
-                    <Route path="/settings" element={<UserSettings/>}/>
-                </Routes>
-            </MemoryRouter>
-        );
-
-        await waitFor(() => expect(mockAuthCallback).toHaveBeenCalledTimes(1));
     });
 
     it('renders Chat Model tab as selected by default for model-admin users', () => {
