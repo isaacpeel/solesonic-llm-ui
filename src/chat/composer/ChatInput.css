@@ -53,12 +53,14 @@
  * The stack that holds SlashCommandList and SelectedCommandChip. Absolute, so neither one
  * can take horizontal space from the textarea; a column, so both can be shown at once
  * without overlapping when a command is already selected and the user types "/" again.
+ * Inset left/right by the pill's 22px border-radius (.chat-input-row) so the card's square
+ * corners land on the pill's flat edge instead of overhanging its curve.
  */
 .composer-popovers {
     position: absolute;
     bottom: 100%;
-    left: 0;
-    right: 0;
+    left: 22px;
+    right: 22px;
     z-index: 100;
     display: flex;
     flex-direction: column;
