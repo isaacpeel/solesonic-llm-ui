@@ -167,7 +167,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const dayGroups = useMemo(() => groupChatsByDay(ungrouped), [ungrouped]);
 
     const daySections = useMemo(
-        () => dayGroups.map(dayGroup => ({...dayGroup, expanded: !collapsedDayKeys.has(dayGroup.key)})),
+        () => dayGroups.map(dayGroup => ({...dayGroup, expanded: collapsedDayKeys.has(dayGroup.key)})),
         [dayGroups, collapsedDayKeys],
     );
 
