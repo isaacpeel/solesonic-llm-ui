@@ -27,7 +27,7 @@
 .general-settings-item-label {
     font-weight: bold;
     min-width: 60px;
-    color: #333; /* Added dark color to ensure visibility against white background */
+    color: #e3d8d8;
 }
 
 .general-settings-input {
@@ -55,7 +55,7 @@
 
 .general-settings-description {
     margin-bottom: 20px;
-    color: #666;
+    color: #e3d8d8;
     font-size: 0.9em;
     max-width: 600px;
 }
