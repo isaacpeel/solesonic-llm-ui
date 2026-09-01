@@ -119,6 +119,6 @@ describe('AuthenticationWrapper', () => {
         );
 
         expect(screen.getByText('Authentication Required')).toBeDefined();
-        expect(screen.getByText('Redirecting to login...')).toBeDefined();
+        expect(screen.getByText('We could not complete sign-in.')).toBeDefined();
     });
 });

@@ -25,20 +25,20 @@ describe('RagManagement', () => {
     });
 
     it('renders the file upload area', async () => {
-        const {getByText} = render(<RagManagement/>);
+        const {container, getByText} = render(<RagManagement/>);
 
         await waitFor(() => {
-            expect(getByText('Choose A File')).toBeDefined();
+            expect(container.querySelector('.rag-dropzone')).not.toBeNull();
             expect(getByText('Upload File')).toBeDefined();
         });
     });
 
     it('selecting a file displays the filename', async () => {
-        const {getByText, getByLabelText} = render(<RagManagement/>);
+        const {container, getByText} = render(<RagManagement/>);
 
-        await waitFor(() => getByText('Choose A File'));
+        await waitFor(() => expect(container.querySelector('#fileInput')).not.toBeNull());
 
-        const fileInput = getByLabelText('Choose A File');
+        const fileInput = container.querySelector('#fileInput');
         const mockFile = new File(['content'], 'document.pdf', {type: 'application/pdf'});
         fireEvent.change(fileInput, {target: {files: [mockFile]}});
 
@@ -48,11 +48,11 @@ describe('RagManagement', () => {
     });
 
     it('submitting without a file shows an error message', async () => {
-        const {getByText} = render(<RagManagement/>);
+        const {container, getByText} = render(<RagManagement/>);
 
-        await waitFor(() => getByText('Upload File'));
+        await waitFor(() => expect(container.querySelector('form')).not.toBeNull());
 
-        fireEvent.click(getByText('Upload File'));
+        fireEvent.submit(container.querySelector('form'));
 
         await waitFor(() => {
             expect(getByText(/Select a file before uploading/)).toBeDefined();
@@ -60,11 +60,11 @@ describe('RagManagement', () => {
     });
 
     it('successful upload shows confirmation message', async () => {
-        const {getByText, getByLabelText} = render(<RagManagement/>);
+        const {container, getByText} = render(<RagManagement/>);
 
-        await waitFor(() => getByText('Choose A File'));
+        await waitFor(() => expect(container.querySelector('#fileInput')).not.toBeNull());
 
-        const fileInput = getByLabelText('Choose A File');
+        const fileInput = container.querySelector('#fileInput');
         const mockFile = new File(['content'], 'report.pdf', {type: 'application/pdf'});
         fireEvent.change(fileInput, {target: {files: [mockFile]}});
 

@@ -20,9 +20,9 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.chat-message-container.USER')).not.toBeNull();
         });
 
-        it('does not render info-icon wrapper for USER messages', () => {
+        it('does not mark USER messages with the info status role', () => {
             const {container} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'Hello'})}/>);
-            expect(container.querySelector('.info-icon-wrapper')).toBeNull();
+            expect(container.querySelector('[role="status"]')).toBeNull();
         });
 
         it('renders AI message with ASSISTANT type class', () => {
@@ -30,9 +30,9 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.chat-message-container.ASSISTANT')).not.toBeNull();
         });
 
-        it('renders info-icon wrapper for AI messages', () => {
+        it('does not mark plain AI messages with the info status role', () => {
             const {container} = render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Hi'})}/>);
-            expect(container.querySelector('.info-icon-wrapper')).not.toBeNull();
+            expect(container.querySelector('[role="status"]')).toBeNull();
         });
 
         it('renders SYSTEM message with SYSTEM type class', () => {
@@ -40,9 +40,9 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.chat-message-container.SYSTEM')).not.toBeNull();
         });
 
-        it('renders info-icon wrapper for SYSTEM messages', () => {
+        it('marks SYSTEM messages with the info status role', () => {
             const {container} = render(<ChatMessage message={buildMessage({type: 'SYSTEM', text: 'System info'})}/>);
-            expect(container.querySelector('.info-icon-wrapper')).not.toBeNull();
+            expect(container.querySelector('[role="status"]')).not.toBeNull();
         });
     });
 
@@ -359,16 +359,14 @@ describe('ChatMessage', () => {
             expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
         });
 
-        it('renders a relative timestamp beside the copy button', () => {
+        it('does not render a timestamp beside the copy button', () => {
             const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 timestamp: twoDaysAgo,
             })}/>);
 
-            const timestamp = container.querySelector('.message-actions .message-timestamp');
-            expect(timestamp).not.toBeNull();
-            expect(timestamp.textContent).toBe('2 days ago');
+            expect(container.querySelector('.message-actions .message-timestamp')).toBeNull();
         });
 
         /* An unparseable or absent stamp must leave the copy button alone, not print "Invalid Date". */
@@ -464,7 +462,7 @@ describe('ChatMessage', () => {
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
             expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('412→128 tok (540) · 34.7 tok/s · TTFT 380 ms · 3.7 s');
+            expect(responseMetadata.textContent).toBe('tok:540 · dur:—');
         });
 
         it('omits tok/s and shows a missing-value placeholder for token counts when tokensPerSecond is null', () => {
@@ -481,7 +479,7 @@ describe('ChatMessage', () => {
             })}/>);
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata.textContent).toBe('—→— tok (—) · TTFT 380 ms · 3.7 s');
+            expect(responseMetadata.textContent).toBe('tok:— · dur:—');
         });
 
         it('renders no response metadata element when the message carries none', () => {

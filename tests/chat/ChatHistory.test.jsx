@@ -1934,7 +1934,7 @@ describe('ChatHistory delete group', () => {
         expect(dialog).not.toBeNull();
         expect(Array.from(dialog.querySelectorAll('.delete-chat-group-dialog-actions button'))
             .map(button => button.textContent))
-            .toEqual(['Cancel', 'Delete group only', 'Delete group and conversations']);
+            .toEqual(['Cancel', 'Delete', 'Delete all']);
         expect(chatGroupService.deleteGroup).not.toHaveBeenCalled();
     });
 

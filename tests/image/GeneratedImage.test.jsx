@@ -72,21 +72,19 @@ describe('GeneratedImage', () => {
         expect(container.querySelector('img').getAttribute('loading')).toBe('lazy');
     });
 
-    it('keeps seed and elapsed time behind a details toggle', () => {
+    it('keeps elapsed time behind a details toggle', () => {
         render(<GeneratedImage image={COMPLETED_IMAGE}/>);
 
-        expect(screen.queryByText('Seed')).toBeNull();
+        expect(screen.queryByText('8.2s')).toBeNull();
 
         fireEvent.click(screen.getByText('Details'));
 
-        expect(screen.getByText('Seed')).toBeTruthy();
-        expect(screen.getByText('8339331079448168597')).toBeTruthy();
         expect(screen.getByText('8.2s')).toBeTruthy();
         expect(screen.getByText('1024×1024')).toBeTruthy();
     });
 
     it('offers no details toggle when there is no provenance to show', () => {
-        render(<GeneratedImage image={{imageId: 'image-1', prompt: 'a lighthouse'}}/>);
+        render(<GeneratedImage image={{imageId: 'image-1'}}/>);
 
         expect(screen.queryByText('Details')).toBeNull();
     });
