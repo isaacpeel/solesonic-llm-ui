@@ -2,20 +2,20 @@ import apiClient from '../client/ApiClient.js';
 import config from "../properties/ApplicationProperties";
 
 const documentService = {
-    findTrainingDocuments: async () => {
-        return await apiClient.get(`${config.apiBaseUri}/trainingdocuments`);
+    findIngestedDocuments: async () => {
+        return await apiClient.get(`${config.apiBaseUri}/documents/ingested`);
     },
     uploadDocument: async (file) => {
         return await apiClient.post(`${config.apiBaseUri}/documents/data/upload`, file, { noOp: true });
     },
-    deleteTrainingDocument: async (id) => {
-        return await apiClient.delete(`${config.apiBaseUri}/trainingdocuments/${id}`);
+    deleteIngestedDocument: async (id) => {
+        return await apiClient.delete(`${config.apiBaseUri}/documents/ingested/${id}`);
     },
-    refreshTrainingDocument: async (id) => {
-        return await apiClient.post(`${config.apiBaseUri}/trainingdocuments/${id}/refresh`);
+    refreshIngestedDocument: async (id) => {
+        return await apiClient.post(`${config.apiBaseUri}/documents/ingested/${id}/refresh`);
     },
     processDocumentQueue: async () => {
-        return await apiClient.post(`${config.apiBaseUri}/trainingdocuments/processQueue`);
+        return await apiClient.post(`${config.apiBaseUri}/documents/ingested/processQueue`);
     },
 };
 

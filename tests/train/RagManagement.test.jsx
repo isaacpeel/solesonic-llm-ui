@@ -4,7 +4,7 @@ import RagManagement from '../../src/train/RagManagement.jsx';
 
 vi.mock('../../src/service/DocumentService.js', () => ({
     default: {
-        findTrainingDocuments: vi.fn(),
+        findIngestedDocuments: vi.fn(),
         uploadDocument: vi.fn(),
     },
 }));
@@ -20,7 +20,7 @@ import documentService from '../../src/service/DocumentService.js';
 describe('RagManagement', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        documentService.findTrainingDocuments.mockResolvedValue([]);
+        documentService.findIngestedDocuments.mockResolvedValue([]);
         documentService.uploadDocument.mockResolvedValue(undefined);
     });
 
@@ -75,8 +75,8 @@ describe('RagManagement', () => {
         });
     });
 
-    it('renders existing training documents', async () => {
-        documentService.findTrainingDocuments.mockResolvedValue([
+    it('renders existing ingested documents', async () => {
+        documentService.findIngestedDocuments.mockResolvedValue([
             {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
             {id: 'doc-2', fileName: 'manual.pdf', documentStatus: 'IN_PROGRESS'},
         ]);

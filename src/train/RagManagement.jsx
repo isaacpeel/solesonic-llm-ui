@@ -53,7 +53,7 @@ const RagManagement = () => {
     };
 
     const getFiles = async () => {
-        return await documentService.findTrainingDocuments();
+        return await documentService.findIngestedDocuments();
     };
 
     useEffect(() => {
@@ -70,7 +70,7 @@ const RagManagement = () => {
     }, []);
 
     const handleDelete = async (id) => {
-        await documentService.deleteTrainingDocument(id)
+        await documentService.deleteIngestedDocument(id)
             .then(() => {
                 setFiles((currentFiles) => currentFiles.filter((currentFile) => currentFile.id !== id));
             })
@@ -81,7 +81,7 @@ const RagManagement = () => {
     };
 
     const handleRefresh = async (id) => {
-        await documentService.refreshTrainingDocument(id)
+        await documentService.refreshIngestedDocument(id)
             .then(() => {
                 getFiles().then((files) => setFiles(files));
             })

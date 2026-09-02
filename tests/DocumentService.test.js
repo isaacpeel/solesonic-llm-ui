@@ -27,14 +27,47 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-describe('findTrainingDocuments', () => {
-    it('calls apiClient.get with the training documents URI and returns the result', async () => {
-        apiClient.get.mockResolvedValue({trainingDocument: []});
+describe('findIngestedDocuments', () => {
+    it('calls apiClient.get with the ingested documents URI and returns the result', async () => {
+        apiClient.get.mockResolvedValue({ingestedDocument: []});
 
-        const result = await documentService.findTrainingDocuments();
+        const result = await documentService.findIngestedDocuments();
 
-        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/trainingdocuments');
-        expect(result).toEqual({trainingDocument: []});
+        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/documents/ingested');
+        expect(result).toEqual({ingestedDocument: []});
+    });
+});
+
+describe('deleteIngestedDocument', () => {
+    it('calls apiClient.delete with the ingested document URI', async () => {
+        apiClient.delete.mockResolvedValue(null);
+
+        const result = await documentService.deleteIngestedDocument('doc-1');
+
+        expect(apiClient.delete).toHaveBeenCalledWith('https://api.example.com/documents/ingested/doc-1');
+        expect(result).toBeNull();
+    });
+});
+
+describe('refreshIngestedDocument', () => {
+    it('calls apiClient.post with the ingested document refresh URI', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        const result = await documentService.refreshIngestedDocument('doc-1');
+
+        expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/documents/ingested/doc-1/refresh');
+        expect(result).toBeNull();
+    });
+});
+
+describe('processDocumentQueue', () => {
+    it('calls apiClient.post with the ingested documents process queue URI', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        const result = await documentService.processDocumentQueue();
+
+        expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/documents/ingested/processQueue');
+        expect(result).toBeNull();
     });
 });
 
