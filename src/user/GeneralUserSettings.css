@@ -1,83 +1,97 @@
 .general-settings-container {
-    box-sizing: border-box;
-    width: 100%;
-    padding: 20px;
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.general-settings-section-heading {
-    margin: 0 0 10px;
-    color: #e3d8d8;
-}
-
-.general-settings-threshold-group {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 15px;
 }
 
-.general-settings-item {
+.general-settings-profile-header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
+    margin-bottom: 8px;
 }
 
-.general-settings-item-label {
-    font-weight: bold;
-    min-width: 60px;
-    color: #e3d8d8;
+.general-settings-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background-color: var(--settings-accent-tint);
+    color: var(--settings-accent);
+    font-size: 20px;
+    font-weight: 700;
 }
 
-.general-settings-input {
-    box-sizing: border-box;
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    width: 100px;
-    color: #333 !important;
-    background-color: white !important;
+.general-settings-profile-name {
+    font-size: 17px;
+    font-weight: 600;
 }
 
-@media (min-width: 480px) {
-    .general-settings-threshold-group {
-        flex-direction: row;
-        gap: 25px;
-    }
+.general-settings-profile-username {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--settings-muted);
+}
 
-    .general-settings-item {
+.general-settings-profile-grid {
+    margin-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.general-settings-profile-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(74, 74, 74, 0.5);
+}
+
+.general-settings-profile-label {
+    width: 130px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--settings-muted);
+}
+
+.general-settings-profile-value {
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-color);
+    overflow-wrap: anywhere;
+}
+
+.general-settings-role-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.general-settings-role-chip {
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+}
+
+.general-settings-no-roles {
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+@media (max-width: 560px) {
+    .general-settings-profile-row {
         flex-direction: column;
         align-items: flex-start;
-        gap: 6px;
+        gap: 3px;
     }
-}
 
-.general-settings-description {
-    margin-bottom: 20px;
-    color: #e3d8d8;
-    font-size: 0.9em;
-    max-width: 600px;
-}
-
-.general-settings-submit-button {
-    background-color: #4CAF50;
-    color: white;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-.general-settings-submit-button:hover {
-    background-color: #45a049;
-}
-
-.general-settings-status-message {
-    margin-top: 15px;
-    padding: 10px;
-    border-radius: 4px;
-    background-color: #f8f9fa;
-    color: #28a745;
+    .general-settings-profile-label {
+        width: auto;
+    }
 }

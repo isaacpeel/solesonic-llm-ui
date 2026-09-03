@@ -149,7 +149,6 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
                     text: finalText,
-                    model: response?.message?.model ?? newHistory[lastIndex].model,
                     /*
                      * Lives on `message`, next to `model` and `generatedImages` — not a sibling
                      * of `message` on the envelope. `null` on a cancelled turn (the whole object,
@@ -311,6 +310,51 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
         });
     }, [setChatHistory]);
 
+    /*
+     * The `attachment` SSE frame reports a vision/extraction outcome for one attachment on the
+     * turn's USER message after the fact — it can arrive well after that message was appended,
+     * so this walks back to find it by attachment id rather than assuming it is the very last
+     * entry. Merges rather than replaces, since the frame may carry only the fields that changed.
+     */
+    const updateAttachmentStatus = useCallback((attachmentUpdate) => {
+        const attachmentId = attachmentUpdate?.id;
+
+        if (!attachmentId) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            for (let messageIndex = previousHistory.length - 1; messageIndex >= 0; messageIndex -= 1) {
+                const candidateMessage = previousHistory[messageIndex];
+
+                if (candidateMessage.type !== USER || !Array.isArray(candidateMessage.attachments)) {
+                    continue;
+                }
+
+                const attachmentIndex = candidateMessage.attachments.findIndex(
+                    (attachment) => attachment.id === attachmentId,
+                );
+
+                if (attachmentIndex === -1) {
+                    continue;
+                }
+
+                const newAttachments = [...candidateMessage.attachments];
+                newAttachments[attachmentIndex] = {
+                    ...newAttachments[attachmentIndex],
+                    ...attachmentUpdate,
+                };
+
+                const newHistory = [...previousHistory];
+                newHistory[messageIndex] = {...candidateMessage, attachments: newAttachments};
+
+                return newHistory;
+            }
+
+            return previousHistory;
+        });
+    }, [setChatHistory]);
+
     const appendNotificationToLastAIMessage = useCallback((notificationMessageText) => {
         if (!notificationMessageText || typeof notificationMessageText !== 'string') {
             return;
@@ -377,6 +421,7 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
+        updateAttachmentStatus,
         reloadChatHistory,
     };
 }
@@ -410,7 +455,6 @@ async function fetchFormattedChatMessages(chatId) {
         const base = {
             type: message.messageType,
             text: message.message,
-            model: message.model,
             /* Persisted alongside model/generatedImages, so a reloaded turn shows it too. */
             responseMetadata: message.responseMetadata ?? null,
             messageId: message.id,

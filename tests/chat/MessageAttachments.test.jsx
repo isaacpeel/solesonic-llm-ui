@@ -126,4 +126,40 @@ describe('MessageAttachments', () => {
 
         expect(screen.queryByLabelText('Expand notes.pdf')).toBeNull();
     });
+
+    it('warns when an image failed to describe', () => {
+        render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false, reason: 'vision model unavailable'}]}/>);
+
+        expect(screen.getByTitle('vision model unavailable')).toBeTruthy();
+    });
+
+    it('warns with a default message when described is false without a reason', () => {
+        render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false}]}/>);
+
+        expect(screen.getByTitle('The assistant may not have been able to read this image.')).toBeTruthy();
+    });
+
+    it('warns when a document failed to index', () => {
+        render(
+            <MessageAttachments
+                attachments={[{id: 'a1', fileName: 'notes.pdf', contentType: 'application/pdf', indexed: false, extractionReason: 'unsupported file type'}]}
+            />
+        );
+
+        expect(screen.getByTitle('unsupported file type')).toBeTruthy();
+    });
+
+    it('shows no warning once described and indexed are confirmed true', () => {
+        const {container} = render(
+            <MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: true}]}/>
+        );
+
+        expect(container.querySelector('.attachment-thumbnail-warning')).toBeNull();
+    });
+
+    it('shows no warning while described/indexed are still undefined', () => {
+        const {container} = render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png'}]}/>);
+
+        expect(container.querySelector('.attachment-thumbnail-warning')).toBeNull();
+    });
 });
