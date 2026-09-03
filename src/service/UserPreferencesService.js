@@ -7,6 +7,10 @@ const userPreferencesService = {
         const userId = await authService.getUserId();
         return await apiClient.put(`${config.usersUri}/${userId}/preferences`, userPreferences);
     },
+    patch: async (partialPreferences) => {
+        const userId = await authService.getUserId();
+        return await apiClient.patch(`${config.usersUri}/${userId}/preferences`, partialPreferences);
+    },
     get: async () => {
         const userId = await authService.getUserId();
         return await apiClient.get(`${config.usersUri}/${userId}/preferences`);

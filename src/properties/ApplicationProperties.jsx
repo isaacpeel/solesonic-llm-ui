@@ -10,6 +10,7 @@ config.usersUri = `${config.apiBaseUri}/users`;
 config.ollamaUri = `${config.apiBaseUri}/ollama`;
 config.atlassianUri = `${config.apiBaseUri}/atlassian`;
 config.googleUri = `${config.apiBaseUri}/google`;
+config.documentsUri = `${config.apiBaseUri}/documents`;
 config.slashCommandsUri = `${config.apiBaseUri}/slash/commands`;
 config.attachmentsUri = `${config.apiBaseUri}/attachments`;
 config.imagesUri = `${config.apiBaseUri}/images`;

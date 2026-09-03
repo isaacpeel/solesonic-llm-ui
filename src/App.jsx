@@ -1,8 +1,12 @@
-import {createBrowserRouter, Outlet} from "react-router";
+import {createBrowserRouter, Navigate, Outlet} from "react-router";
 import {RouterProvider} from "react-router/dom";
 import './App.css';
 import ChatPage from "./chat/ChatScreen.jsx";
 import UserSettings from "./user/UserSettings.jsx";
+import GeneralUserSettings from "./user/GeneralUserSettings.jsx";
+import ConnectionsSettings from "./user/ConnectionsSettings.jsx";
+import RagManagement from "./train/RagManagement.jsx";
+import {DEFAULT_RAG_LEVEL} from "./train/ragLevels.js";
 import GoogleAuthCallback from "./user/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./user/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
@@ -24,7 +28,17 @@ const router = createBrowserRouter([
         element: <Layout />,
         children: [
             { index: true, element: <ChatPage /> },
-            { path: "settings", element: <UserSettings /> },
+            {
+                path: "settings",
+                element: <UserSettings />,
+                children: [
+                    { index: true, element: <Navigate to="general" replace /> },
+                    { path: "general", element: <GeneralUserSettings /> },
+                    { path: "connections", element: <ConnectionsSettings /> },
+                    { path: "rag", element: <Navigate to={DEFAULT_RAG_LEVEL} replace /> },
+                    { path: "rag/:level", element: <RagManagement /> },
+                ]
+            },
             { path: "google/auth/callback", element: <GoogleAuthCallback /> },
             { path: "atlassian/auth/callback", element: <AtlassianAuthCallback /> },
         ]

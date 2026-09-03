@@ -1,110 +1,63 @@
-import {useState} from "react";
-import {useNavigate} from "react-router";
+import {NavLink, Outlet} from "react-router";
+import {ChevronLeftIcon, UserCircleIcon, ArrowsRightLeftIcon, CubeTransparentIcon} from "@heroicons/react/24/solid";
 
 import "./UserSettings.css";
-import RagManagement from "../train/RagManagement.jsx";
-import { useLocation } from 'react-router';
 
-import {XMarkIcon, CubeTransparentIcon, BackspaceIcon, UserCircleIcon} from "@heroicons/react/24/solid";
-import { SiAtlassian, SiGoogle } from 'react-icons/si';
-
-import AtlassianSettings from "./AtlassianSettings.jsx";
-import GoogleSettings from "./GoogleSettings.jsx";
-import GeneralUserSettings from "./GeneralUserSettings.jsx";
-import RoleGuard from '../authorizer/RoleGuard.jsx';
-import { ROLES } from '../authorizer/roles.js';
+const SETTINGS_NAV_GROUPS = [
+    {
+        label: "Account",
+        items: [
+            {to: "/settings/general", label: "General", Icon: UserCircleIcon}
+        ]
+    },
+    {
+        label: "Connections",
+        items: [
+            {to: "/settings/connections", label: "Connections", Icon: ArrowsRightLeftIcon}
+        ]
+    },
+    {
+        label: "Data",
+        items: [
+            {to: "/settings/rag", label: "RAG", Icon: CubeTransparentIcon}
+        ]
+    }
+];
 
 const UserSettings = () => {
-    const navigate = useNavigate();
-    const location = useLocation();
-    const [selectedSetting, setSelectedSetting] = useState(location.state?.panel || "generalUserSettings");
-
-    const renderContent = () => {
-        switch (selectedSetting) {
-            case "ragManagement":
-                return (
-                    <RoleGuard role={ROLES.RAG_ADMIN} fallback={<p>You do not have permission to view this setting.</p>}>
-                        <RagManagement/>
-                    </RoleGuard>
-                );
-            case "atlassianSettings":
-                return <AtlassianSettings/>;
-            case "googleSettings":
-                return <GoogleSettings/>;
-            case "generalUserSettings":
-                return <GeneralUserSettings/>;
-            default:
-                return <p>Select a setting from the menu.</p>;
-        }
-    };
-
     return (
-        <div className="settings-container">
-            <div className="settings-content-container">
-                <div className="settings-sidebar">
-                    <div className="settings-sidebar-header">
-                        Settings
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "generalUserSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("generalUserSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <UserCircleIcon/>
-                        </div>
-                        <div className="settings-sidebar-item-label">General</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "atlassianSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("atlassianSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <SiAtlassian size={20} color="#0052CC"/>
-                        </div>
-                        <div className="settings-sidebar-item-label">Atlassian</div>
-                    </div>
-                    <div
-                        className={`settings-sidebar-item ${selectedSetting === "googleSettings" ? "selected" : ""}`}
-                        onClick={() => setSelectedSetting("googleSettings")}>
-                        <div className="settings-sidebar-icon">
-                            <SiGoogle size={20} color="#EA4335"/>
-                        </div>
-                        <div className="settings-sidebar-item-label">Google</div>
-                    </div>
-                    <RoleGuard role={ROLES.RAG_ADMIN}>
-                        <div
-                            className={`settings-sidebar-item ${selectedSetting === "ragManagement" ? "selected" : ""}`}
-                            onClick={() => setSelectedSetting("ragManagement")}
-                        >
-                            <div className="settings-sidebar-icon">
-                                <CubeTransparentIcon/>
+        <div className="settings-page">
+            <div className="settings-scroll">
+                <NavLink to="/" className="settings-back-link">
+                    <ChevronLeftIcon className="settings-back-icon"/>
+                    Back to Chat
+                </NavLink>
+
+                <h1 className="settings-page-title">Settings</h1>
+                <p className="settings-page-subtitle">Manage your account, connections, and data.</p>
+
+                <div className="settings-layout">
+                    <nav className="settings-nav" aria-label="Settings">
+                        {SETTINGS_NAV_GROUPS.map((navGroup) => (
+                            <div className="settings-nav-group" key={navGroup.label}>
+                                <div className="settings-nav-group-label">{navGroup.label}</div>
+                                {navGroup.items.map(({to, label, Icon}) => (
+                                    <NavLink
+                                        key={to}
+                                        to={to}
+                                        className={({isActive}) => `settings-nav-row ${isActive ? "selected" : ""}`}
+                                    >
+                                        <Icon className="settings-nav-icon"/>
+                                        <span className="settings-nav-label">{label}</span>
+                                    </NavLink>
+                                ))}
                             </div>
-                            <div className="settings-sidebar-item-label">RAG</div>
-                        </div>
-                    </RoleGuard>
-                    <div
-                        className="settings-sidebar-mobile settings-sidebar-item"
-                        onClick={() => navigate("/")}
-                    >
-                        <div className="settings-sidebar-icon">
-                            <BackspaceIcon/>
-                        </div>
-                        <div className="settings-sidebar-item-label">Done</div>
-                    </div>
-                </div>
+                        ))}
+                    </nav>
 
-                <div className="settings-content">
-                    <div className="settings-close-container">
-                        <div
-                            onClick={() => navigate("/")}
-                            className="icon-wrapper"
-                            data-edge-right=""
-                            data-dialog="Close Settings"
-                            style={{cursor: "pointer", zIndex: "100"}}
-                        >
-                        <XMarkIcon/>
-                        </div>
-                    </div>
-
-                    {renderContent()}
+                    <section className="settings-content">
+                        <Outlet/>
+                    </section>
                 </div>
             </div>
         </div>
