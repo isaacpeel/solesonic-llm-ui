@@ -374,7 +374,7 @@
 }
 
 .rag-file-processing-files-header-actions {
-    width: 90px;
+    width: 150px;
     text-align: right;
     -webkit-font-smoothing: subpixel-antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -397,12 +397,31 @@
 }
 
 .rag-file-processing-row-actions {
-    width: 90px;
+    width: 150px;
     flex-shrink: 0;
     display: flex;
     justify-content: flex-end;
     align-items: center;
     gap: 4px;
+}
+
+.rag-file-promote-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #b0b0b0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 16px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.rag-file-promote-button:hover {
+    color: #4caf50;
+    background-color: rgba(76, 175, 80, 0.1);
 }
 
 .rag-file-refresh-button {
@@ -468,10 +487,13 @@
 }
 
 .rag-file-processing-sentinel {
+    min-height: 40px;
+}
+
+.rag-file-processing-loading-more {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
     padding: 8px;
     font-size: 13px;
     color: var(--settings-muted);

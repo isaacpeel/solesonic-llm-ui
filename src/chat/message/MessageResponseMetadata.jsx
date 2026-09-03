@@ -50,9 +50,9 @@ function buildMetadataText({promptTokens, totalTokens, promptMillis}) {
 }
 
 function hasAnyMetadataValue(responseMetadata) {
-    const {promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis} = responseMetadata;
+    const {promptTokens, completionTokens, totalTokens, promptMillis} = responseMetadata;
 
-    return [promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis]
+    return [promptTokens, completionTokens, totalTokens, promptMillis]
         .some((value) => typeof value === 'number');
 }
 

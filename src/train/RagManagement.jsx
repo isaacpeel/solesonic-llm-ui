@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {Navigate, NavLink, useParams} from "react-router";
-import {FiTrash2, FiRefreshCw, FiUploadCloud, FiFile, FiX, FiCheckCircle, FiAlertCircle} from "react-icons/fi";
+import {FiTrash2, FiRefreshCw, FiUploadCloud, FiFile, FiX, FiCheckCircle, FiAlertCircle, FiUser, FiGlobe} from "react-icons/fi";
 import {PiQueueFill} from "react-icons/pi";
 import log from "loglevel";
 
@@ -70,11 +70,13 @@ const RagManagement = () => {
     const [loadedPages, setLoadedPages] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [loadErrorMessage, setLoadErrorMessage] = useState("");
     const [threshold, setThreshold] = useState(0.7);
     const [savingThreshold, setSavingThreshold] = useState(false);
     const fileInputRef = useRef(null);
     const sentinelRef = useRef(null);
     const loadGenerationRef = useRef(0);
+    const loadingMoreRef = useRef(false);
 
     const ragLevel = findRagLevel(level);
     const availableLevels = visibleRagLevels(hasRole);
@@ -84,6 +86,20 @@ const RagManagement = () => {
     const preferenceKey = ragLevel?.preferenceKey;
     const chatIdForScope = ragLevel?.requiresChatId ? chatId : null;
     const documentsUnavailable = Boolean(ragLevel?.requiresChatId) && !chatId;
+    const collectionIdentity = `${scope ?? ""}:${chatIdForScope ?? ""}`;
+    const [loadedCollectionIdentity, setLoadedCollectionIdentity] = useState(collectionIdentity);
+
+    // Reset during render, not in an effect: an effect would leave one committed frame showing the
+    // previous collection's rows while the action handlers below already point at the new one.
+    if (loadedCollectionIdentity !== collectionIdentity) {
+        loadGenerationRef.current += 1;
+        setLoadedCollectionIdentity(collectionIdentity);
+        setFiles([]);
+        setLoadedPages(0);
+        setTotalPages(0);
+        setLoadErrorMessage("");
+    }
+
     const hasMoreDocuments = loadedPages > 0 && loadedPages < totalPages;
 
     const identifiers = useMemo(() => ({chatId: chatIdForScope}), [chatIdForScope]);
@@ -106,22 +122,23 @@ const RagManagement = () => {
             setFiles((currentFiles) => mergeFirstPage(currentFiles, ingestedDocuments));
             setTotalPages(paged?.page?.totalPages ?? 0);
             setLoadedPages((currentLoadedPages) => Math.max(currentLoadedPages, 1));
+            setLoadErrorMessage("");
         } catch (caughtError) {
             if (generation !== loadGenerationRef.current) {
                 return;
             }
 
-            setStatusType("error");
-            setStatusMessage(documentLoadErrorMessage(scope, caughtError));
+            setLoadErrorMessage(documentLoadErrorMessage(scope, caughtError));
         }
     }, [scope, identifiers, documentsUnavailable]);
 
     const loadNextPage = useCallback(async () => {
-        if (loadingMore || loadedPages === 0 || loadedPages >= totalPages) {
+        if (loadingMoreRef.current || loadedPages === 0 || loadedPages >= totalPages) {
             return;
         }
 
         const generation = loadGenerationRef.current;
+        loadingMoreRef.current = true;
         setLoadingMore(true);
 
         try {
@@ -139,17 +156,18 @@ const RagManagement = () => {
             setFiles((currentFiles) => appendPage(currentFiles, paged?.content ?? []));
             setTotalPages(paged?.page?.totalPages ?? 0);
             setLoadedPages((currentLoadedPages) => currentLoadedPages + 1);
+            setLoadErrorMessage("");
         } catch (caughtError) {
             if (generation !== loadGenerationRef.current) {
                 return;
             }
 
-            setStatusType("error");
-            setStatusMessage(documentLoadErrorMessage(scope, caughtError));
+            setLoadErrorMessage(documentLoadErrorMessage(scope, caughtError));
         } finally {
+            loadingMoreRef.current = false;
             setLoadingMore(false);
         }
-    }, [scope, identifiers, loadedPages, totalPages, loadingMore]);
+    }, [scope, identifiers, loadedPages, totalPages]);
 
     useEffect(() => {
         if (!preferenceKey) {
@@ -167,12 +185,12 @@ const RagManagement = () => {
             });
     }, [preferenceKey]);
 
+    // Discard whatever is still in flight when this screen goes away.
     useEffect(() => {
-        loadGenerationRef.current += 1;
-        setFiles([]);
-        setLoadedPages(0);
-        setTotalPages(0);
-    }, [scope, chatIdForScope]);
+        return () => {
+            loadGenerationRef.current += 1;
+        };
+    }, []);
 
     // The listing is newest-first, so every document whose status is still moving sits on the
     // first page. Polling it alone keeps statuses live without re-fetching what has been scrolled.
@@ -190,6 +208,9 @@ const RagManagement = () => {
         return () => clearInterval(intervalId);
     }, [loadFirstPage]);
 
+    // Re-observing on every loadNextPage identity change is deliberate, not churn: observe() re-fires
+    // an initial notification, so a page that leaves the sentinel still on screen keeps paging. A
+    // stable observer would go quiet and strand a short page with nothing left to scroll.
     useEffect(() => {
         const sentinel = sentinelRef.current;
 
@@ -269,7 +290,7 @@ const RagManagement = () => {
 
     const handleDelete = async (id) => {
         try {
-            await documentService.deleteIngestedDocument(id, scope, identifiers);
+            await documentService.deleteIngestedDocument(id, scope);
             setFiles((currentFiles) => currentFiles.filter((currentFile) => currentFile.id !== id));
         } catch (caughtError) {
             setStatusType("error");
@@ -279,11 +300,36 @@ const RagManagement = () => {
 
     const handleRefresh = async (id) => {
         try {
-            await documentService.refreshIngestedDocument(id, scope, identifiers);
+            await documentService.refreshIngestedDocument(id, scope);
             await loadFirstPage();
         } catch (caughtError) {
             setStatusType("error");
             setStatusMessage(`Error refreshing file: ${caughtError}`);
+        }
+    };
+
+    // Only reachable from the CHAT and USER tabs on a COMPLETED document (the buttons are not
+    // rendered otherwise), but a refresh could race a promote and restart ingestion in between —
+    // the 409 branches below still apply even though the UI tries to prevent them.
+    const handlePromote = async (id, target) => {
+        try {
+            await documentService.promoteDocument(id, scope, target);
+            setFiles((currentFiles) => currentFiles.filter((currentFile) => currentFile.id !== id));
+            setStatusType("success");
+            setStatusMessage(target === "global"
+                ? "Document promoted to the global collection."
+                : "Document promoted to your collection.");
+        } catch (caughtError) {
+            setStatusType("error");
+
+            if (caughtError?.status === 409) {
+                setStatusMessage(target === "global"
+                    ? "A global document with this name already exists. Rename the file and try again."
+                    : "This document can't be promoted yet — it may still be processing. Try again shortly.");
+                return;
+            }
+
+            setStatusMessage(`Error promoting file: ${caughtError}`);
         }
     };
 
@@ -387,6 +433,13 @@ const RagManagement = () => {
             <div className="rag-section-divider"></div>
             <div className="rag-docs-heading">{ragLevel.documentsHeading}</div>
 
+            {loadErrorMessage && (
+                <div className="rag-file-upload-status-message rag-file-upload-status-message-error">
+                    <FiAlertCircle/>
+                    {loadErrorMessage}
+                </div>
+            )}
+
             {documentsUnavailable ? (
                 <div className="rag-empty-state">{ragLevel.noChatMessage}</div>
             ) : (
@@ -471,6 +524,28 @@ const RagManagement = () => {
                                             {ingestedDocument.documentStatus.replace(/_/g, " ")}
                                         </div>
                                         <div className="rag-file-processing-row-actions">
+                                            {scope === "CHAT" && ingestedDocument.documentStatus === "COMPLETED" && (
+                                                <button
+                                                    type="button"
+                                                    className="rag-file-promote-button"
+                                                    onClick={() => handlePromote(ingestedDocument.id, "user")}
+                                                    aria-label={`Promote ${ingestedDocument.fileName} to your documents`}
+                                                    title="Promote to your documents"
+                                                >
+                                                    <FiUser/>
+                                                </button>
+                                            )}
+                                            {(scope === "CHAT" || scope === "USER") && ingestedDocument.documentStatus === "COMPLETED" && hasRole(ROLES.RAG_ADMIN) && (
+                                                <button
+                                                    type="button"
+                                                    className="rag-file-promote-button"
+                                                    onClick={() => handlePromote(ingestedDocument.id, "global")}
+                                                    aria-label={`Promote ${ingestedDocument.fileName} to global documents`}
+                                                    title="Promote to global documents"
+                                                >
+                                                    <FiGlobe/>
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
                                                 className="rag-file-refresh-button"
@@ -495,10 +570,12 @@ const RagManagement = () => {
                             ))}
 
                             {hasMoreDocuments && (
-                                <div ref={sentinelRef} className="rag-file-processing-sentinel">
-                                    {loadingMore ? "Loading more documents..." : ""}
-                                </div>
+                                <div ref={sentinelRef} className="rag-file-processing-sentinel" aria-hidden="true"/>
                             )}
+
+                            <div className="rag-file-processing-loading-more" role="status" aria-live="polite">
+                                {loadingMore ? "Loading more documents..." : ""}
+                            </div>
                         </div>
                     )}
                 </>

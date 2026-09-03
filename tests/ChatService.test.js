@@ -1,5 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import chatService, {
+    ATTACHMENT,
     CHUNK,
     DONE,
     ELICITATION,
@@ -242,6 +243,38 @@ describe('handleStreamChunk — DONE', () => {
 
         expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
         expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+        consoleError.mockRestore();
+    });
+});
+
+describe('handleStreamChunk — ATTACHMENT', () => {
+    it('forwards the parsed payload to updateAttachmentStatus', () => {
+        const updateAttachmentStatus = vi.fn();
+        const callbacks = makeCallbacks({updateAttachmentStatus});
+        const attachmentPayload = {id: 'attachment-1', indexed: false, extractionReason: 'unsupported file type'};
+        const payload = {event: ATTACHMENT, data: JSON.stringify(attachmentPayload)};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(updateAttachmentStatus).toHaveBeenCalledWith(attachmentPayload);
+    });
+
+    it('does not throw when no updateAttachmentStatus handler is supplied', () => {
+        const callbacks = makeCallbacks();
+        const payload = {event: ATTACHMENT, data: JSON.stringify({id: 'attachment-1', described: false})};
+
+        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+    });
+
+    it('malformed JSON logs error and does not throw', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const updateAttachmentStatus = vi.fn();
+        const callbacks = makeCallbacks({updateAttachmentStatus});
+        const payload = {event: ATTACHMENT, data: 'not-json'};
+
+        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        expect(updateAttachmentStatus).not.toHaveBeenCalled();
+        expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
 });

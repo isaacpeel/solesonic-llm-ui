@@ -61,14 +61,27 @@ describe('collection resolution', () => {
         expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/users/user-7/documents?page=0&size=20');
     });
 
-    it('reads the chat collection from the chat id in the path', async () => {
+    // The CHAT collection is the caller's, not the conversation's — chatId is a filter on the
+    // shared collection root, not a path segment, so a chat document is retrievable by chat but
+    // managed by whoever uploaded it.
+    it('reads the shared chat collection filtered by chatId', async () => {
         apiClient.get.mockResolvedValue(pagedResponse());
 
         await documentService.findIngestedDocuments('CHAT', {chatId: 'chat-42'});
 
         expect(apiClient.get).toHaveBeenCalledWith(
-            'https://api.example.com/chats/chat-42/documents?page=0&size=20',
+            'https://api.example.com/chats/documents?page=0&size=20&chatId=chat-42',
         );
+    });
+
+    // Omitting the filter would return every conversation the caller has ever uploaded to,
+    // rather than just this one.
+    it('omits the chatId filter when no chat is active', async () => {
+        apiClient.get.mockResolvedValue(pagedResponse());
+
+        await documentService.findIngestedDocuments('CHAT', {});
+
+        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/chats/documents?page=0&size=20');
     });
 
     it('never sends a scope query parameter', async () => {
@@ -131,11 +144,10 @@ describe('uploadDocument', () => {
         expect(apiClient.post).toHaveBeenCalledWith(
             'https://api.example.com/users/user-7/documents',
             formData,
-            {noOp: true},
         );
     });
 
-    it('posts a chat upload to the chat collection', async () => {
+    it('posts a chat upload to the shared chat collection with chatId as a query filter', async () => {
         const formData = new FormData();
         apiClient.post.mockResolvedValue(null);
 
@@ -144,10 +156,20 @@ describe('uploadDocument', () => {
         expect(formData.get('scope')).toBeNull();
         expect(formData.get('chatId')).toBeNull();
         expect(apiClient.post).toHaveBeenCalledWith(
-            'https://api.example.com/chats/chat-42/documents',
+            'https://api.example.com/chats/documents?chatId=chat-42',
             formData,
-            {noOp: true},
         );
+    });
+
+    // A rejected upload must reach the caller. Swallowing it renders "uploaded successfully"
+    // over a 403 or a 413.
+    it('propagates a rejected upload rather than swallowing it', async () => {
+        const formData = new FormData();
+        const rejection = new Error('403: POST - /documents/global Forbidden');
+        rejection.status = 403;
+        apiClient.post.mockRejectedValue(rejection);
+
+        await expect(documentService.uploadDocument(formData, 'GLOBAL', {})).rejects.toThrow('Forbidden');
     });
 });
 
@@ -155,18 +177,20 @@ describe('deleteIngestedDocument', () => {
     it('deletes within the global collection', async () => {
         apiClient.delete.mockResolvedValue(null);
 
-        const result = await documentService.deleteIngestedDocument('doc-1', 'GLOBAL', {});
+        const result = await documentService.deleteIngestedDocument('doc-1', 'GLOBAL');
 
         expect(apiClient.delete).toHaveBeenCalledWith('https://api.example.com/documents/global/doc-1');
         expect(result).toBeNull();
     });
 
-    it('deletes within the chat collection', async () => {
+    // No chatId in the path — ownership of a chat document lives with whoever uploaded it, not
+    // with the conversation, so the collection root alone resolves it.
+    it('deletes within the shared chat collection without a chatId', async () => {
         apiClient.delete.mockResolvedValue(null);
 
-        await documentService.deleteIngestedDocument('doc-1', 'CHAT', {chatId: 'chat-42'});
+        await documentService.deleteIngestedDocument('doc-1', 'CHAT');
 
-        expect(apiClient.delete).toHaveBeenCalledWith('https://api.example.com/chats/chat-42/documents/doc-1');
+        expect(apiClient.delete).toHaveBeenCalledWith('https://api.example.com/chats/documents/doc-1');
     });
 });
 
@@ -174,10 +198,55 @@ describe('refreshIngestedDocument', () => {
     it('refreshes within the user collection', async () => {
         apiClient.post.mockResolvedValue(null);
 
-        const result = await documentService.refreshIngestedDocument('doc-1', 'USER', {});
+        const result = await documentService.refreshIngestedDocument('doc-1', 'USER');
 
         expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/users/user-7/documents/doc-1/refresh');
         expect(result).toBeNull();
+    });
+
+    it('refreshes within the shared chat collection without a chatId', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        await documentService.refreshIngestedDocument('doc-1', 'CHAT');
+
+        expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/chats/documents/doc-1/refresh');
+    });
+});
+
+describe('promoteDocument', () => {
+    it('promotes a chat document into the caller\'s own collection', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        const result = await documentService.promoteDocument('doc-1', 'CHAT', 'user');
+
+        expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/chats/documents/doc-1/promote/user');
+        expect(result).toBeNull();
+    });
+
+    it('promotes a chat document into the global collection', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        await documentService.promoteDocument('doc-1', 'CHAT', 'global');
+
+        expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/chats/documents/doc-1/promote/global');
+    });
+
+    // A rag-admin can promote one of their own USER-collection documents straight to global.
+    it('promotes a user document into the global collection', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        await documentService.promoteDocument('doc-1', 'USER', 'global');
+
+        expect(authService.getUserId).toHaveBeenCalled();
+        expect(apiClient.post).toHaveBeenCalledWith('https://api.example.com/users/user-7/documents/doc-1/promote/global');
+    });
+
+    it('propagates a conflict rather than swallowing it', async () => {
+        const rejection = new Error('409: POST - /chats/documents/doc-1/promote/global Conflict');
+        rejection.status = 409;
+        apiClient.post.mockRejectedValue(rejection);
+
+        await expect(documentService.promoteDocument('doc-1', 'CHAT', 'global')).rejects.toThrow('Conflict');
     });
 });
 

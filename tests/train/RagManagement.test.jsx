@@ -12,6 +12,7 @@ vi.mock('../../src/service/DocumentService.js', () => ({
         uploadDocument: vi.fn(),
         deleteIngestedDocument: vi.fn(),
         refreshIngestedDocument: vi.fn(),
+        promoteDocument: vi.fn(),
         processDocumentQueue: vi.fn(),
     },
 }));
@@ -82,6 +83,15 @@ const notFoundError = () => {
     const caughtError = new Error('404: GET - /chats/chat-42/documents Not Found');
     caughtError.status = 404;
     return caughtError;
+};
+
+const deferred = () => {
+    let resolveDeferred;
+    const promise = new Promise((resolve) => {
+        resolveDeferred = resolve;
+    });
+
+    return {promise, resolve: resolveDeferred};
 };
 
 function asUser({roles = [], chatId = 'chat-1'} = {}) {
@@ -242,11 +252,7 @@ describe('RagManagement document scoping', () => {
         fireEvent.click(screen.getByLabelText('Delete guide.pdf'));
 
         await waitFor(() => {
-            expect(documentService.deleteIngestedDocument).toHaveBeenCalledWith(
-                'doc-1',
-                'CHAT',
-                {chatId: 'chat-42'},
-            );
+            expect(documentService.deleteIngestedDocument).toHaveBeenCalledWith('doc-1', 'CHAT');
         });
     });
 
@@ -263,11 +269,7 @@ describe('RagManagement document scoping', () => {
         fireEvent.click(screen.getByLabelText('Refresh guide.pdf'));
 
         await waitFor(() => {
-            expect(documentService.refreshIngestedDocument).toHaveBeenCalledWith(
-                'doc-1',
-                'USER',
-                {chatId: null},
-            );
+            expect(documentService.refreshIngestedDocument).toHaveBeenCalledWith('doc-1', 'USER');
         });
     });
 });
@@ -373,6 +375,57 @@ describe('RagManagement infinite scrolling', () => {
         expect(documentService.findIngestedDocuments.mock.calls.length).toBe(callCountAfterLastPage);
     });
 
+    it('drops a response that arrives after the level has changed', async () => {
+        asUser({roles: [], chatId: 'chat-42'});
+
+        const pendingUserPage = deferred();
+        documentService.findIngestedDocuments.mockImplementation(async (scope) => {
+            if (scope === 'USER') {
+                return pendingUserPage.promise;
+            }
+
+            return pagedDocuments([{id: 'doc-2', fileName: 'theirs.pdf', documentStatus: 'COMPLETED'}]);
+        });
+
+        renderRag('user');
+
+        await waitFor(() => expect(documentService.findIngestedDocuments).toHaveBeenCalled());
+
+        fireEvent.click(screen.getByText('Chat'));
+
+        await waitFor(() => expect(documentRows()).toEqual(['theirs.pdf']));
+
+        await act(async () => {
+            pendingUserPage.resolve(pagedDocuments([
+                {id: 'doc-1', fileName: 'mine.pdf', documentStatus: 'COMPLETED'},
+            ]));
+        });
+
+        expect(documentRows()).toEqual(['theirs.pdf']);
+        expect(screen.queryByText('mine.pdf')).toBeNull();
+    });
+
+    it('survives unmounting while a page is still in flight', async () => {
+        asUser({roles: []});
+
+        const pendingPage = deferred();
+        documentService.findIngestedDocuments.mockReturnValue(pendingPage.promise);
+
+        const {unmount} = renderRag('user');
+
+        await waitFor(() => expect(documentService.findIngestedDocuments).toHaveBeenCalled());
+
+        unmount();
+
+        await act(async () => {
+            pendingPage.resolve(pagedDocuments([
+                {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+            ]));
+        });
+
+        expect(documentRows()).toEqual([]);
+    });
+
     it('starts over when the level changes', async () => {
         asUser({roles: [], chatId: 'chat-42'});
         documentService.findIngestedDocuments.mockImplementation(async (scope) => {
@@ -420,18 +473,31 @@ describe('RagManagement first page refresh', () => {
         expect(documentRows()).toEqual(['guide.pdf']);
     });
 
-    it('prepends a newly ingested document without dropping the loaded pages', async () => {
+    it('prepends a newly ingested document without dropping the scrolled-in pages', async () => {
         asUser({roles: []});
 
-        let content = [{id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'}];
-        documentService.findIngestedDocuments.mockImplementation(async () => pagedDocuments(content));
+        let firstPage = [{id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'}];
+        documentService.findIngestedDocuments.mockImplementation(async (scope, identifiers, page) => {
+            if (page === 0) {
+                return pagedDocuments(firstPage, {number: 0, totalPages: 2});
+            }
+
+            return pagedDocuments(
+                [{id: 'doc-9', fileName: 'archive.pdf', documentStatus: 'COMPLETED'}],
+                {number: 1, totalPages: 2},
+            );
+        });
         documentService.uploadDocument.mockResolvedValue(undefined);
 
         const {container} = renderRag('user');
 
         await waitFor(() => expect(documentRows()).toEqual(['guide.pdf']));
 
-        content = [
+        await scrollToSentinel();
+
+        await waitFor(() => expect(documentRows()).toEqual(['guide.pdf', 'archive.pdf']));
+
+        firstPage = [
             {id: 'doc-2', fileName: 'fresh.pdf', documentStatus: 'QUEUED'},
             {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
         ];
@@ -440,7 +506,57 @@ describe('RagManagement first page refresh', () => {
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
         fireEvent.click(screen.getByText('Upload File'));
 
-        await waitFor(() => expect(documentRows()).toEqual(['fresh.pdf', 'guide.pdf']));
+        await waitFor(() => expect(documentRows()).toEqual(['fresh.pdf', 'guide.pdf', 'archive.pdf']));
+    });
+
+    it('clears a stale load error once a later load succeeds', async () => {
+        asUser({roles: []});
+
+        documentService.uploadDocument.mockResolvedValue(undefined);
+        documentService.findIngestedDocuments.mockRejectedValueOnce(new Error('network down'));
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        const {container} = renderRag('user');
+
+        await waitFor(() => expect(screen.getByText(/network down/)).toBeDefined());
+
+        const mockFile = new File(['content'], 'guide.pdf', {type: 'application/pdf'});
+        fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
+        fireEvent.click(screen.getByText('Upload File'));
+
+        await waitFor(() => expect(screen.queryByText(/network down/)).toBeNull());
+
+        expect(documentRows()).toEqual(['guide.pdf']);
+    });
+});
+
+describe('RagManagement upload failures', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        userPreferencesService.get.mockResolvedValue({});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([]));
+    });
+
+    it('reports a rejected upload instead of claiming success', async () => {
+        asUser({roles: []});
+
+        const rejection = new Error('403: POST - /users/user-7/documents Forbidden');
+        rejection.status = 403;
+        documentService.uploadDocument.mockRejectedValue(rejection);
+
+        const {container} = renderRag('user');
+
+        await waitFor(() => expect(container.querySelector('#fileInput')).not.toBeNull());
+
+        const mockFile = new File(['content'], 'report.pdf', {type: 'application/pdf'});
+        fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
+        fireEvent.click(screen.getByText('Upload File'));
+
+        await waitFor(() => expect(screen.getByText(/Error uploading file/)).toBeDefined());
+
+        expect(screen.queryByText('File uploaded successfully!')).toBeNull();
     });
 });
 
@@ -581,5 +697,169 @@ describe('RagManagement uploads and listing', () => {
             expect(screen.getByText('manual.pdf')).toBeDefined();
             expect(screen.getByText('COMPLETED')).toBeDefined();
         });
+    });
+});
+
+describe('RagManagement promotion', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        userPreferencesService.get.mockResolvedValue({});
+        documentService.promoteDocument.mockResolvedValue(null);
+    });
+
+    it('offers promote-to-user but not promote-to-global to a non-admin on the chat tab', async () => {
+        asUser({roles: [], chatId: 'chat-42'});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('chat');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to your documents')).toBeDefined());
+        expect(screen.queryByLabelText('Promote guide.pdf to global documents')).toBeNull();
+    });
+
+    it('offers both promote actions to a rag-admin on the chat tab', async () => {
+        asUser({roles: [RAG_ADMIN], chatId: 'chat-42'});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('chat');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to your documents')).toBeDefined());
+        expect(screen.getByLabelText('Promote guide.pdf to global documents')).toBeDefined();
+    });
+
+    it('never offers promote-to-user outside the chat tab', async () => {
+        asUser({roles: [RAG_ADMIN]});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('user');
+
+        await waitFor(() => expect(screen.getByText('guide.pdf')).toBeDefined());
+        expect(screen.queryByLabelText('Promote guide.pdf to your documents')).toBeNull();
+    });
+
+    it('never offers any promotion on the global tab', async () => {
+        asUser({roles: [RAG_ADMIN]});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('global');
+
+        await waitFor(() => expect(screen.getByText('guide.pdf')).toBeDefined());
+        expect(screen.queryByLabelText('Promote guide.pdf to your documents')).toBeNull();
+        expect(screen.queryByLabelText('Promote guide.pdf to global documents')).toBeNull();
+    });
+
+    it('offers promote-to-global to a rag-admin on the user tab', async () => {
+        asUser({roles: [RAG_ADMIN]});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('user');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to global documents')).toBeDefined());
+    });
+
+    it('does not offer promote-to-global on the user tab to a non-admin', async () => {
+        asUser({roles: []});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('user');
+
+        await waitFor(() => expect(screen.getByText('guide.pdf')).toBeDefined());
+        expect(screen.queryByLabelText('Promote guide.pdf to global documents')).toBeNull();
+    });
+
+    it('never offers promotion for a document still processing', async () => {
+        asUser({roles: [RAG_ADMIN], chatId: 'chat-42'});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'IN_PROGRESS'},
+        ]));
+
+        renderRag('chat');
+
+        await waitFor(() => expect(screen.getByText('guide.pdf')).toBeDefined());
+        expect(screen.queryByLabelText('Promote guide.pdf to your documents')).toBeNull();
+    });
+
+    it('promotes to the caller\'s own collection and drops the row from the chat tab', async () => {
+        asUser({roles: [], chatId: 'chat-42'});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('chat');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to your documents')).toBeDefined());
+        fireEvent.click(screen.getByLabelText('Promote guide.pdf to your documents'));
+
+        await waitFor(() => {
+            expect(documentService.promoteDocument).toHaveBeenCalledWith('doc-1', 'CHAT', 'user');
+        });
+        await waitFor(() => expect(screen.queryByText('guide.pdf')).toBeNull());
+        expect(screen.getByText('Document promoted to your collection.')).toBeDefined();
+    });
+
+    it('promotes to the global collection as a rag-admin from the chat tab', async () => {
+        asUser({roles: [RAG_ADMIN], chatId: 'chat-42'});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('chat');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to global documents')).toBeDefined());
+        fireEvent.click(screen.getByLabelText('Promote guide.pdf to global documents'));
+
+        await waitFor(() => {
+            expect(documentService.promoteDocument).toHaveBeenCalledWith('doc-1', 'CHAT', 'global');
+        });
+        expect(screen.getByText('Document promoted to the global collection.')).toBeDefined();
+    });
+
+    it('promotes to the global collection as a rag-admin from the user tab', async () => {
+        asUser({roles: [RAG_ADMIN]});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+
+        renderRag('user');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to global documents')).toBeDefined());
+        fireEvent.click(screen.getByLabelText('Promote guide.pdf to global documents'));
+
+        await waitFor(() => {
+            expect(documentService.promoteDocument).toHaveBeenCalledWith('doc-1', 'USER', 'global');
+        });
+        expect(screen.getByText('Document promoted to the global collection.')).toBeDefined();
+    });
+
+    it('reports a naming conflict distinctly for a global promotion', async () => {
+        asUser({roles: [RAG_ADMIN], chatId: 'chat-42'});
+        documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([
+            {id: 'doc-1', fileName: 'guide.pdf', documentStatus: 'COMPLETED'},
+        ]));
+        const conflict = new Error('409: POST - /chats/documents/doc-1/promote/global Conflict');
+        conflict.status = 409;
+        documentService.promoteDocument.mockRejectedValue(conflict);
+
+        renderRag('chat');
+
+        await waitFor(() => expect(screen.getByLabelText('Promote guide.pdf to global documents')).toBeDefined());
+        fireEvent.click(screen.getByLabelText('Promote guide.pdf to global documents'));
+
+        await waitFor(() => {
+            expect(screen.getByText('A global document with this name already exists. Rename the file and try again.')).toBeDefined();
+        });
+        expect(screen.getByText('guide.pdf')).toBeDefined();
     });
 });

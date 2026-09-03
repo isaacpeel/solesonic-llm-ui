@@ -75,7 +75,6 @@ describe('useChatHistory', () => {
                 {
                     type: AI,
                     text: 'hello',
-                    model: 'model-1',
                     responseMetadata: null,
                     messageId: 'msg-1',
                     attachments: [],
@@ -113,7 +112,6 @@ describe('useChatHistory', () => {
             {
                 type: 'USER',
                 text: 'question',
-                model: undefined,
                 responseMetadata: null,
                 messageId: 'msg-1',
                 attachments: [],
@@ -123,7 +121,6 @@ describe('useChatHistory', () => {
             {
                 type: AI,
                 text: 'answer',
-                model: 'model-1',
                 responseMetadata: null,
                 messageId: 'msg-2',
                 attachments: [],
@@ -162,26 +159,23 @@ describe('useChatHistory', () => {
         result.current.finalizeLastAIMessage({
             message: {
                 message: 'line1\r\n\r\n\r\nline2',
-                model: 'gpt-4',
             },
         });
 
         const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-        const updatedHistory = updater([{type: AI, text: 'old', model: 'old-model', _key: 'ai-1'}]);
+        const updatedHistory = updater([{type: AI, text: 'old', _key: 'ai-1'}]);
         expect(updatedHistory[0].text).toBe('line1\n\nline2');
-        expect(updatedHistory[0].model).toBe('gpt-4');
         expect(updatedHistory[0].isStreaming).toBe(false);
     });
 
     it('finalizeLastAIMessage fallback', () => {
         const {result} = renderHook(() => useChatHistory());
 
-        result.current.finalizeLastAIMessage({message: {model: 'gpt-4'}});
+        result.current.finalizeLastAIMessage({message: {}});
 
         const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-        const updatedHistory = updater([{type: AI, text: 'old text', model: 'old-model', _key: 'ai-1'}]);
+        const updatedHistory = updater([{type: AI, text: 'old text', _key: 'ai-1'}]);
         expect(updatedHistory[0].text).toBe('old text');
-        expect(updatedHistory[0].model).toBe('gpt-4');
     });
 
     it('finalizeLastAIMessage captures responseMetadata from message.responseMetadata on the done payload', () => {
@@ -404,7 +398,6 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
             {
                 type: AI,
                 text: 'answer',
-                model: 'gpt-4',
                 responseMetadata: null,
                 messageId: 'msg-1',
                 attachments: [],
@@ -853,6 +846,65 @@ describe('attachment-aware chat history', () => {
 
             const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const previousHistory = [{type: 'USER', text: 'question', _key: 'u1'}];
+
+            expect(updater(previousHistory)).toBe(previousHistory);
+        });
+    });
+
+    describe('updateAttachmentStatus', () => {
+        it('merges the update into the matching attachment on the last USER message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateAttachmentStatus({id: 'attachment-1', indexed: false, extractionReason: 'unsupported file type'});
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = updater([
+                {type: 'USER', text: 'look', _key: 'u1', attachments: [{id: 'attachment-1', fileName: 'a.pdf'}]},
+                {type: AI, text: '', _key: 'ai1', isStreaming: true},
+            ]);
+
+            expect(updatedHistory[0].attachments[0]).toEqual({
+                id: 'attachment-1',
+                fileName: 'a.pdf',
+                indexed: false,
+                extractionReason: 'unsupported file type',
+            });
+        });
+
+        it('finds the attachment on an earlier USER message when the last one does not carry it', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateAttachmentStatus({id: 'attachment-1', described: false, reason: 'vision model unavailable'});
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = updater([
+                {type: 'USER', text: 'first', _key: 'u1', attachments: [{id: 'attachment-1'}]},
+                {type: AI, text: 'answer', _key: 'ai1'},
+                {type: 'USER', text: 'second', _key: 'u2', attachments: []},
+            ]);
+
+            expect(updatedHistory[0].attachments[0]).toMatchObject({described: false, reason: 'vision model unavailable'});
+            expect(updatedHistory[2].attachments).toEqual([]);
+        });
+
+        it('is a no-op without an attachment id', () => {
+            const {result} = renderHook(() => useChatHistory());
+            sharedState.setChatHistory.mockClear();
+
+            result.current.updateAttachmentStatus({described: false});
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+
+        it('leaves history untouched when no attachment matches', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateAttachmentStatus({id: 'attachment-unknown', indexed: false});
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [
+                {type: 'USER', text: 'look', _key: 'u1', attachments: [{id: 'attachment-1'}]},
+            ];
 
             expect(updater(previousHistory)).toBe(previousHistory);
         });

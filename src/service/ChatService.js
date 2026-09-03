@@ -12,6 +12,7 @@ export const INIT = "init";
 export const ELICITATION = "elicitation";
 export const ERROR = "error";
 export const IMAGE = "image";
+export const ATTACHMENT = "attachment";
 
 /* Outcomes of a resume attempt, mapped from the status codes the resume endpoint decides up front. */
 export const RESUME_STREAMED = "streamed";
@@ -101,6 +102,7 @@ const chatService = {
         setError,
         adoptMessageId,
         attachGeneratedImages,
+        updateAttachmentStatus,
     }) => {
         const progressNotificationText = getProgressNotificationTextFromRawData(eventPayload?.data);
 
@@ -192,6 +194,14 @@ const chatService = {
                     }
                 } catch (parseError) {
                     console.error('[ChatService] Failed to parse image payload:', parseError);
+                }
+                break;
+            case ATTACHMENT:
+                try {
+                    const attachmentPayload = JSON.parse(eventPayload.data);
+                    updateAttachmentStatus?.(attachmentPayload);
+                } catch (parseError) {
+                    console.error('[ChatService] Failed to parse attachment payload:', parseError);
                 }
                 break;
             case ELICITATION:

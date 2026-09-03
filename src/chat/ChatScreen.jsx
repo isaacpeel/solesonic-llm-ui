@@ -41,7 +41,7 @@ function ChatScreen() {
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
     const chatSwitchResetRef = useRef(null);
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory({
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
         onChatIdChangedExternally: () => chatSwitchResetRef.current?.(),
     });
     const [activeElicitation, setActiveElicitation] = useState(null);
@@ -83,6 +83,7 @@ function ChatScreen() {
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
+        updateAttachmentStatus,
         activeElicitation,
         setActiveElicitation,
         setElicitationSubmitting,

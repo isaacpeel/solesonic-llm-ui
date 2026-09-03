@@ -37,6 +37,7 @@ function useChatStream({
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
     adoptMessageIdForLastUserMessage,
+    updateAttachmentStatus,
     activeElicitation,
     setActiveElicitation,
     setElicitationSubmitting,
@@ -91,6 +92,7 @@ function useChatStream({
             setError,
             adoptMessageId: adoptMessageIdForLastUserMessage,
             attachGeneratedImages: attachGeneratedImagesToLastAIMessage,
+            updateAttachmentStatus,
         });
     }, [
         activeElicitation,
@@ -100,6 +102,7 @@ function useChatStream({
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
         attachGeneratedImagesToLastAIMessage,
+        updateAttachmentStatus,
         finalizeLastAIMessage,
         setActiveElicitation,
         setElicitationSubmitting,
