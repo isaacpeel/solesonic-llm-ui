@@ -8,7 +8,7 @@ export const RAG_LEVELS = [
         requiresRole: null,
         requiresChatId: true,
         preferenceKey: 'chatSimilarityThreshold',
-        documentsHeading: 'Documents in this chat',
+        documentsHeading: 'Documents from chats',
         description: "How closely a document must match a question before it's pulled into this conversation's context. Only documents attached to this chat are searched.",
         noChatMessage: 'No chat-level documents yet. Start a chat to attach some.'
     },

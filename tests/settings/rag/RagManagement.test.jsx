@@ -161,7 +161,7 @@ describe('RagManagement level tabs', () => {
         renderRag('nonsense');
 
         await waitFor(() => {
-            expect(screen.getByText('Documents in this chat')).toBeDefined();
+            expect(screen.getByText('Documents from chats')).toBeDefined();
         });
     });
 });
