@@ -5,6 +5,7 @@ import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
 import {ACCEPTED_ATTACHMENT_CONTENT_TYPES} from '../../util/imageValidation.js';
+import useIsMobile from '../../hooks/useIsMobile.js';
 
 function ChatInput({
     loading,
@@ -46,6 +47,7 @@ function ChatInput({
         }
     }, [chatInputRef, inputValue]);
 
+    const isMobile = useIsMobile();
     const hasCandidates = commandCandidates.length > 0;
 
     /* Mirrors the guard in useChatStream.handleSubmit — attachments alone are not a message. */
@@ -173,6 +175,11 @@ function ChatInput({
                                     event.preventDefault();
                                     const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
                                     onCommandSelect(commandCandidates[targetIndex]);
+                                    return;
+                                }
+
+                                /* On touch devices Enter has no Shift companion, so it inserts a newline; the send button submits. */
+                                if (isMobile) {
                                     return;
                                 }
 
