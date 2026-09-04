@@ -108,54 +108,53 @@
     background-color: var(--border-color);
 }
 
+.rag-docs-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
 .rag-docs-heading {
-    margin: 0 0 14px;
+    margin: 0;
     font-size: 14px;
     font-weight: 700;
     color: var(--text-color);
 }
 
-.rag-empty-state {
-    padding: 24px;
-    font-size: 14px;
-    color: var(--settings-muted);
-    text-align: center;
-    border: 1px dashed var(--border-color);
-    border-radius: 10px;
-}
-
-.rag-dropzone {
-    position: relative;
+.rag-add-file-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 160px;
-    padding: 24px;
-    border: 1.5px dashed rgba(255, 255, 255, 0.25);
-    border-radius: 8px;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background-color: transparent;
+    color: #0074D9;
+    border: 1px solid #0074D9;
+    border-radius: 6px;
     cursor: pointer;
-    text-align: center;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
+    font-size: 16px;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.rag-dropzone:hover,
-.rag-dropzone:focus-visible {
-    border-color: #0074D9;
-    background-color: rgba(0, 116, 217, 0.06);
-    outline: none;
-}
-
-.rag-dropzone-dragging {
-    border-color: #0074D9;
+.rag-add-file-button:hover:not(:disabled) {
     background-color: rgba(0, 116, 217, 0.1);
 }
 
-.rag-dropzone-has-file {
-    border-style: solid;
+.rag-add-file-button:disabled {
+    color: #808080;
     border-color: rgba(255, 255, 255, 0.15);
+    cursor: not-allowed;
 }
 
-.rag-dropzone-input {
+.rag-add-file-spinner {
+    animation: spin 1s linear infinite;
+}
+
+.rag-visually-hidden-input {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -167,100 +166,10 @@
     border: 0;
 }
 
-.rag-dropzone-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    color: #b0b0b0;
-}
-
-.rag-dropzone-icon {
-    font-size: 32px;
-    color: #808080;
-}
-
-.rag-dropzone-text {
-    font-size: 15px;
-}
-
-.rag-dropzone-text-touch {
-    display: none;
-}
-
-@media (pointer: coarse) {
-    .rag-dropzone-text-pointer {
-        display: none;
-    }
-
-    .rag-dropzone-text-touch {
-        display: block;
-    }
-}
-
-.rag-dropzone-file {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 100%;
-}
-
-.rag-dropzone-file-icon {
-    font-size: 18px;
-    color: #0074D9;
-    flex-shrink: 0;
-}
-
-.rag-dropzone-file-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 480px;
-}
-
-.rag-dropzone-clear-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: none;
-    border: none;
-    color: #b0b0b0;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    flex-shrink: 0;
-    transition: color 0.2s ease, background-color 0.2s ease;
-}
-
-.rag-dropzone-clear-button:hover {
-    color: red;
-    background-color: rgba(255, 0, 0, 0.1);
-}
-
-.rag-upload-file-button {
-    display: block;
-    width: 100%;
-    padding: 13px;
-    border-radius: 4px;
-    background-color: #0074D9;
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    margin-top: 24px;
-    font-weight: 600;
-    font-size: 15px;
-    transition: background-color 0.2s ease;
-}
-
-.rag-upload-file-button:hover:not(:disabled) {
-    background-color: #005fb2;
-}
-
-.rag-upload-file-button:disabled {
-    background-color: #3a3a3a;
-    color: #808080;
-    cursor: not-allowed;
+.rag-upload-empty-hint {
+    padding: 14px 0;
+    font-size: 13px;
+    color: var(--settings-muted);
 }
 
 .rag-process-queue-button {
@@ -356,6 +265,8 @@
 
 .rag-file-processing-files-header {
     display: flex;
+    align-items: center;
+    gap: 12px;
     border-bottom: 2px solid #ccc;
     padding: 8px;
     font-weight: bold
@@ -367,7 +278,8 @@
 }
 
 .rag-file-processing-files-header-status {
-    flex: 1;
+    flex-shrink: 0;
+    width: 150px;
     text-align: left;
     -webkit-font-smoothing: subpixel-antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -375,6 +287,7 @@
 
 .rag-file-processing-files-header-actions {
     width: 150px;
+    flex-shrink: 0;
     text-align: right;
     -webkit-font-smoothing: subpixel-antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -570,6 +483,15 @@
     }
 }
 
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 @media (max-width: 560px) {
     .rag-tab-bar {
         gap: 16px;
@@ -585,10 +507,6 @@
 
     .rag-process-queue-button {
         margin-left: auto;
-    }
-
-    .rag-dropzone {
-        padding: 16px;
     }
 
     .rag-file-processing-files-header {

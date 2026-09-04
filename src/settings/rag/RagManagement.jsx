@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {Navigate, NavLink, useParams} from "react-router";
-import {FiTrash2, FiRefreshCw, FiUploadCloud, FiFile, FiX, FiCheckCircle, FiAlertCircle, FiUser, FiGlobe} from "react-icons/fi";
+import {FiTrash2, FiRefreshCw, FiCheckCircle, FiAlertCircle, FiUser, FiGlobe, FiPlus, FiLoader} from "react-icons/fi";
 import {PiQueueFill} from "react-icons/pi";
 import log from "loglevel";
 
@@ -61,11 +61,9 @@ const RagManagement = () => {
     const {hasRole} = useKeycloak();
     const {chatId} = useSharedData();
 
-    const [file, setFile] = useState(null);
-    const [fileName, setFileName] = useState(null);
     const [statusMessage, setStatusMessage] = useState("");
     const [statusType, setStatusType] = useState("success");
-    const [isDragging, setIsDragging] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [files, setFiles] = useState([]);
     const [loadedPages, setLoadedPages] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
@@ -236,43 +234,43 @@ const RagManagement = () => {
         return <Navigate to={`/settings/rag/${DEFAULT_RAG_LEVEL}`} replace/>;
     }
 
-    const selectFile = (selectedFile) => {
-        if (!selectedFile) {
+    const uploadFile = async (selectedFile) => {
+        if (!selectedFile || uploading) {
             return;
         }
 
-        setFile(selectedFile);
-        setFileName(selectedFile.name);
         setStatusMessage("");
+        setUploading(true);
+
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+
+        try {
+            await documentService.uploadDocument(formData, scope, identifiers);
+            setStatusType("success");
+            setStatusMessage(`${selectedFile.name} uploaded successfully!`);
+            await loadFirstPage();
+        } catch (caughtError) {
+            setStatusType("error");
+            setStatusMessage(`Error uploading file: ${caughtError}`);
+        } finally {
+            setUploading(false);
+        }
     };
 
     const handleFileChange = (event) => {
-        selectFile(event.target.files[0]);
-    };
-
-    const handleClearFile = () => {
-        setFile(null);
-        setFileName(null);
-
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
+        const selectedFile = event.target.files[0];
+        event.target.value = "";
+        void uploadFile(selectedFile);
     };
 
     const handleDragOver = (event) => {
         event.preventDefault();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (event) => {
-        event.preventDefault();
-        setIsDragging(false);
     };
 
     const handleDrop = (event) => {
         event.preventDefault();
-        setIsDragging(false);
-        selectFile(event.dataTransfer.files[0]);
+        void uploadFile(event.dataTransfer.files[0]);
     };
 
     const handleThresholdSubmit = async (event) => {
@@ -352,32 +350,6 @@ const RagManagement = () => {
         }
     };
 
-    const handleSubmit = async (event) => {
-        event.preventDefault();
-
-        if (!file) {
-            setStatusType("error");
-            setStatusMessage("Select a file before uploading.");
-            return;
-        }
-
-        setStatusMessage("");
-
-        const formData = new FormData();
-        formData.append("file", file);
-
-        try {
-            await documentService.uploadDocument(formData, scope, identifiers);
-            setStatusType("success");
-            setStatusMessage("File uploaded successfully!");
-            handleClearFile();
-            await loadFirstPage();
-        } catch (caughtError) {
-            setStatusType("error");
-            setStatusMessage(`Error uploading file: ${caughtError}`);
-        }
-    };
-
     return (
         <div className="rag-management">
             <div className="rag-header-row">
@@ -438,7 +410,33 @@ const RagManagement = () => {
             <p className="rag-threshold-description">{ragLevel.description}</p>
 
             <div className="rag-section-divider"></div>
-            <div className="rag-docs-heading">{ragLevel.documentsHeading}</div>
+
+            <div className="rag-docs-heading-row">
+                <div className="rag-docs-heading">{ragLevel.documentsHeading}</div>
+
+                {!documentsUnavailable && (
+                    <>
+                        <button
+                            type="button"
+                            className="rag-add-file-button"
+                            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                            disabled={uploading}
+                            aria-label="Add document"
+                            data-tooltip="Add document"
+                        >
+                            {uploading ? <FiLoader className="rag-add-file-spinner"/> : <FiPlus/>}
+                        </button>
+
+                        <input
+                            type="file"
+                            id="fileInput"
+                            onChange={handleFileChange}
+                            ref={fileInputRef}
+                            className="rag-visually-hidden-input"
+                        />
+                    </>
+                )}
+            </div>
 
             {loadErrorMessage && (
                 <div className="rag-file-upload-status-message rag-file-upload-status-message-error">
@@ -447,74 +445,18 @@ const RagManagement = () => {
                 </div>
             )}
 
+            {statusMessage && (
+                <div className={`rag-file-upload-status-message rag-file-upload-status-message-${statusType}`}>
+                    {statusType === "success" ? <FiCheckCircle/> : <FiAlertCircle/>}
+                    {statusMessage}
+                </div>
+            )}
+
             {documentsUnavailable ? (
-                <div className="rag-empty-state">{ragLevel.noChatMessage}</div>
+                <div className="rag-upload-empty-hint">{ragLevel.noChatMessage}</div>
             ) : (
-                <>
-                    <form onSubmit={handleSubmit}>
-                        <div
-                            className={[
-                                "rag-dropzone",
-                                isDragging ? "rag-dropzone-dragging" : "",
-                                fileName ? "rag-dropzone-has-file" : "",
-                            ].join(" ").trim()}
-                            onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    fileInputRef.current && fileInputRef.current.click();
-                                }
-                            }}
-                        >
-                            <input
-                                type="file"
-                                id="fileInput"
-                                onChange={handleFileChange}
-                                ref={fileInputRef}
-                                className="rag-dropzone-input"
-                            />
-
-                            {fileName ? (
-                                <div className="rag-dropzone-file">
-                                    <FiFile className="rag-dropzone-file-icon"/>
-                                    <span className="rag-dropzone-file-name">{fileName}</span>
-                                    <button
-                                        type="button"
-                                        className="rag-dropzone-clear-button"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            handleClearFile();
-                                        }}
-                                        aria-label="Remove selected file"
-                                        title="Remove file"
-                                    >
-                                        <FiX/>
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="rag-dropzone-placeholder">
-                                    <FiUploadCloud className="rag-dropzone-icon"/>
-                                    <div className="rag-dropzone-text rag-dropzone-text-pointer">
-                                        <strong>Click to browse</strong> or drag and drop a file here
-                                    </div>
-                                    <div className="rag-dropzone-text rag-dropzone-text-touch">
-                                        <strong>Tap to browse</strong> for a file
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <button type="submit" className="rag-upload-file-button" disabled={!file}>
-                            Upload File
-                        </button>
-                    </form>
-
-                    {files.length > 0 && (
+                <div onDragOver={handleDragOver} onDrop={handleDrop}>
+                    {files.length > 0 ? (
                         <div className="rag-file-processing-files-container">
                             <div className="rag-file-processing-files-header">
                                 <div className="rag-file-processing-files-header-filename">File Name</div>
@@ -584,14 +526,9 @@ const RagManagement = () => {
                                 {loadingMore ? "Loading more documents..." : ""}
                             </div>
                         </div>
+                    ) : (
+                        <div className="rag-upload-empty-hint">No documents yet.</div>
                     )}
-                </>
-            )}
-
-            {statusMessage && (
-                <div className={`rag-file-upload-status-message rag-file-upload-status-message-${statusType}`}>
-                    {statusType === "success" ? <FiCheckCircle/> : <FiAlertCircle/>}
-                    {statusMessage}
                 </div>
             )}
         </div>

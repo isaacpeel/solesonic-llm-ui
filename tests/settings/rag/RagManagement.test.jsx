@@ -228,7 +228,6 @@ describe('RagManagement document scoping', () => {
 
         const mockFile = new File(['content'], 'report.pdf', {type: 'application/pdf'});
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
-        fireEvent.click(screen.getByText('Upload File'));
 
         await waitFor(() => {
             expect(documentService.uploadDocument).toHaveBeenCalledWith(
@@ -504,7 +503,6 @@ describe('RagManagement first page refresh', () => {
 
         const mockFile = new File(['content'], 'fresh.pdf', {type: 'application/pdf'});
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
-        fireEvent.click(screen.getByText('Upload File'));
 
         await waitFor(() => expect(documentRows()).toEqual(['fresh.pdf', 'guide.pdf', 'archive.pdf']));
     });
@@ -524,7 +522,6 @@ describe('RagManagement first page refresh', () => {
 
         const mockFile = new File(['content'], 'guide.pdf', {type: 'application/pdf'});
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
-        fireEvent.click(screen.getByText('Upload File'));
 
         await waitFor(() => expect(screen.queryByText(/network down/)).toBeNull());
 
@@ -552,11 +549,10 @@ describe('RagManagement upload failures', () => {
 
         const mockFile = new File(['content'], 'report.pdf', {type: 'application/pdf'});
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
-        fireEvent.click(screen.getByText('Upload File'));
 
         await waitFor(() => expect(screen.getByText(/Error uploading file/)).toBeDefined());
 
-        expect(screen.queryByText('File uploaded successfully!')).toBeNull();
+        expect(screen.queryByText(/uploaded successfully/)).toBeNull();
     });
 });
 
@@ -638,16 +634,19 @@ describe('RagManagement uploads and listing', () => {
         asUser({roles: []});
     });
 
-    it('renders the file upload area', async () => {
+    it('renders the file upload control', async () => {
         const {container} = renderRag('user');
 
         await waitFor(() => {
-            expect(container.querySelector('.rag-dropzone')).not.toBeNull();
-            expect(screen.getByText('Upload File')).toBeDefined();
+            expect(container.querySelector('.rag-add-file-button')).not.toBeNull();
+            expect(container.querySelector('#fileInput')).not.toBeNull();
         });
     });
 
-    it('selecting a file displays the filename', async () => {
+    it('disables the add button while an upload is in flight', async () => {
+        const pendingUpload = deferred();
+        documentService.uploadDocument.mockReturnValue(pendingUpload.promise);
+
         const {container} = renderRag('user');
 
         await waitFor(() => expect(container.querySelector('#fileInput')).not.toBeNull());
@@ -655,19 +654,13 @@ describe('RagManagement uploads and listing', () => {
         const mockFile = new File(['content'], 'document.pdf', {type: 'application/pdf'});
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
 
-        await waitFor(() => expect(screen.getByText('document.pdf')).toBeDefined());
-    });
+        await waitFor(() => expect(container.querySelector('.rag-add-file-button').disabled).toBe(true));
 
-    it('submitting without a file shows an error message', async () => {
-        const {container} = renderRag('user');
-
-        await waitFor(() => expect(container.querySelector('.rag-dropzone')).not.toBeNull());
-
-        fireEvent.submit(container.querySelector('.rag-dropzone').closest('form'));
-
-        await waitFor(() => {
-            expect(screen.getByText(/Select a file before uploading/)).toBeDefined();
+        await act(async () => {
+            pendingUpload.resolve(undefined);
         });
+
+        await waitFor(() => expect(container.querySelector('.rag-add-file-button').disabled).toBe(false));
     });
 
     it('successful upload shows confirmation message', async () => {
@@ -677,10 +670,9 @@ describe('RagManagement uploads and listing', () => {
 
         const mockFile = new File(['content'], 'report.pdf', {type: 'application/pdf'});
         fireEvent.change(container.querySelector('#fileInput'), {target: {files: [mockFile]}});
-        fireEvent.click(screen.getByText('Upload File'));
 
         await waitFor(() => {
-            expect(screen.getByText('File uploaded successfully!')).toBeDefined();
+            expect(screen.getByText('report.pdf uploaded successfully!')).toBeDefined();
         });
     });
 
