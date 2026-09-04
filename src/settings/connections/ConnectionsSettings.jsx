@@ -4,9 +4,9 @@ import {SiAtlassian, SiGoogle} from 'react-icons/si';
 import {toast} from 'react-toastify';
 import log from 'loglevel';
 
-import atlassianAuthService from '../service/AtlassianAuthService.js';
-import googleAuthService from '../service/GoogleAuthService.js';
-import userPreferencesService from '../service/UserPreferencesService.js';
+import atlassianAuthService from '../../service/AtlassianAuthService.js';
+import googleAuthService from '../../service/GoogleAuthService.js';
+import userPreferencesService from '../../service/UserPreferencesService.js';
 import './ConnectionsSettings.css';
 
 const RECONNECT_MESSAGE = 'Google access is no longer valid. Reconnect your Google account.';

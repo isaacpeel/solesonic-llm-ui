@@ -2,9 +2,9 @@ import {render, screen, waitFor} from '@testing-library/react';
 import {MemoryRouter, Navigate, Route, Routes} from 'react-router';
 import {describe, it, vi, expect, beforeEach, afterEach} from 'vitest';
 
-import UserSettings from '../../src/user/UserSettings.jsx';
-import GeneralUserSettings from '../../src/user/GeneralUserSettings.jsx';
-import ConnectionsSettings from '../../src/user/ConnectionsSettings.jsx';
+import UserSettings from '../../src/settings/UserSettings.jsx';
+import GeneralUserSettings from '../../src/settings/GeneralUserSettings.jsx';
+import ConnectionsSettings from '../../src/settings/connections/ConnectionsSettings.jsx';
 import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
 
 vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({

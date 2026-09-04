@@ -1,4 +1,4 @@
-import { ROLES } from '../authorizer/roles.js';
+import { ROLES } from '../../authorizer/roles.js';
 
 export const RAG_LEVELS = [
     {
@@ -10,7 +10,7 @@ export const RAG_LEVELS = [
         preferenceKey: 'chatSimilarityThreshold',
         documentsHeading: 'Documents in this chat',
         description: "How closely a document must match a question before it's pulled into this conversation's context. Only documents attached to this chat are searched.",
-        noChatMessage: 'Start a chat before attaching documents to it.'
+        noChatMessage: 'No chat-level documents yet. Start a chat to attach some.'
     },
     {
         level: 'user',

@@ -1,5 +1,5 @@
-import atlassianAuthService from "../service/AtlassianAuthService.js";
-import userPreferencesService from "../service/UserPreferencesService.js";
+import atlassianAuthService from "../../service/AtlassianAuthService.js";
+import userPreferencesService from "../../service/UserPreferencesService.js";
 import './AtlassianSettings.css';
 import {useEffect, useState} from "react";
 import {ArrowsRightLeftIcon, CheckIcon, ExclamationTriangleIcon} from "@heroicons/react/24/solid";

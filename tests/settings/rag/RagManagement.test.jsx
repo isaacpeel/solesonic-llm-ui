@@ -2,11 +2,11 @@ import {render, waitFor, fireEvent, screen, act} from '@testing-library/react';
 import {MemoryRouter, Route, Routes} from 'react-router';
 import {describe, it, vi, expect, beforeEach} from 'vitest';
 
-import RagManagement from '../../src/train/RagManagement.jsx';
-import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
-import {useSharedData} from '../../src/context/useSharedData.jsx';
+import RagManagement from '../../../src/settings/rag/RagManagement.jsx';
+import {useKeycloak} from '../../../src/providers/KeycloakProvider.jsx';
+import {useSharedData} from '../../../src/context/useSharedData.jsx';
 
-vi.mock('../../src/service/DocumentService.js', () => ({
+vi.mock('../../../src/service/DocumentService.js', () => ({
     default: {
         findIngestedDocuments: vi.fn(),
         uploadDocument: vi.fn(),
@@ -17,30 +17,30 @@ vi.mock('../../src/service/DocumentService.js', () => ({
     },
 }));
 
-vi.mock('../../src/service/UserPreferencesService.js', () => ({
+vi.mock('../../../src/service/UserPreferencesService.js', () => ({
     default: {
         get: vi.fn(),
         update: vi.fn(),
     },
 }));
 
-vi.mock('../../src/service/AuthService.js', () => ({
+vi.mock('../../../src/service/AuthService.js', () => ({
     default: {
         getAccessToken: vi.fn().mockResolvedValue('mock-token'),
         getUserId: vi.fn().mockResolvedValue('user-7'),
     },
 }));
 
-vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({
+vi.mock('../../../src/providers/KeycloakProvider.jsx', () => ({
     useKeycloak: vi.fn(),
 }));
 
-vi.mock('../../src/context/useSharedData.jsx', () => ({
+vi.mock('../../../src/context/useSharedData.jsx', () => ({
     useSharedData: vi.fn(),
 }));
 
-import documentService from '../../src/service/DocumentService.js';
-import userPreferencesService from '../../src/service/UserPreferencesService.js';
+import documentService from '../../../src/service/DocumentService.js';
+import userPreferencesService from '../../../src/service/UserPreferencesService.js';
 
 const RAG_ADMIN = 'rag-admin';
 
@@ -213,7 +213,7 @@ describe('RagManagement document scoping', () => {
         renderRag('chat');
 
         await waitFor(() => {
-            expect(screen.getByText('Start a chat before attaching documents to it.')).toBeDefined();
+            expect(screen.getByText('No chat-level documents yet. Start a chat to attach some.')).toBeDefined();
         });
 
         expect(documentService.findIngestedDocuments).not.toHaveBeenCalled();

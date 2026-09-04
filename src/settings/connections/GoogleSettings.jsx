@@ -2,8 +2,8 @@ import {useCallback, useEffect, useState} from "react";
 import {ArrowsRightLeftIcon, CheckIcon, ExclamationTriangleIcon, XMarkIcon} from "@heroicons/react/24/solid";
 import {toast} from "react-toastify";
 import log from "loglevel";
-import googleAuthService from "../service/GoogleAuthService.js";
-import userPreferencesService from "../service/UserPreferencesService.js";
+import googleAuthService from "../../service/GoogleAuthService.js";
+import userPreferencesService from "../../service/UserPreferencesService.js";
 import './GoogleSettings.css';
 
 const RECONNECT_MESSAGE = 'Google access is no longer valid. Reconnect your Google account.';

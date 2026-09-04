@@ -16,7 +16,7 @@ vi.mock('react-router', () => ({
     useNavigate: () => navigateMock,
 }));
 
-vi.mock('../../src/service/AtlassianAuthService.js', () => ({
+vi.mock('../../../src/service/AtlassianAuthService.js', () => ({
     default: atlassianAuthServiceMock,
 }));
 
@@ -38,7 +38,7 @@ const loadCallback = async (search) => {
     window.history.replaceState({}, '', `/atlassian/auth/callback${search}`);
     vi.resetModules();
 
-    const module = await import('../../src/user/AtlassianAuthCallback.jsx');
+    const module = await import('../../../src/settings/connections/AtlassianAuthCallback.jsx');
 
     return module.default;
 };

@@ -4,12 +4,12 @@ import {FiTrash2, FiRefreshCw, FiUploadCloud, FiFile, FiX, FiCheckCircle, FiAler
 import {PiQueueFill} from "react-icons/pi";
 import log from "loglevel";
 
-import documentService from "../service/DocumentService.js";
-import userPreferencesService from "../service/UserPreferencesService.js";
-import {useKeycloak} from "../providers/KeycloakProvider.jsx";
-import {useSharedData} from "../context/useSharedData.jsx";
+import documentService from "../../service/DocumentService.js";
+import userPreferencesService from "../../service/UserPreferencesService.js";
+import {useKeycloak} from "../../providers/KeycloakProvider.jsx";
+import {useSharedData} from "../../context/useSharedData.jsx";
 import {DEFAULT_RAG_LEVEL, findRagLevel, visibleRagLevels} from "./ragLevels.js";
-import {ROLES} from "../authorizer/roles.js";
+import {ROLES} from "../../authorizer/roles.js";
 import "./RagManagement.css";
 
 const DOCUMENT_POLL_INTERVAL_MS = 5000;

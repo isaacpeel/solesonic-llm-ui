@@ -18,7 +18,7 @@ vi.mock('react-router', () => ({
     useNavigate: () => navigateMock,
 }));
 
-vi.mock('../../src/service/GoogleAuthService.js', () => ({
+vi.mock('../../../src/service/GoogleAuthService.js', () => ({
     default: googleAuthServiceMock,
 }));
 
@@ -40,7 +40,7 @@ const loadCallback = async (search) => {
     window.history.replaceState({}, '', `/google/auth/callback${search}`);
     vi.resetModules();
 
-    const module = await import('../../src/user/GoogleAuthCallback.jsx');
+    const module = await import('../../../src/settings/connections/GoogleAuthCallback.jsx');
 
     return module.default;
 };

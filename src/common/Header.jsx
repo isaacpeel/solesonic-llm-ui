@@ -1,7 +1,7 @@
 import './Header.css';
 import {useNavigate} from "react-router";
 import {useSharedData} from "../context/useSharedData.jsx";
-import UserDialog from "../user/UserDialog.jsx";
+import UserDialog from "../settings/UserDialog.jsx";
 import {ArrowRightEndOnRectangleIcon, ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid/index.js";
 import {PencilSquareIcon} from "@heroicons/react/24/solid/index.js";
 import ChatHistory from "../chat/message/ChatHistory.jsx";

@@ -1,7 +1,7 @@
 import {render, waitFor, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 
-vi.mock('../../src/service/GoogleAuthService.js', () => ({
+vi.mock('../../../src/service/GoogleAuthService.js', () => ({
     default: {
         authUri: vi.fn(),
         authCallback: vi.fn(),
@@ -10,7 +10,7 @@ vi.mock('../../src/service/GoogleAuthService.js', () => ({
     },
 }));
 
-vi.mock('../../src/service/UserPreferencesService.js', () => ({
+vi.mock('../../../src/service/UserPreferencesService.js', () => ({
     default: {
         get: vi.fn(),
         update: vi.fn(),
@@ -28,9 +28,9 @@ vi.mock('loglevel', () => ({
     default: {error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()},
 }));
 
-import GoogleSettings from '../../src/user/GoogleSettings.jsx';
-import googleAuthService from '../../src/service/GoogleAuthService.js';
-import userPreferencesService from '../../src/service/UserPreferencesService.js';
+import GoogleSettings from '../../../src/settings/connections/GoogleSettings.jsx';
+import googleAuthService from '../../../src/service/GoogleAuthService.js';
+import userPreferencesService from '../../../src/service/UserPreferencesService.js';
 import {toast} from 'react-toastify';
 
 const gmailProfile = {
