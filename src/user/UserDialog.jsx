@@ -53,7 +53,10 @@ const UserDialog = () => {
                     <div className="dialog-section">
                         <div
                             className="dropdown-item"
-                            onClick={() => navigate("/settings")}
+                            onClick={() => {
+                                navigate("/settings");
+                                setShowUserDialog(false);
+                            }}
                         >
                             <Cog6ToothIcon className="icon"/>
                             Settings
