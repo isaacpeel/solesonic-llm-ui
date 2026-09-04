@@ -77,6 +77,7 @@ const RagManagement = () => {
     const sentinelRef = useRef(null);
     const loadGenerationRef = useRef(0);
     const loadingMoreRef = useRef(false);
+    const userPreferencesRef = useRef(null);
 
     const ragLevel = findRagLevel(level);
     const availableLevels = visibleRagLevels(hasRole);
@@ -176,6 +177,8 @@ const RagManagement = () => {
 
         userPreferencesService.get()
             .then((userPreferences) => {
+                userPreferencesRef.current = userPreferences;
+
                 if (userPreferences[preferenceKey] !== undefined) {
                     setThreshold(userPreferences[preferenceKey]);
                 }
@@ -277,7 +280,11 @@ const RagManagement = () => {
         setSavingThreshold(true);
 
         try {
-            await userPreferencesService.patch({[preferenceKey]: parseFloat(Number(threshold).toFixed(2))});
+            const updatedPreferences = {
+                ...userPreferencesRef.current,
+                [preferenceKey]: parseFloat(Number(threshold).toFixed(2)),
+            };
+            userPreferencesRef.current = await userPreferencesService.update(updatedPreferences);
             setStatusType("success");
             setStatusMessage("Similarity threshold updated.");
         } catch (caughtError) {

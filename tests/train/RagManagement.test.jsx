@@ -20,7 +20,7 @@ vi.mock('../../src/service/DocumentService.js', () => ({
 vi.mock('../../src/service/UserPreferencesService.js', () => ({
     default: {
         get: vi.fn(),
-        patch: vi.fn(),
+        update: vi.fn(),
     },
 }));
 
@@ -125,7 +125,7 @@ describe('RagManagement level tabs', () => {
         documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([]));
         documentService.uploadDocument.mockResolvedValue(undefined);
         userPreferencesService.get.mockResolvedValue({});
-        userPreferencesService.patch.mockResolvedValue({});
+        userPreferencesService.update.mockResolvedValue({});
     });
 
     it('shows only Chat and User to a non-admin', async () => {
@@ -174,7 +174,7 @@ describe('RagManagement document scoping', () => {
         documentService.deleteIngestedDocument.mockResolvedValue(null);
         documentService.refreshIngestedDocument.mockResolvedValue(null);
         userPreferencesService.get.mockResolvedValue({});
-        userPreferencesService.patch.mockResolvedValue({});
+        userPreferencesService.update.mockResolvedValue({});
     });
 
     it('requests the USER collection on the user level', async () => {
@@ -598,7 +598,7 @@ describe('RagManagement threshold', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         documentService.findIngestedDocuments.mockResolvedValue(pagedDocuments([]));
-        userPreferencesService.patch.mockResolvedValue({});
+        userPreferencesService.update.mockResolvedValue({});
     });
 
     it('loads the threshold for the active level', async () => {
@@ -612,7 +612,7 @@ describe('RagManagement threshold', () => {
         });
     });
 
-    it('patches only the field for the active level', async () => {
+    it('sends the full preferences with the updated field for the active level', async () => {
         asUser({roles: []});
         userPreferencesService.get.mockResolvedValue({userSimilarityThreshold: 0.5});
 
@@ -624,7 +624,7 @@ describe('RagManagement threshold', () => {
         fireEvent.submit(document.querySelector('.rag-threshold-form'));
 
         await waitFor(() => {
-            expect(userPreferencesService.patch).toHaveBeenCalledWith({userSimilarityThreshold: 0.8});
+            expect(userPreferencesService.update).toHaveBeenCalledWith({userSimilarityThreshold: 0.8});
         });
     });
 });
