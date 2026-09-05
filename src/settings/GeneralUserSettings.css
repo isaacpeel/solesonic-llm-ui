@@ -116,7 +116,8 @@
     gap: 6px;
 }
 
-.general-settings-address-field input {
+.general-settings-address-field input,
+.general-settings-address-field select {
     padding: 8px 10px;
     font-size: 14px;
     color: var(--text-color);
@@ -125,7 +126,8 @@
     border-radius: 6px;
 }
 
-.general-settings-address-field input:disabled {
+.general-settings-address-field input:disabled,
+.general-settings-address-field select:disabled {
     opacity: 0.6;
 }
 
