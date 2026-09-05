@@ -84,6 +84,73 @@
     color: var(--settings-muted);
 }
 
+.general-settings-timezone-select {
+    width: 100%;
+    max-width: 320px;
+    padding: 8px 10px;
+    font-size: 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.general-settings-timezone-select:disabled {
+    opacity: 0.6;
+}
+
+.general-settings-section-title {
+    margin-top: 28px;
+}
+
+.general-settings-address-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.general-settings-address-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.general-settings-address-field input {
+    padding: 8px 10px;
+    font-size: 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.general-settings-address-field input:disabled {
+    opacity: 0.6;
+}
+
+.general-settings-address-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.general-settings-save-button {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #fff;
+    background-color: var(--settings-accent);
+    border: 1px solid var(--settings-accent);
+}
+
+.general-settings-save-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 @media (max-width: 560px) {
     .general-settings-profile-row {
         flex-direction: column;

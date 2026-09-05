@@ -14,6 +14,7 @@ config.documentsUri = `${config.apiBaseUri}/documents`;
 config.slashCommandsUri = `${config.apiBaseUri}/slash/commands`;
 config.attachmentsUri = `${config.apiBaseUri}/attachments`;
 config.imagesUri = `${config.apiBaseUri}/images`;
+config.addressesUri = `${config.apiBaseUri}/addresses`;
 config.authFailureUri = `${config.uiBaseUri}/authFailure`;
 
 export default config;
