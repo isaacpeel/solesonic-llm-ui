@@ -1,5 +1,11 @@
 import {NavLink, Outlet} from "react-router";
-import {ChevronLeftIcon, UserCircleIcon, ArrowsRightLeftIcon, CubeTransparentIcon} from "@heroicons/react/24/solid";
+import {
+    ChevronLeftIcon,
+    UserCircleIcon,
+    ArrowsRightLeftIcon,
+    CubeTransparentIcon,
+    PhotoIcon
+} from "@heroicons/react/24/solid";
 
 import "./UserSettings.css";
 
@@ -19,7 +25,8 @@ const SETTINGS_NAV_GROUPS = [
     {
         label: "Data",
         items: [
-            {to: "/settings/rag", label: "RAG", Icon: CubeTransparentIcon}
+            {to: "/settings/rag", label: "RAG", Icon: CubeTransparentIcon},
+            {to: "/settings/images", label: "Images", Icon: PhotoIcon}
         ]
     }
 ];
