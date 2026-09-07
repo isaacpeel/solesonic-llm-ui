@@ -264,6 +264,8 @@ const GeneralUserSettings = () => {
                     <span className="general-settings-profile-label">Zip</span>
                     <input
                         type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={addressForm.zip}
                         onChange={handleAddressFieldChange('zip')}
                         disabled={isSavingAddress}
