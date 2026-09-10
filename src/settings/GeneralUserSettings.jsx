@@ -105,6 +105,7 @@ const GeneralUserSettings = () => {
 
     const [addressId, setAddressId] = useState(null);
     const [addressForm, setAddressForm] = useState(emptyAddressForm);
+    const [savedAddressForm, setSavedAddressForm] = useState(emptyAddressForm);
     const [isSavingAddress, setIsSavingAddress] = useState(false);
 
     const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -122,16 +123,19 @@ const GeneralUserSettings = () => {
             if (!userPreferences?.addressId) {
                 setAddressId(null);
                 setAddressForm(emptyAddressForm);
+                setSavedAddressForm(emptyAddressForm);
                 return;
             }
 
             const loadedAddress = await addressService.get(userPreferences.addressId);
             setAddressId(userPreferences.addressId);
             setAddressForm(addressFieldsFrom(loadedAddress));
+            setSavedAddressForm(addressFieldsFrom(loadedAddress));
         } catch (caughtError) {
             log.error('[GeneralUserSettings] Failed to load preferences:', caughtError);
             setAddressId(null);
             setAddressForm(emptyAddressForm);
+            setSavedAddressForm(emptyAddressForm);
         }
     }, []);
 
@@ -169,11 +173,13 @@ const GeneralUserSettings = () => {
             if (addressId) {
                 const updatedAddress = await addressService.update(addressId, addressForm);
                 setAddressForm(addressFieldsFrom(updatedAddress));
+                setSavedAddressForm(addressFieldsFrom(updatedAddress));
             } else {
                 const createdAddress = await addressService.create(addressForm);
                 await userPreferencesService.linkAddress(createdAddress.id);
                 setAddressId(createdAddress.id);
                 setAddressForm(addressFieldsFrom(createdAddress));
+                setSavedAddressForm(addressFieldsFrom(createdAddress));
             }
 
             toast('Address saved');
@@ -184,6 +190,9 @@ const GeneralUserSettings = () => {
             setIsSavingAddress(false);
         }
     };
+
+    const isAddressChanged = ['address', 'city', 'state', 'zip']
+        .some((field) => addressForm[field] !== savedAddressForm[field]);
 
     return (
         <div className="general-settings-container">
@@ -293,7 +302,7 @@ const GeneralUserSettings = () => {
                         type="button"
                         className="general-settings-save-button"
                         onClick={handleSaveAddress}
-                        disabled={isSavingAddress}
+                        disabled={isSavingAddress || !isAddressChanged}
                     >
                         {isSavingAddress ? 'Saving...' : 'Save'}
                     </button>
