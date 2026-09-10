@@ -8,8 +8,19 @@ import {
 } from '../service/ProgressNotificationService.js';
 import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 
-function useChatHistory({onChatIdChangedExternally} = {}) {
+function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
+
+    /*
+     * Held in a ref rather than listed as a dependency of the hydration effect below. That
+     * effect clears `adoptedChatIdRef` on its fetching path, so re-running it refetches — and a
+     * caller passing an inline arrow would give it a new identity on every render.
+     */
+    const onChatNotFoundRef = useRef(onChatNotFound);
+
+    useEffect(() => {
+        onChatNotFoundRef.current = onChatNotFound;
+    }, [onChatNotFound]);
 
     /*
      * Holds an id this client adopted from its own in-flight stream, so hydration can tell
@@ -90,10 +101,37 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
          */
         adoptedChatIdRef.current = null;
 
+        /*
+         * The id this run asked for. A slow request that lands after the user has moved on must
+         * not act on the conversation now open — evicting it would drag them out of a chat they
+         * are reading and blame a different one.
+         */
+        const requestedChatId = chatId;
+        let supersededByLaterChat = false;
+
         reloadChatHistory()
             .catch((error) => {
+                if (supersededByLaterChat) {
+                    return;
+                }
+
+                /*
+                 * Handled here rather than inside `reloadChatHistory`, which stream recovery
+                 * awaits and relies on rejecting. 403 sits alongside 404 because the two are the
+                 * same event to the user — the id names nothing they can open, whether it never
+                 * existed or belongs to someone else — and only the backend knows which it is.
+                 */
+                if (error?.status === 404 || error?.status === 403) {
+                    onChatNotFoundRef.current?.(requestedChatId);
+                    return;
+                }
+
                 console.error('[useChatHistory] Failed to load chat details:', error);
             });
+
+        return () => {
+            supersededByLaterChat = true;
+        };
     }, [chatId, reloadChatHistory]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {

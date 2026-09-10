@@ -85,6 +85,105 @@ describe('useChatHistory', () => {
         });
     });
 
+    /*
+     * A url is now the main way to reach a chat that does not exist — a bookmark outliving the
+     * conversation, or a shared link to someone else's. The caller is told so it can send the
+     * user somewhere real; a bare log would leave them on a permanently empty transcript.
+     */
+    it('reports a chat that no longer exists to the caller', async () => {
+        sharedState.chatId = 'chat-gone';
+        chatService.findChatDetails.mockRejectedValue(
+            Object.assign(new Error('Not Found'), {status: 404}),
+        );
+
+        const onChatNotFound = vi.fn();
+
+        renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(onChatNotFound).toHaveBeenCalledWith('chat-gone'));
+    });
+
+    /*
+     * A foreign id may be refused rather than denied existence, and the two are the same event
+     * to the user. Missing this would leave them on a permanently empty transcript.
+     */
+    it('reports a chat the server refuses the same way as a missing one', async () => {
+        sharedState.chatId = 'chat-someone-elses';
+        chatService.findChatDetails.mockRejectedValue(
+            Object.assign(new Error('Forbidden'), {status: 403}),
+        );
+
+        const onChatNotFound = vi.fn();
+
+        renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(onChatNotFound).toHaveBeenCalledWith('chat-someone-elses'));
+    });
+
+    /*
+     * A slow 404 for a chat the user has already navigated away from must not evict the one they
+     * are now reading — that would drag them out of a live conversation and blame a stale id.
+     */
+    it('ignores a rejection that lands after the user has moved to another chat', async () => {
+        sharedState.chatId = 'chat-gone';
+
+        let rejectFirstLoad;
+        chatService.findChatDetails.mockReturnValue(new Promise((_resolve, reject) => {
+            rejectFirstLoad = reject;
+        }));
+
+        const onChatNotFound = vi.fn();
+
+        const {rerender, unmount} = renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-gone'));
+
+        sharedState.chatId = 'chat-open';
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+        rerender();
+
+        rejectFirstLoad(Object.assign(new Error('Not Found'), {status: 404}));
+        await Promise.resolve();
+
+        unmount();
+
+        expect(onChatNotFound).not.toHaveBeenCalled();
+    });
+
+    /* Anything else is a transient failure; discarding the open chat over one would be wrong. */
+    it('does not report any other hydration failure as a missing chat', async () => {
+        sharedState.chatId = 'chat-1';
+        chatService.findChatDetails.mockRejectedValue(
+            Object.assign(new Error('Server Error'), {status: 500}),
+        );
+
+        const onChatNotFound = vi.fn();
+
+        renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1'));
+
+        expect(onChatNotFound).not.toHaveBeenCalled();
+    });
+
+    /*
+     * The callback is held in a ref rather than listed as a dependency. Hydration clears
+     * `adoptedChatIdRef` on the fetching path, so an effect re-run refetches — and a caller
+     * passing an inline arrow would re-run it on every single render.
+     */
+    it('hydrates once even when the caller passes a new callback each render', async () => {
+        sharedState.chatId = 'chat-1';
+
+        const {rerender} = renderHook(() => useChatHistory({onChatNotFound: () => {}}));
+
+        await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledTimes(1));
+
+        rerender();
+        rerender();
+
+        expect(chatService.findChatDetails).toHaveBeenCalledTimes(1);
+    });
+
     it('preserves local AI notifications when chat hydration runs', async () => {
         sharedState.chatId = 'chat-1';
         sharedState.chatHistory = [

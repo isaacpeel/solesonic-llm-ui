@@ -24,12 +24,19 @@ const Layout = () => (
     </div>
 );
 
-const router = createBrowserRouter([
+/*
+ * Exported for the test that pins the one property this whole arrangement rests on: the index
+ * route and `chat/:chatId` render the same element at the same depth, so React reconciles rather
+ * than remounts when a new chat rewrites the url mid-stream. Wrapping either one on its own would
+ * break that silently — the first answer of every new chat would die halfway through.
+ */
+export const routes = [
     {
         path: "/",
         element: <Layout/>,
         children: [
             {index: true, element: <ChatPage/>},
+            {path: "chat/:chatId", element: <ChatPage/>},
             {
                 path: "settings",
                 element: <UserSettings/>,
@@ -47,7 +54,9 @@ const router = createBrowserRouter([
             {path: "atlassian/auth/callback", element: <AtlassianAuthCallback/>},
         ]
     }
-]);
+];
+
+const router = createBrowserRouter(routes);
 
 const App = () => {
     return (

@@ -53,6 +53,26 @@ import streamService from '../../src/service/StreamService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
 import {isPageHidden, observePageHidden} from '../../src/util/pageLifecycle.js';
 
+/*
+ * A turn that hangs until its signal fires, so a test can hold a stream open and then abandon
+ * the conversation underneath it. Returns a getter for the captured signal.
+ */
+function hangingStreamUntilAborted() {
+    let capturedSignal = null;
+
+    chatService.chatStream.mockImplementation((payload, chatId, {signal}) => {
+        capturedSignal = signal;
+
+        return new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+                reject(Object.assign(new Error('aborted'), {name: 'AbortError'}));
+            });
+        });
+    });
+
+    return () => capturedSignal;
+}
+
 function makeAttachmentTray(overrides = {}) {
     return {
         hasPendingUploads: false,
@@ -77,6 +97,78 @@ function readyEntry(overrides = {}) {
         ...overrides,
     };
 }
+
+/*
+ * Nothing cancels the turn server-side, so what matters here is that this client stops listening.
+ * Without it the frames still arriving are appended to whatever bubble now ends the transcript —
+ * on a cleared one that is the welcome message, and the answer to a conversation the user has
+ * left streams into the blank "new chat" screen.
+ */
+describe('abandoning the conversation mid-turn', () => {
+    let options;
+    let chatInputRef;
+
+    beforeEach(() => {
+        chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
+        useSharedData.mockReturnValue({chatInputRef});
+
+        options = {
+            chatId: 'chat-a',
+            chatHistory: [{type: 'ASSISTANT', text: 'welcome', _key: '1', ephemeral: true}],
+            setChatHistory: vi.fn(),
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+        };
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('aborts the stream that is still running', async () => {
+        const readSignal = hangingStreamUntilAborted();
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.setInputValue('tell me about kafka');
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(readSignal()).not.toBeNull());
+        expect(readSignal().aborted).toBe(false);
+
+        act(() => {
+            result.current.abortActiveStream();
+        });
+
+        expect(readSignal().aborted).toBe(true);
+
+        /* An abort is a clean end, not a failure: no error surfaces and the turn stops loading. */
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.error).toBeNull();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('is safe to call when no turn is running', () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        expect(() => result.current.abortActiveStream()).not.toThrow();
+        expect(chatService.chatStream).not.toHaveBeenCalled();
+    });
+});
 
 describe('useChatStream', () => {
     let options;

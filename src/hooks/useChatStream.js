@@ -74,6 +74,23 @@ function useChatStream({
         stopStreamingLastAIMessage,
     });
 
+    /*
+     * Drops this client's end of the turn. The backend runs an in-flight turn to completion
+     * either way — what this stops is the frames still arriving here, which would otherwise be
+     * appended to whatever bubble now sits at the end of a transcript they do not belong to.
+     * On a transcript that was just cleared, that bubble is the welcome message.
+     *
+     * Aborting makes `chatStream` reject with an AbortError, which the handler already treats as
+     * a clean end: it clears the streaming flag rather than reporting a failure. Any recovery
+     * still waiting on this turn goes with it, since it would reconcile against a conversation
+     * the user has left.
+     */
+    const abortActiveStream = useCallback(() => {
+        controller.current?.abort();
+        controller.current = null;
+        cancelActiveRecovery();
+    }, [cancelActiveRecovery]);
+
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
     };
@@ -393,6 +410,7 @@ function useChatStream({
         handleInputChange,
         handleSubmit,
         handleStreamChunk,
+        abortActiveStream,
         attachmentNotice,
         setAttachmentNotice,
         recovering,

@@ -329,7 +329,7 @@ const chatService = {
     },
 
     findChatDetails: async (chatId) => {
-        return await apiClient.get(`${config.chatsUri}/${chatId}`);
+        return await apiClient.get(`${config.chatsUri}/${encodeURIComponent(chatId)}`);
     },
 
     /*
@@ -367,9 +367,15 @@ const chatService = {
     },
 }
 
+/*
+ * The chat id is percent-encoded because it can come straight from the `/chat/:chatId` route
+ * param, which React Router hands over already decoded — an id carrying encoded dot segments
+ * would otherwise be normalized by the URL parser into a request against a different endpoint,
+ * with the caller's bearer token attached.
+ */
 function buildStreamingRequest(chatId, userId, baseUri) {
     return chatId
-        ? {uri: `${baseUri}/${chatId}/users/${userId}`, method: 'PUT'}
+        ? {uri: `${baseUri}/${encodeURIComponent(chatId)}/users/${userId}`, method: 'PUT'}
         : {uri: `${baseUri}/users/${userId}`, method: 'POST'};
 }
 

@@ -1,5 +1,6 @@
 import {useCallback, useRef, useState, useEffect} from 'react';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
+import {toast} from 'react-toastify';
 import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
@@ -10,6 +11,7 @@ import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
 import useChatHistory from '../hooks/useChatHistory.js';
+import useChatUrlSync from '../hooks/useChatUrlSync.js';
 import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
@@ -41,8 +43,37 @@ function ChatScreen() {
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
     const chatSwitchResetRef = useRef(null);
+    const abortActiveStreamRef = useRef(null);
+
+    /*
+     * Called before useChatHistory so its effect runs first: on a bookmarked `/chat/{id}` the
+     * url is adopted into shared state on the same commit that hydration then reads.
+     */
+    const {clearOpenChat} = useChatUrlSync();
+
+    /*
+     * The id in the url names nothing the server will serve. Leaving the user on a permanently
+     * empty transcript would be the worst outcome, so the chat is dropped and the url replaced —
+     * replaced rather than pushed, so Back cannot walk straight into the same dead id.
+     */
+    const handleChatNotFound = useCallback(() => {
+        clearOpenChat();
+        toast.error('That conversation no longer exists.');
+    }, [clearOpenChat]);
+
     const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
-        onChatIdChangedExternally: () => chatSwitchResetRef.current?.(),
+        onChatIdChangedExternally: () => {
+            /*
+             * The conversation on screen is being replaced — a sidebar pick, New Chat, a delete,
+             * or a back navigation. Nothing cancels the turn server-side, but its remaining
+             * frames would land on whatever bubble now ends the new transcript, so this client
+             * lets go of the stream before that can happen. Suppressed by `adoptedChatIdRef` for
+             * a new chat learning its own id, which must not abort the stream that issued it.
+             */
+            abortActiveStreamRef.current?.();
+            chatSwitchResetRef.current?.();
+        },
+        onChatNotFound: handleChatNotFound,
     });
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
@@ -70,7 +101,7 @@ function ChatScreen() {
         lightboxInvokerRef.current = null;
     }, []);
 
-    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, attachmentNotice, recoveryFailed, retryRecovery} = useChatStream({
+    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
@@ -120,6 +151,7 @@ function ChatScreen() {
     getSelectedCommandRef.current = () => selectedCommand?.command || null;
     getMessageTextRef.current = () => inputValue.trim();
     chatSwitchResetRef.current = handleDismiss;
+    abortActiveStreamRef.current = abortActiveStream;
 
     const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
         chatHistory,

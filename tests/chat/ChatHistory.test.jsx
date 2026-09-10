@@ -771,7 +771,7 @@ describe('ChatHistory selection', () => {
 
         expect(setChatId).toHaveBeenCalledWith('chat-2');
         expect(setDrawerOpen).toHaveBeenCalledWith(false);
-        expect(navigateSpy).toHaveBeenCalledWith('/');
+        expect(navigateSpy).toHaveBeenCalledWith('/chat/chat-2');
     });
 });
 

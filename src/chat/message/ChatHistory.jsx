@@ -307,8 +307,11 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
          * The drawer is in the header, so a chat can be picked from any route. Without the
          * navigate the id changes behind a page that cannot render it, and the input ref is
          * null whenever ChatScreen is not mounted.
+         *
+         * Navigating to the conversation's own url rather than the index route keeps the two
+         * agreeing in a single commit, so useChatUrlSync has nothing left to reconcile.
          */
-        navigate("/");
+        navigate(`/chat/${chatId}`);
         chatInputRef.current?.focus();
     };
 
