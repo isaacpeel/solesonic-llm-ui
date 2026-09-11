@@ -395,9 +395,6 @@ function useChatStream({
             }
 
             setLoading(false);
-            setTimeout(() => {
-                chatInputRef.current?.focus();
-            }, 300);
         }
     };
 
