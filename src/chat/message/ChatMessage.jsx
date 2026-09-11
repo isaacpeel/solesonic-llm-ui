@@ -1,13 +1,10 @@
 import {useState} from "react";
-import PropTypes from "prop-types";
 import "./ChatMessage.css";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "../attachment/MessageAttachments.jsx";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
 import MessageCopyButton from "./MessageCopyButton.jsx";
-import MessageTimestamp from "./MessageTimestamp.jsx";
-import MessageResponseMetadata from "./MessageResponseMetadata.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -24,12 +21,6 @@ const TYPE_COLORS = {
 
 function ChatMessage({message, onExpandImage}) {
     const [isActionRowRevealed, setIsActionRowRevealed] = useState(false);
-    /*
-     * The relative label is computed during render, but the row is revealed by CSS hover, which
-     * does not re-render — a transcript left open would keep claiming "just now". Re-reading the
-     * clock as the pointer arrives refreshes it at exactly the moment it becomes readable.
-     */
-    const [nowMilliseconds, setNowMilliseconds] = useState(() => Date.now());
     const isElicitation = !!message.elicitationResponse;
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const isAIMessage = message.type === AI;
@@ -38,7 +29,7 @@ function ChatMessage({message, onExpandImage}) {
     const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
 
     const containerClass = isElicitation ? SYSTEM : message.type;
-    const modelName = message.responseMetadata?.model || message.model || 'AI Assistant';
+    const modelName = message.responseMetadata?.routedModel || message.model || 'AI Assistant';
     const cardClassName = isElicitation ? 'SYSTEM elicitation-resolved' : message.type;
     const typeColors = isElicitation ? TYPE_COLORS[SYSTEM] : (TYPE_COLORS[message.type] || TYPE_COLORS[SYSTEM]);
 
@@ -112,7 +103,6 @@ function ChatMessage({message, onExpandImage}) {
 
     const revealActionRow = () => {
         setIsActionRowRevealed(true);
-        setNowMilliseconds(Date.now());
     };
 
     const messageCard = (
@@ -156,7 +146,6 @@ function ChatMessage({message, onExpandImage}) {
                     {messageCard}
                     <div className="message-actions">
                         <span className="message-model-name">{modelName}</span>
-                        <MessageResponseMetadata responseMetadata={message.responseMetadata}/>
                         <MessageCopyButton text={message.text}/>
                     </div>
                 </div>
@@ -164,10 +153,5 @@ function ChatMessage({message, onExpandImage}) {
         </div>
     );
 }
-
-ChatMessage.propTypes = {
-    message: PropTypes.object.isRequired,
-    onExpandImage: PropTypes.func,
-};
 
 export default ChatMessage;
