@@ -26,13 +26,6 @@
  * - For the on-screen display during streaming, temporarily close the most common unfinished constructs so the
  *   parser can apply formatting earlier.
  * - Once the final message arrives, stop adding synthetic closures.
- *
- * SEPARATE CONCERN — stray HTML `<br>` tags:
- * - Some model output uses literal `<br>`/`<br/>` tags in place of real newline characters.
- * - ReactMarkdown (without rehype-raw) does not execute raw HTML, so those tags render as visible
- *   literal text instead of line breaks.
- * - This is not a streaming-only artifact, so it is normalized for both streaming and final display:
- *   `<br>` tags outside fenced code blocks are converted to real newlines before any other processing.
  */
 
 /**
@@ -41,8 +34,6 @@
  * IMPORTANT:
  * - This function MUST NOT mutate the semantic content of the raw text. It only adds temporary closing tokens
  *   to help the markdown engine while streaming. Final text (isFinal === true) should not include synthetic tokens.
- *   The one exception is stray `<br>` tags (see "SEPARATE CONCERN" above), which are normalized for both
- *   streaming and final display since they are a formatting mismatch, not a synthetic streaming closer.
  * - Keep operations simple and fast (string scans and small regexes), because the function is called frequently.
  *
  * Handled constructs when isFinal !== true:
@@ -51,12 +42,11 @@
  * - Unclosed link parentheses: [text](url -> append )
  * - Bare list markers (-, *, 1.) at end of line -> append a non-breaking space so they render as list items
  */
-export function buildStreamingMarkdownDisplay(raw, {isFinal = false} = {}) {
+export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
     const input = typeof raw === 'string' ? raw : String(raw ?? '');
 
     // Normalize line endings and optionally collapse excessive blank lines for display stability
     let text = input.replace(/\r\n/g, '\n');
-    text = convertBrTagsToNewlines(text);
     text = text.replace(/\n{3,}/g, '\n\n');
 
     if (isFinal) {
@@ -116,7 +106,7 @@ export function buildStreamingMarkdownDisplay(raw, {isFinal = false} = {}) {
 
         if (/^\s*(?:[-*]|\d+\.)\s*$/.test(line)) {
             // Convert bare marker to marker + NBSP (non-breaking space)
-            lines[lineIndex] = line.replace(/\s*$/, ' \u00A0');
+            lines[lineIndex] = line.replace(/\s*$/, '  ');
         }
     }
     text = lines.join('\n');
@@ -149,75 +139,6 @@ export function buildStreamingMarkdownDisplay(raw, {isFinal = false} = {}) {
     }
 
     return text;
-}
-
-/**
- * Convert stray HTML `<br>` / `<br/>` / `<br />` tags into real newline characters.
- *
- * Applies both during streaming and to the final message, since this is a formatting mismatch
- * (the model emitted an HTML line break instead of a markdown newline), not a streaming artifact.
- *
- * Tags inside a well-formed fenced code block are left untouched — code content must render
- * verbatim, and a `<br>` there is legitimate code text (e.g. an HTML snippet), not a stand-in
- * for a newline. A fence only counts as well-formed once a real newline separates its opening
- * marker/info string from its content (see isWellFormedFenceOpen) — a model that used `<br>` in
- * place of THAT newline (e.g. "```bash<br>rm -rf node_modules<br>...```") never produced a real
- * fence at all, so its `<br>` tags — including the one standing in for the fence's own line
- * break — are converted too, same as anywhere else outside a fence.
- */
-const BR_TAG_PATTERN = /<br\s*\/?>/yi;
-const BR_TAG_START_PATTERN = /^<br\s*\/?>/i;
-
-function convertBrTagsToNewlines(text) {
-    let result = '';
-    let insideFence = false;
-    let cursor = 0;
-
-    while (cursor < text.length) {
-        if (text.startsWith('```', cursor)) {
-            if (insideFence) {
-                insideFence = false;
-            } else if (isWellFormedFenceOpen(text, cursor + 3)) {
-                insideFence = true;
-            }
-
-            result += '```';
-            cursor += 3;
-            continue;
-        }
-
-        if (!insideFence) {
-            BR_TAG_PATTERN.lastIndex = cursor;
-            const match = BR_TAG_PATTERN.exec(text);
-
-            if (match) {
-                result += '\n';
-                cursor += match[0].length;
-                continue;
-            }
-        }
-
-        result += text[cursor];
-        cursor += 1;
-    }
-
-    return result;
-}
-
-function isWellFormedFenceOpen(text, searchStart) {
-    for (let index = searchStart; index < text.length; index += 1) {
-        const character = text[index];
-
-        if (character === '\n') {
-            return true;
-        }
-
-        if (character === '<' && BR_TAG_START_PATTERN.test(text.slice(index, index + 6))) {
-            return false;
-        }
-    }
-
-    return false;
 }
 
 /**
