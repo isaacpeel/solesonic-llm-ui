@@ -103,6 +103,38 @@
     outline-offset: 2px;
 }
 
+/* Same footprint as the send button — it occupies the same slot, only while a turn is streaming. */
+.composer-stop-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    cursor: pointer;
+    transition: background-color var(--transition-speed), opacity var(--transition-speed);
+}
+
+.composer-stop-button svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-color);
+}
+
+.composer-stop-button:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.composer-stop-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
 .dots-loader {
     display: flex;
     gap: 5px;

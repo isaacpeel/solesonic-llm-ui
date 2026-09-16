@@ -7,6 +7,7 @@ import {
     formatProgressNotificationText
 } from '../service/ProgressNotificationService.js';
 import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
+import {generateMessageKey} from '../util/keys.js';
 
 function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
@@ -304,6 +305,27 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     }, [setChatHistory]);
 
     /*
+     * Appends a standalone SYSTEM bubble — the way a cancelled turn's "Chat canceled." notice
+     * reaches the transcript, since the backend does not persist the partial answer under it and
+     * `finalizeLastAIMessage` must not overwrite what the user already watched stream in.
+     */
+    const appendSystemMessage = useCallback((text) => {
+        if (!text || typeof text !== 'string') {
+            return;
+        }
+
+        setChatHistory((previousHistory) => [
+            ...previousHistory,
+            {
+                type: SYSTEM,
+                text,
+                _key: generateMessageKey('system'),
+                timestamp: new Date().toISOString(),
+            },
+        ]);
+    }, [setChatHistory]);
+
+    /*
      * The `init` frame has been observed carrying the chat id under `id`; the attachment
      * design document specifies `chatId`. Accept both — guessing wrong means a new chat
      * never adopts an id and every follow-up turn silently starts a fresh chat.
@@ -456,6 +478,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
+        appendSystemMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,

@@ -1,5 +1,5 @@
 import {useEffect} from 'react';
-import {ArrowUpIcon} from '@heroicons/react/20/solid';
+import {ArrowUpIcon, StopIcon} from '@heroicons/react/20/solid';
 import './ChatInput.css';
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
@@ -9,6 +9,8 @@ import useIsMobile from '../../hooks/useIsMobile.js';
 
 function ChatInput({
     loading,
+    streamActive,
+    onStopChat,
     inputValue,
     handleInputChange,
     handleSubmit,
@@ -189,7 +191,7 @@ function ChatInput({
                         }}
                     />
 
-                    {loading && (
+                    {loading && !streamActive && (
                         <div className="dots-loader">
                             <div className="dot"></div>
                             <div className="dot"></div>
@@ -197,16 +199,28 @@ function ChatInput({
                         </div>
                     )}
 
-                    <button
-                        type="button"
-                        className="composer-send-button"
-                        onClick={submitMessage}
-                        disabled={!canSubmit}
-                        aria-label="Send message"
-                        title="Send message"
-                    >
-                        <ArrowUpIcon/>
-                    </button>
+                    {streamActive ? (
+                        <button
+                            type="button"
+                            className="composer-stop-button"
+                            onClick={onStopChat}
+                            aria-label="Stop response"
+                            title="Stop response"
+                        >
+                            <StopIcon/>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="composer-send-button"
+                            onClick={submitMessage}
+                            disabled={!canSubmit}
+                            aria-label="Send message"
+                            title="Send message"
+                        >
+                            <ArrowUpIcon/>
+                        </button>
+                    )}
                 </ComposerAttachments>
             </div>
         </div>

@@ -61,7 +61,7 @@ function ChatScreen() {
         toast.error('That conversation no longer exists.');
     }, [clearOpenChat]);
 
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, appendSystemMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
         onChatIdChangedExternally: () => {
             /*
              * The conversation on screen is being replaced — a sidebar pick, New Chat, a delete,
@@ -101,7 +101,7 @@ function ChatScreen() {
         lightboxInvokerRef.current = null;
     }, []);
 
-    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery} = useChatStream({
+    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery, streamActive, stopChat} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
@@ -110,6 +110,7 @@ function ChatScreen() {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
+        appendSystemMessage,
         reloadChatHistory,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
@@ -211,6 +212,8 @@ function ChatScreen() {
 
                 <ChatInput
                     loading={loading}
+                    streamActive={streamActive}
+                    onStopChat={stopChat}
                     inputValue={inputValue}
                     handleInputChange={handleInputChange}
                     handleSubmit={handleSubmit}

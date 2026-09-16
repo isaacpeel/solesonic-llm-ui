@@ -950,6 +950,34 @@ describe('attachment-aware chat history', () => {
         });
     });
 
+    describe('appendSystemMessage', () => {
+        it('appends a new SYSTEM entry carrying the given text', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendSystemMessage('Chat canceled.');
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [
+                {type: AI, text: 'partial answer', _key: 'ai-1', isStreaming: false},
+            ];
+            const updatedHistory = updater(previousHistory);
+
+            expect(updatedHistory).toHaveLength(2);
+            expect(updatedHistory[0]).toBe(previousHistory[0]);
+            expect(updatedHistory[1]).toMatchObject({type: 'SYSTEM', text: 'Chat canceled.'});
+            expect(updatedHistory[1]._key).toBeTruthy();
+        });
+
+        it('does nothing for a blank or missing message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendSystemMessage('');
+            result.current.appendSystemMessage(undefined);
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+    });
+
     describe('updateAttachmentStatus', () => {
         it('merges the update into the matching attachment on the last USER message', () => {
             const {result} = renderHook(() => useChatHistory());

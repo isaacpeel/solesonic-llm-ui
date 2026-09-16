@@ -4,6 +4,7 @@ import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import {getProgressNotificationTextFromRawData} from './ProgressNotificationService.js';
 import {normalizeGeneratedImage} from './ImageGenerationService.js';
+import {SYSTEM as SYSTEM_MESSAGE_TYPE} from '../chat/message/ChatMessage.jsx';
 
 export const CHUNK = "chunk";
 export const MESSAGE = "message";
@@ -96,6 +97,9 @@ const chatService = {
         appendNotificationMessage,
         ensureChatIdFromResponse,
         finalizeLastAIMessage,
+        stopStreamingLastAIMessage,
+        appendSystemMessage,
+        isCancelling,
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
@@ -154,6 +158,16 @@ const chatService = {
                         break;
                     }
 
+                    /*
+                     * The only content that can arrive after a cancel signal is the "Chat
+                     * canceled." notice itself (docs/api.md) — the `done` handler already
+                     * surfaces it as its own system bubble, so it must not also be glued onto
+                     * the visible answer here.
+                     */
+                    if (isCancelling) {
+                        break;
+                    }
+
                     if (activeElicitation) {
                         setActiveElicitation(null);
                         setElicitationSubmitting(false);
@@ -176,7 +190,18 @@ const chatService = {
                         attachGeneratedImages?.(doneImages);
                     }
 
-                    finalizeLastAIMessage(payloadData);
+                    /*
+                     * A cancelled turn persists a SYSTEM message ("Chat canceled.") rather than
+                     * the partial answer (docs/api.md, "Cancel a Streaming Turn"). Finalizing with
+                     * it would overwrite everything already streamed onto the AI bubble with that
+                     * short notice — stop the bubble as-is instead and append the notice next to it.
+                     */
+                    if (payloadData?.message?.messageType === SYSTEM_MESSAGE_TYPE) {
+                        stopStreamingLastAIMessage?.();
+                        appendSystemMessage?.(payloadData.message.message);
+                    } else {
+                        finalizeLastAIMessage(payloadData);
+                    }
                 } catch (parseError) {
                     console.error('[ChatService] Failed to parse done payload:', parseError);
                 }
@@ -330,6 +355,17 @@ const chatService = {
 
     findChatDetails: async (chatId) => {
         return await apiClient.get(`${config.chatsUri}/${encodeURIComponent(chatId)}`);
+    },
+
+    /*
+     * Fire-and-forget: a 202 only means the signal was sent, not that the turn stopped. The real
+     * outcome still arrives on the SSE stream the caller is already subscribed to, as a `chunk`
+     * carrying "Chat canceled." followed by `done`. A 204 means there was nothing to cancel.
+     */
+    cancelStream: async (chatId) => {
+        const userId = await authService.getUserId();
+
+        return await apiClient.post(`${config.streamingChatsUri}/${encodeURIComponent(chatId)}/users/${userId}/cancel`);
     },
 
     /*
