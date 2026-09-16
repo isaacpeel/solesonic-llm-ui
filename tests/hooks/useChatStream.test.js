@@ -66,7 +66,7 @@ import {toast} from 'react-toastify';
 function hangingStreamUntilAborted() {
     let capturedSignal = null;
 
-    chatService.chatStream.mockImplementation((payload, chatId, {signal}) => {
+    chatService.chatStream.mockImplementationOnce((payload, chatId, {signal}) => {
         capturedSignal = signal;
 
         return new Promise((_resolve, reject) => {
@@ -238,7 +238,6 @@ describe('useChatStream', () => {
     });
 
     it('handleSubmit success flow', async () => {
-        vi.useFakeTimers();
         const {result} = renderHook(() => useChatStream(options));
 
         act(() => {
@@ -263,12 +262,6 @@ describe('useChatStream', () => {
                 signal: expect.any(AbortSignal),
             })
         );
-
-        act(() => {
-            vi.runAllTimers();
-        });
-
-        vi.useRealTimers();
     });
 
     it('handleSubmit abort', async () => {

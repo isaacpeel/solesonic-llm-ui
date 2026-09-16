@@ -1,10 +1,10 @@
-import {useState} from "react";
 import "./ChatMessage.css";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "../attachment/MessageAttachments.jsx";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
 import MessageCopyButton from "./MessageCopyButton.jsx";
+import MessageResponseMetadata from "./MessageResponseMetadata.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -20,7 +20,6 @@ const TYPE_COLORS = {
 };
 
 function ChatMessage({message, onExpandImage}) {
-    const [isActionRowRevealed, setIsActionRowRevealed] = useState(false);
     const isElicitation = !!message.elicitationResponse;
     const isAIorSystem = message.type === AI || message.type === SYSTEM;
     const isAIMessage = message.type === AI;
@@ -29,7 +28,7 @@ function ChatMessage({message, onExpandImage}) {
     const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
 
     const containerClass = isElicitation ? SYSTEM : message.type;
-    const modelName = message.responseMetadata?.routedModel || message.model || 'AI Assistant';
+    const modelName = message.model || 'AI Assistant';
     const cardClassName = isElicitation ? 'SYSTEM elicitation-resolved' : message.type;
     const typeColors = isElicitation ? TYPE_COLORS[SYSTEM] : (TYPE_COLORS[message.type] || TYPE_COLORS[SYSTEM]);
 
@@ -101,10 +100,6 @@ function ChatMessage({message, onExpandImage}) {
      */
     const showCopyButton = isAIMessage && !isElicitation && hasText && !message.isStreaming && !message.ephemeral;
 
-    const revealActionRow = () => {
-        setIsActionRowRevealed(true);
-    };
-
     const messageCard = (
         <ChatCard
             text={isElicitation ? '' : message.text}
@@ -130,22 +125,13 @@ function ChatMessage({message, onExpandImage}) {
               * The action row needs its own column beneath the card, but .chat-message-container
               * is a row, so the card gets wrapped. Only wrapped when there is an action to show,
               * to leave every other message type's layout untouched.
-              *
-              * Hover reveals it on a pointer device; a tap does the same where there is no hover
-              * to give, which is why the click handler sets a flag rather than leaning on :hover.
-              * The pointer leaving clears that flag again, so a click on a mouse-driven browser
-              * does not leave the row pinned open behind the cursor.
               */}
             {showCopyButton ? (
-                <div
-                    className={`message-with-actions${isActionRowRevealed ? ' message-with-actions--revealed' : ''}`}
-                    onClick={revealActionRow}
-                    onMouseEnter={revealActionRow}
-                    onMouseLeave={() => setIsActionRowRevealed(false)}
-                >
+                <div className="message-with-actions">
                     {messageCard}
                     <div className="message-actions">
                         <span className="message-model-name">{modelName}</span>
+                        <MessageResponseMetadata responseMetadata={message.responseMetadata}/>
                         <MessageCopyButton text={message.text}/>
                     </div>
                 </div>

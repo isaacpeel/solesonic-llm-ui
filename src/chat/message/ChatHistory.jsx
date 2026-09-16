@@ -167,10 +167,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const dayGroups = useMemo(() => groupChatsByDay(ungrouped), [ungrouped]);
 
     const daySections = useMemo(
-        () => dayGroups.map((dayGroup, index) => ({
+        () => dayGroups.map((dayGroup) => ({
             ...dayGroup,
-            // First group expanded unless the user collapsed it; others collapsed unless expanded
-            expanded: index === 0 ? !collapsedDayKeys.has(dayGroup.key) : collapsedDayKeys.has(dayGroup.key),
+            // Every day bucket is open until the user closes it, regardless of position.
+            expanded: !collapsedDayKeys.has(dayGroup.key),
         })),
         [dayGroups, collapsedDayKeys],
     );

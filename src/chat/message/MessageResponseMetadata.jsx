@@ -14,28 +14,7 @@ function formatMillisAsDuration(value) {
     return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s`;
 }
 
-function calculateTokensPerSecond(promptTokens, totalTokens, promptMillis) {
-    if (
-        typeof promptTokens !== 'number'
-        || typeof totalTokens !== 'number'
-        || typeof promptMillis !== 'number'
-    ) {
-        return null;
-    }
-
-    const completionTokens = totalTokens - promptTokens;
-
-    if (completionTokens <= 0 || promptMillis <= 0) {
-        return null;
-    }
-
-    return completionTokens / (promptMillis / 1000);
-}
-
-function buildMetadataText({promptTokens, totalTokens, promptMillis}) {
-
-    const tokensPerSecond = calculateTokensPerSecond(promptTokens, totalTokens, promptMillis);
-
+function buildMetadataText({totalTokens, tokensPerSecond, durationMillis}) {
     const segments = [
         `tok:${formatTokenCount(totalTokens)}`,
     ];
@@ -44,15 +23,22 @@ function buildMetadataText({promptTokens, totalTokens, promptMillis}) {
         segments.push(`${tokensPerSecond.toFixed(1)} tok/s`);
     }
 
-    segments.push(`dur:${formatMillisAsDuration(promptMillis)}`);
+    segments.push(`dur:${formatMillisAsDuration(durationMillis)}`);
 
     return segments.join(' · ');
 }
 
 function hasAnyMetadataValue(responseMetadata) {
-    const {promptTokens, completionTokens, totalTokens, promptMillis} = responseMetadata;
+    const {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        tokensPerSecond,
+        timeToFirstTokenMillis,
+        durationMillis,
+    } = responseMetadata;
 
-    return [promptTokens, completionTokens, totalTokens, promptMillis]
+    return [promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis]
         .some((value) => typeof value === 'number');
 }
 

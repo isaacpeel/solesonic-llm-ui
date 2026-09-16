@@ -32,7 +32,7 @@
 }
 
 /*
- * Column holding an assistant card and the action row under it. The 70% cap lives here rather
+ * Column holding an assistant card and the action row under it. The 90% cap lives here rather
  * than on .message, so the card and the row beneath it share one width — otherwise the row
  * would stretch to the full container and the button would drift far right of the card edge.
  */
@@ -40,17 +40,13 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    max-width: 70%;
+    max-width: 90%;
 }
 
 .message-with-actions .message {
     max-width: 100%;
 }
 
-/*
- * Faded rather than unmounted: revealing it must not reflow the transcript, and opacity leaves
- * the button in the tab order so a keyboard can still reach it.
- */
 .message-actions {
     display: flex;
     flex-wrap: wrap;
@@ -58,43 +54,20 @@
     justify-content: flex-end;
     gap: 6px;
     padding-top: 4px;
-    opacity: 0;
-    transition: opacity var(--transition-speed);
-}
-
-/*
- * Scoped to pointer devices: touch browsers emulate :hover on tap and leave it stuck on the
- * last-tapped element, so on those the explicit --revealed flag is the only trigger.
- */
-@media (hover: hover) {
-    .message-with-actions:hover .message-actions {
-        opacity: 1;
-    }
-}
-
-/*
- * Keyboard reveal, kept in its own rule so browsers without :has() drop only this one.
- * :focus-visible, not :focus-within — clicking the copy button focuses it, and :focus-within
- * would then hold the row open after the pointer had left the message.
- */
-.message-with-actions:has(.message-copy-button:focus-visible) .message-actions {
-    opacity: 1;
-}
-
-.message-with-actions--revealed .message-actions {
-    opacity: 1;
 }
 
 .message.USER {
     background-color: #e0e0e0;
     color: #000;
     align-self: flex-end;
+    max-width: 80%;
 }
 
 .message.ASSISTANT {
     background-color: #4a4a4a;
     color: #dedede;
     align-self: flex-start;
+    max-width: 90%;
 }
 
 .message.SYSTEM {

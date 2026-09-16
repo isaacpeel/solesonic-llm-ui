@@ -270,17 +270,7 @@ describe('ChatMessage', () => {
     });
 
     describe('model name', () => {
-        it('prefers the model name from responseMetadata over the top-level model field', () => {
-            const {container} = render(<ChatMessage message={buildMessage({
-                text: 'the answer',
-                model: 'legacy-model',
-                responseMetadata: {model: 'gpt-4o'},
-            })}/>);
-
-            expect(container.querySelector('.message-model-name').textContent).toBe('gpt-4o');
-        });
-
-        it('falls back to the top-level model field when responseMetadata carries none', () => {
+        it('renders the top-level model field', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 model: 'legacy-model',
@@ -332,31 +322,25 @@ describe('ChatMessage', () => {
             expect(wrapper.children[1].classList.contains('message-actions')).toBe(true);
         });
 
-        /* Touch devices have no hover to reveal with, so a tap on the message stands in. */
-        it('marks the action row revealed once the message is clicked', () => {
+        /* The footer no longer waits for hover or a tap — it renders with the message. */
+        it('renders the action row without requiring hover or a click', () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
-
-            fireEvent.click(wrapper);
-
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(true);
+            expect(wrapper.querySelector('.message-actions .message-copy-button')).not.toBeNull();
         });
 
-        /* The row goes back to being hover-driven the moment the pointer leaves, copied or not. */
-        it('clears the revealed flag when the pointer leaves a message it just copied', async () => {
+        it('keeps the action row rendered after the pointer leaves the message', async () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
             fireEvent.click(wrapper.querySelector('.message-copy-button'));
 
             await waitFor(() => expect(wrapper.querySelector('.message-copy-button--copied')).not.toBeNull());
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(true);
 
             fireEvent.mouseLeave(wrapper);
 
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
+            expect(wrapper.querySelector('.message-actions .message-copy-button')).not.toBeNull();
         });
 
         it('does not render a timestamp beside the copy button', () => {
@@ -462,7 +446,7 @@ describe('ChatMessage', () => {
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
             expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('tok:540 · dur:—');
+            expect(responseMetadata.textContent).toBe('tok:540 · 34.7 tok/s · dur:3.7 s');
         });
 
         it('omits tok/s and shows a missing-value placeholder for token counts when tokensPerSecond is null', () => {
@@ -479,7 +463,8 @@ describe('ChatMessage', () => {
             })}/>);
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata.textContent).toBe('tok:— · dur:—');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('tok:— · dur:3.7 s');
         });
 
         it('renders no response metadata element when the message carries none', () => {

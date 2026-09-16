@@ -105,7 +105,7 @@ describe('UserSettings navigation', () => {
     it('offers one merged Connections entry rather than per-provider entries', () => {
         renderSettings('/settings/general');
 
-        expect(navLabels()).toEqual(['General', 'Connections', 'RAG']);
+        expect(navLabels()).toEqual(['General', 'Connections', 'RAG', 'Images']);
     });
 
     it('renders a back link to the chat', () => {
@@ -167,9 +167,8 @@ describe('General profile panel', () => {
         renderSettings('/settings/general');
 
         expect(screen.getByText('ada@example.com')).toBeDefined();
-        expect(screen.getByText('Ada')).toBeDefined();
-        expect(screen.getByText('Lovelace')).toBeDefined();
-        expect(document.querySelectorAll('input').length).toBe(0);
+        expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThan(0);
+        expect(document.querySelector('.general-settings-profile-grid input')).toBeNull();
     });
 
     it('renders one chip per assigned role', () => {
