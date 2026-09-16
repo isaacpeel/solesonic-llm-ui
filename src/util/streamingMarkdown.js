@@ -157,10 +157,16 @@ export function buildStreamingMarkdownDisplay(raw, {isFinal = false} = {}) {
  * Applies both during streaming and to the final message, since this is a formatting mismatch
  * (the model emitted an HTML line break instead of a markdown newline), not a streaming artifact.
  *
- * Tags inside fenced code blocks are left untouched — code content must render verbatim, and a
- * `<br>` there is legitimate code text (e.g. an HTML snippet), not a stand-in for a newline.
+ * Tags inside a well-formed fenced code block are left untouched — code content must render
+ * verbatim, and a `<br>` there is legitimate code text (e.g. an HTML snippet), not a stand-in
+ * for a newline. A fence only counts as well-formed once a real newline separates its opening
+ * marker/info string from its content (see isWellFormedFenceOpen) — a model that used `<br>` in
+ * place of THAT newline (e.g. "```bash<br>rm -rf node_modules<br>...```") never produced a real
+ * fence at all, so its `<br>` tags — including the one standing in for the fence's own line
+ * break — are converted too, same as anywhere else outside a fence.
  */
 const BR_TAG_PATTERN = /<br\s*\/?>/yi;
+const BR_TAG_START_PATTERN = /^<br\s*\/?>/i;
 
 function convertBrTagsToNewlines(text) {
     let result = '';
@@ -169,7 +175,12 @@ function convertBrTagsToNewlines(text) {
 
     while (cursor < text.length) {
         if (text.startsWith('```', cursor)) {
-            insideFence = !insideFence;
+            if (insideFence) {
+                insideFence = false;
+            } else if (isWellFormedFenceOpen(text, cursor + 3)) {
+                insideFence = true;
+            }
+
             result += '```';
             cursor += 3;
             continue;
@@ -191,6 +202,22 @@ function convertBrTagsToNewlines(text) {
     }
 
     return result;
+}
+
+function isWellFormedFenceOpen(text, searchStart) {
+    for (let index = searchStart; index < text.length; index += 1) {
+        const character = text[index];
+
+        if (character === '\n') {
+            return true;
+        }
+
+        if (character === '<' && BR_TAG_START_PATTERN.test(text.slice(index, index + 6))) {
+            return false;
+        }
+    }
+
+    return false;
 }
 
 /**

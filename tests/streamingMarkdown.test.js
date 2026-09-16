@@ -54,6 +54,12 @@ describe('buildStreamingMarkdownDisplay - stray <br> tags', () => {
         const display = buildStreamingMarkdownDisplay(raw, {isFinal: true});
         expect(display).toBe(raw);
     });
+
+    it('converts <br> tags in a malformed fence that never got a real newline after the info string', () => {
+        const raw = '```bash<br>rm -rf node_modules<br>rm package-lock.json<br>```';
+        const display = buildStreamingMarkdownDisplay(raw, {isFinal: true});
+        expect(display).toBe('```bash\nrm -rf node_modules\nrm package-lock.json\n```');
+    });
 });
 
 describe('buildStreamingMarkdownDisplay - normalization', () => {
