@@ -23,7 +23,7 @@
 
 .message {
     margin-top: 16px;
-    max-width: 70%;
+    max-width: 90%;
     padding: 1px 16px;
     border-radius: 8px;
     word-wrap: break-word;
@@ -47,27 +47,36 @@
     max-width: 100%;
 }
 
+/*
+ * Horizontal padding matches .message's own 16px so the model name lines up with the bubble's
+ * text rather than the bubble's outer (unpadded) edge.
+ */
 .message-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
-    padding-top: 4px;
+    padding: 4px 16px 0;
 }
 
+/*
+ * No per-type max-width override here: the base .message rule's 90% cap already covers both,
+ * and .message-with-actions .message's 100% override (higher specificity — two classes plus a
+ * descendant vs. one) relies on ASSISTANT not re-declaring max-width at equal specificity, which
+ * previously won the cascade by source order and silently re-capped the bubble to 90% of an
+ * already-90%-capped column (81% effective) while the footer row beneath it had no such cap.
+ */
 .message.USER {
     background-color: #e0e0e0;
     color: #000;
     align-self: flex-end;
-    max-width: 80%;
 }
 
 .message.ASSISTANT {
     background-color: #4a4a4a;
     color: #dedede;
     align-self: flex-start;
-    max-width: 90%;
 }
 
 .message.SYSTEM {
@@ -425,5 +434,9 @@
     .message {
         margin-top: 8px;
         padding: 1px 12px;
+    }
+
+    .message-actions {
+        padding: 4px 12px 0;
     }
 }

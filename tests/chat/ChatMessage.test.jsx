@@ -285,6 +285,24 @@ describe('ChatMessage', () => {
 
             expect(container.querySelector('.message-model-name').textContent).toBe('AI Assistant');
         });
+
+        it('falls back to responseMetadata.routedModel when the top-level model is absent', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {routedModel: 'qwen3.5-9b', model: 'auto-model'},
+            })}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('qwen3.5-9b');
+        });
+
+        it('falls back to responseMetadata.model when routedModel is absent', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {model: 'auto-model'},
+            })}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('auto-model');
+        });
     });
 
     describe('copy button', () => {
@@ -431,40 +449,48 @@ describe('ChatMessage', () => {
             await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdown));
         });
 
-        it('renders all response metadata fields inline beside the model name', () => {
+        it('renders a tokens-per-second figure computed from completionTokens and totalMillis', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    promptTokens: 1555,
+                    completionTokens: 105,
+                    totalTokens: 1660,
+                    totalMillis: 204.277,
+                },
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('514.0 tok/s');
+        });
+
+        it('prefers a precomputed tokensPerSecond over deriving one', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    completionTokens: 128,
+                    totalMillis: 3690,
+                    tokensPerSecond: 34.7,
+                },
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('34.7 tok/s');
+        });
+
+        it('renders no response metadata element when completionTokens or totalMillis is missing', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 responseMetadata: {
                     promptTokens: 412,
-                    completionTokens: 128,
-                    totalTokens: 540,
-                    tokensPerSecond: 34.7,
-                    timeToFirstTokenMillis: 380,
-                    durationMillis: 3690,
-                },
-            })}/>);
-
-            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('tok:540 · 34.7 tok/s · dur:3.7 s');
-        });
-
-        it('omits tok/s and shows a missing-value placeholder for token counts when tokensPerSecond is null', () => {
-            const {container} = render(<ChatMessage message={buildMessage({
-                text: 'the answer',
-                responseMetadata: {
-                    promptTokens: null,
                     completionTokens: null,
-                    totalTokens: null,
-                    tokensPerSecond: null,
-                    timeToFirstTokenMillis: 380,
-                    durationMillis: 3690,
+                    totalTokens: 540,
                 },
             })}/>);
 
-            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('tok:— · dur:3.7 s');
+            expect(container.querySelector('.message-response-metadata')).toBeNull();
         });
 
         it('renders no response metadata element when the message carries none', () => {

@@ -1,61 +1,42 @@
 import './MessageResponseMetadata.css';
 
-const MISSING_VALUE_LABEL = '—';
-
-function formatTokenCount(value) {
-    return typeof value === 'number' ? value.toLocaleString() : MISSING_VALUE_LABEL;
-}
-
-function formatMillisAsDuration(value) {
-    if (typeof value !== 'number') {
-        return MISSING_VALUE_LABEL;
-    }
-
-    return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s`;
-}
-
-function buildMetadataText({totalTokens, tokensPerSecond, durationMillis}) {
-    const segments = [
-        `tok:${formatTokenCount(totalTokens)}`,
-    ];
-
+/*
+ * The backend does not send tokensPerSecond directly (see ai-scratch/final-chunk.json:
+ * completionTokens + totalMillis only), so it is derived here. `tokensPerSecond` is still read
+ * first in case a future response carries it precomputed.
+ */
+function resolveTokensPerSecond({tokensPerSecond, completionTokens, totalMillis}) {
     if (typeof tokensPerSecond === 'number') {
-        segments.push(`${tokensPerSecond.toFixed(1)} tok/s`);
+        return tokensPerSecond;
     }
 
-    segments.push(`dur:${formatMillisAsDuration(durationMillis)}`);
+    if (typeof completionTokens === 'number' && typeof totalMillis === 'number' && totalMillis > 0) {
+        return completionTokens / (totalMillis / 1000);
+    }
 
-    return segments.join(' · ');
-}
-
-function hasAnyMetadataValue(responseMetadata) {
-    const {
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        tokensPerSecond,
-        timeToFirstTokenMillis,
-        durationMillis,
-    } = responseMetadata;
-
-    return [promptTokens, completionTokens, totalTokens, tokensPerSecond, timeToFirstTokenMillis, durationMillis]
-        .some((value) => typeof value === 'number');
+    return null;
 }
 
 /*
  * Sits beside the model name in .message-actions. Absent entirely on a cancelled turn (the
  * whole responseMetadata object is null there), on a message never sent through the `done`
  * event at all — e.g. one loaded from history before the backend added this field — or when
- * every field on the object came back empty.
+ * there isn't enough data to derive a tokens/second figure.
  */
 function MessageResponseMetadata({responseMetadata}) {
-    if (!responseMetadata || !hasAnyMetadataValue(responseMetadata)) {
+    if (!responseMetadata) {
+        return null;
+    }
+
+    const tokensPerSecond = resolveTokensPerSecond(responseMetadata);
+
+    if (tokensPerSecond === null) {
         return null;
     }
 
     return (
         <span className="message-response-metadata">
-            {buildMetadataText(responseMetadata)}
+            {tokensPerSecond.toFixed(1)} tok/s
         </span>
     );
 }
