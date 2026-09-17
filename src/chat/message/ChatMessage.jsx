@@ -134,7 +134,10 @@ function ChatMessage({message, onExpandImage}) {
                     {messageCard}
                     <div className="message-actions">
                         <span className="message-model-name">{modelName}</span>
-                        <MessageResponseMetadata responseMetadata={message.responseMetadata}/>
+                        <MessageResponseMetadata
+                            responseMetadata={message.responseMetadata}
+                            responseMetadataCalls={message.responseMetadataCalls}
+                        />
                         <MessageCopyButton text={message.text}/>
                     </div>
                 </div>

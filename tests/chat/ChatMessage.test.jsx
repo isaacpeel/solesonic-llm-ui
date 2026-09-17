@@ -480,6 +480,39 @@ describe('ChatMessage', () => {
             expect(responseMetadata.textContent).toBe('34.7 tok/s');
         });
 
+        /*
+         * On this response shape totalMillis is proxy/overhead time only, not generation time, so
+         * responseMetadataCalls[0].predictedPerSecond — the backend's own generation-speed figure —
+         * must win over both tokensPerSecond and the completionTokens/totalMillis derivation.
+         */
+        it('prefers responseMetadataCalls[0].predictedPerSecond over responseMetadata entirely', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    completionTokens: 82,
+                    totalMillis: 33.349,
+                    tokensPerSecond: 9999,
+                },
+                responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('144.0 tok/s');
+        });
+
+        /* Floors rather than rounds: 144.09 must read 144.0, not 144.1. */
+        it('floors the tokens-per-second figure to one decimal rather than rounding', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadataCalls: [{predictedPerSecond: 144.09}],
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('144.0 tok/s');
+        });
+
         it('renders no response metadata element when completionTokens or totalMillis is missing', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',

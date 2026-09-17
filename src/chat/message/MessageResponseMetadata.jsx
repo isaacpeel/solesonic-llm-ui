@@ -1,14 +1,26 @@
 import './MessageResponseMetadata.css';
 
 /*
- * The backend does not send tokensPerSecond directly (see ai-scratch/final-chunk.json:
- * completionTokens + totalMillis only), so it is derived here. `tokensPerSecond` is still read
- * first in case a future response carries it precomputed.
+ * `responseMetadataCalls[0].predictedPerSecond` is the backend's own generation-speed figure
+ * (`1000 / predictedPerTokenMillis`) and is preferred when present. `responseMetadata.totalMillis`
+ * is not a safe fallback for it — on responses that carry `responseMetadataCalls`, `totalMillis`
+ * has been observed to be proxy/overhead time only (e.g. matching
+ * liteLlm.responseDurationMillis + overheadDurationMillis), not total generation time. The
+ * completionTokens/totalMillis derivation below is kept only for the older response shape that
+ * has neither `responseMetadataCalls` nor a precomputed `tokensPerSecond`.
  */
-function resolveTokensPerSecond({tokensPerSecond, completionTokens, totalMillis}) {
-    if (typeof tokensPerSecond === 'number') {
-        return tokensPerSecond;
+function resolveTokensPerSecond(responseMetadata, responseMetadataCalls) {
+    const predictedPerSecond = responseMetadataCalls?.[0]?.predictedPerSecond;
+
+    if (typeof predictedPerSecond === 'number') {
+        return predictedPerSecond;
     }
+
+    if (typeof responseMetadata?.tokensPerSecond === 'number') {
+        return responseMetadata.tokensPerSecond;
+    }
+
+    const {completionTokens, totalMillis} = responseMetadata ?? {};
 
     if (typeof completionTokens === 'number' && typeof totalMillis === 'number' && totalMillis > 0) {
         return completionTokens / (totalMillis / 1000);
@@ -17,18 +29,19 @@ function resolveTokensPerSecond({tokensPerSecond, completionTokens, totalMillis}
     return null;
 }
 
+/* Floors rather than rounds, so the displayed figure never overstates the measured speed. */
+function formatTokensPerSecond(tokensPerSecond) {
+    return (Math.floor(tokensPerSecond * 10) / 10).toFixed(1);
+}
+
 /*
  * Sits beside the model name in .message-actions. Absent entirely on a cancelled turn (the
  * whole responseMetadata object is null there), on a message never sent through the `done`
  * event at all — e.g. one loaded from history before the backend added this field — or when
  * there isn't enough data to derive a tokens/second figure.
  */
-function MessageResponseMetadata({responseMetadata}) {
-    if (!responseMetadata) {
-        return null;
-    }
-
-    const tokensPerSecond = resolveTokensPerSecond(responseMetadata);
+function MessageResponseMetadata({responseMetadata, responseMetadataCalls}) {
+    const tokensPerSecond = resolveTokensPerSecond(responseMetadata, responseMetadataCalls);
 
     if (tokensPerSecond === null) {
         return null;
@@ -36,7 +49,7 @@ function MessageResponseMetadata({responseMetadata}) {
 
     return (
         <span className="message-response-metadata">
-            {tokensPerSecond.toFixed(1)} tok/s
+            {formatTokensPerSecond(tokensPerSecond)} tok/s
         </span>
     );
 }

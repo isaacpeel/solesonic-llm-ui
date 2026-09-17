@@ -196,6 +196,8 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
                      * already renders nothing for a null value.
                      */
                     responseMetadata: response?.message?.responseMetadata ?? null,
+                    /* Sibling of responseMetadata on the envelope's message; carries the per-call speed stats. */
+                    responseMetadataCalls: response?.message?.responseMetadataCalls ?? null,
                     /*
                      * The turn is only stamped here, not when the placeholder is pushed — a long
                      * answer would otherwise land already reading "2 minutes ago". Prefers the
@@ -518,6 +520,7 @@ async function fetchFormattedChatMessages(chatId) {
             text: message.message,
             /* Persisted alongside model/generatedImages, so a reloaded turn shows it too. */
             responseMetadata: message.responseMetadata ?? null,
+            responseMetadataCalls: message.responseMetadataCalls ?? null,
             messageId: message.id,
             /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
             timestamp: message.timestamp,
