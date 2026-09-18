@@ -2,7 +2,6 @@ import "./ChatMessage.css";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "../attachment/MessageAttachments.jsx";
-import MessageFooter from "./MessageFooter.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -72,20 +71,14 @@ function ChatMessage({message, onExpandImage}) {
         />
     ) : null;
 
-    const messageCard = (
-        <ChatCard message={message} onExpandImage={onExpandImage}>
-            {attachmentChildren}
-            {elicitationChildren}
-            {notificationLogChildren}
-            {visionUnconfirmedChildren}
-        </ChatCard>
-    );
-
     return (
         <div className={`chat-message-container ${containerClass}`}>
-            <MessageFooter message={message}>
-                {messageCard}
-            </MessageFooter>
+            <ChatCard message={message} onExpandImage={onExpandImage}>
+                {attachmentChildren}
+                {elicitationChildren}
+                {notificationLogChildren}
+                {visionUnconfirmedChildren}
+            </ChatCard>
         </div>
     );
 }

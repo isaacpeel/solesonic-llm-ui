@@ -6,6 +6,7 @@ import remarkBreaks from "remark-breaks";
 import {buildStreamingMarkdownDisplay} from "../../util/streamingMarkdown.js";
 import {renderLatexArrows} from "../../util/latexArrows.js";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
+import MessageFooter from "./MessageFooter.jsx";
 import {USER, AI, SYSTEM} from "./ChatMessage.jsx";
 import "./ChatMessage.css";
 
@@ -60,6 +61,7 @@ function ChatCard({message, children, onExpandImage}) {
     const text = isElicitation ? '' : message.text;
     const hasText = text && text.trim() !== '';
     const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
+    const showMessageFooter = isAIMessage && !isElicitation && hasText && !isStreaming && !message.ephemeral;
 
     const displayText = useMemo(() => {
         if (!hasText) {
@@ -73,7 +75,7 @@ function ChatCard({message, children, onExpandImage}) {
     const cardRole = isError ? 'alert' : isInfo ? 'status' : undefined;
     const ariaLabel = isError ? 'Error message' : isInfo ? 'Information message' : undefined;
 
-    return (
+    const card = (
         <div
             className={`message ${cardClassName}`}
             style={{backgroundColor: colors.bgColor, color: colors.textColor}}
@@ -91,6 +93,17 @@ function ChatCard({message, children, onExpandImage}) {
                 )}
                 {generatedImageFooter}
             </div>
+        </div>
+    );
+
+    if (!showMessageFooter) {
+        return card;
+    }
+
+    return (
+        <div className="message-with-actions">
+            {card}
+            <MessageFooter message={message}/>
         </div>
     );
 }
