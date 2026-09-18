@@ -8,6 +8,7 @@ A React-based user interface for the Solesonic LLM chat application. This projec
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
+  - [Component Development (Storybook)](#component-development-storybook)
 - [Environment Variables](#environment-variables)
 - [Production Deployment](#production-deployment)
 - [Project Structure](#project-structure)
@@ -69,6 +70,18 @@ A React-based user interface for the Solesonic LLM chat application. This projec
    ```
 
 5. Open your browser and navigate to http://localhost:3000
+
+### Component Development (Storybook)
+
+To build or preview individual components without a running backend, Keycloak, or network
+connection, use Storybook:
+
+```bash
+npm run storybook
+```
+
+Open your browser and navigate to http://localhost:6006. See [docs/STORYBOOK.md](docs/STORYBOOK.md)
+for how it's configured and how to write a story.
 
 ## Environment Variables
 
