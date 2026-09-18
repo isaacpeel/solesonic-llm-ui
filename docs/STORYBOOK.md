@@ -89,10 +89,10 @@ Put the file next to the component it covers (`Foo.jsx` → `Foo.stories.jsx`), 
 
 The best components to write stories for are the ones that already read cleanly in isolation:
 props in, JSX out, no `ApiClient`/`service/` calls of their own. `ChatMessage`, `ChatCard`,
-`MessageResponseMetadata`, and `MessageCopyButton` are all like this — see
-`src/chat/message/ChatMessage.stories.jsx` and `src/chat/message/MessageCopyButton.stories.jsx`
-for worked examples covering user/assistant/system messages, streaming, elicitation-resolved,
-error, and notification-log variants.
+`MessageResponseMetadata`, `MessageCopyButton`, and `MessageFooter` are all like this — see
+`src/chat/message/ChatMessage.stories.jsx`, `src/chat/message/MessageCopyButton.stories.jsx`,
+and `src/chat/message/MessageFooter.stories.jsx` for worked examples covering user/assistant/system
+messages, streaming, elicitation-resolved, error, notification-log, and footer-metadata variants.
 
 The one thing a plain text message depends on:
 

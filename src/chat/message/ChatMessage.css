@@ -48,19 +48,6 @@
 }
 
 /*
- * Horizontal padding matches .message's own 16px so the model name lines up with the bubble's
- * text rather than the bubble's outer (unpadded) edge.
- */
-.message-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    padding: 4px 16px 0;
-}
-
-/*
  * No per-type max-width override here: the base .message rule's 90% cap already covers both,
  * and .message-with-actions .message's 100% override (higher specificity — two classes plus a
  * descendant vs. one) relies on ASSISTANT not re-declaring max-width at equal specificity, which
@@ -83,12 +70,6 @@
     background-color: #3b4d61;
     color: #ffffff;
     align-self: flex-start;
-}
-
-.message-model-name {
-    font-size: 12px;
-    opacity: 0.55;
-    margin-right: auto;
 }
 
 .message-text {
@@ -434,9 +415,5 @@
     .message {
         margin-top: 8px;
         padding: 1px 12px;
-    }
-
-    .message-actions {
-        padding: 4px 12px 0;
     }
 }
