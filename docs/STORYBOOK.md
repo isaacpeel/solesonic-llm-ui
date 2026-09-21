@@ -5,11 +5,6 @@ without the backend (`solesonic-llm-api`), Keycloak, or a network connection run
 mainly useful for presentational components — components whose behavior is driven by props
 rather than by fetching their own data.
 
-Coverage today is scoped to **plain text chat messages** (`ChatMessage` and the components it
-composes, for `USER`/`ASSISTANT`/`SYSTEM` messages built from `text` alone). Messages that carry
-attachments or generated images pull in hooks that fetch authenticated blobs from the backend
-(`useAttachmentUrl`, `useGeneratedImageUrl`) and are not mocked yet — see Known gaps.
-
 ## Running it
 
 ```
@@ -17,9 +12,12 @@ npm run storybook        # dev server at http://localhost:6006, hot-reloads on s
 npm run build-storybook  # static build to storybook-static/ (gitignored)
 ```
 
-Both scripts are plain `npm`/`npx` invocations of the `storybook` CLI (added to `package.json`
-by `npx storybook@latest init`), not IntelliJ run configurations — there is currently no run
-configuration for them.
+Stories also run as real browser tests (via `@storybook/addon-vitest`, Playwright + Chromium)
+alongside the rest of the Vitest suite:
+
+```
+npx vitest run --project=storybook
+```
 
 ## What's installed
 
@@ -30,37 +28,36 @@ Storybook 10 with the Vite builder, matching this project's Vite 8 + React 19 st
   work in stories without any duplicate config.
 - `@storybook/addon-docs` — autodocs pages generated from stories.
 - `@storybook/addon-a11y` — accessibility panel (axe-core) per story.
+- `@storybook/addon-vitest` — runs each story's `play` function as a real Vitest browser test
+  (`vitest run --project=storybook`), wired into `vite.config.js`'s `test.projects`.
+- `@storybook/addon-mcp` — exposes Storybook to MCP tooling.
 - `@chromatic-com/storybook` — Chromatic publish/visual-review integration. Installed but not
   configured against a Chromatic project; harmless to leave until someone wants it.
+- `msw` / `msw-storybook-addon` — mocks the backend HTTP calls components make (chats, chat
+  groups, attachments, generated images, Atlassian/Google connections, RAG documents), so
+  components that fetch their own data can be storied without a running API.
 - `eslint-plugin-storybook` — wired into `eslint.config.js` (`storybook.configs['flat/recommended']`
   appended to the flat config array), so `.stories.jsx` files get linted the same as the rest of
-  the project via `mcp__idea__lint_files` / `mcp__idea__get_file_problems`.
-
-### Deliberately not installed
-
-`npx storybook@latest init` also proposed `@storybook/addon-vitest` (Vitest browser-mode
-integration via Playwright) and `@storybook/addon-mcp`. Both failed to auto-configure during
-setup, and `addon-vitest` pulls in Playwright's browser binaries — a large download with no
-payoff here, since it would run stories as tests through a second, parallel Vitest
-configuration rather than the project's existing `vite.config.js` `test` block (see the
-`CLAUDE.md` note about the IntelliJ Vitest runner already being particular about environment
-config). Both packages were removed after init. Component *tests* stay in `tests/`, run the
-usual way (`mcp__idea__execute_run_configuration`); Storybook here is for visual/manual
-development, not test execution.
+  the project.
 
 ## Configuration
 
 - **`.storybook/main.js`** — story discovery glob (`src/**/*.stories.@(js|jsx|mjs|ts|tsx)` and
   `src/**/*.mdx`), the addon list above, and the Vite framework.
 - **`.storybook/preview.jsx`** — global setup applied to every story:
-  - Imports `src/main.css` so the CSS custom properties (`--background-color`, `--text-color`,
-    etc.) and base `body` styling that most components depend on are present, same as
-    `main.jsx` does for the real app.
-  - Wraps every story in `SharedDataProvider` (`src/context/SharedDataContext.jsx`). That
-    context is pure in-memory `useState`/`useRef` — no network calls — so it's safe to provide
-    globally rather than asking every story that touches `useSharedData()` to wrap itself.
-  - Sets a dark canvas background (`#1e1e1e`, matching `--background-color`) so components
-    aren't previewed against Storybook's default white background.
+  - Imports `src/main.css` and `src/App.css` so the CSS custom properties and base styling most
+    components depend on are present, same as `main.jsx` does for the real app.
+  - Wraps every story in a stubbed `KeycloakContext.Provider` fed through the real `AuthService`
+    singleton — the real `KeycloakProvider` does a live OIDC login-required redirect on mount,
+    which has no server to talk to here, so every story instead gets an already-authenticated
+    stand-in `keycloak-js` instance with the same shape. `useKeycloak()` / `RoleGuard` work
+    normally in stories as a result.
+  - Wraps every story in `SharedDataProvider` (`src/context/SharedDataContext.jsx`) and a
+    `MemoryRouter`/`Routes` — a story whose component reads `useParams()` (e.g. `RagManagement`'s
+    `:level`) sets `parameters.router = {initialEntries, path}` to get real route matching.
+  - Installs the MSW handlers (`.storybook/msw-handlers.js`) via `msw-storybook-addon`'s loader,
+    and fixes "now" with `MockDate` so relative-time labels render deterministically.
+  - Sets a dark canvas background (`#1e1e1e`, matching `--background-color`).
 
 ## Writing a story
 
@@ -68,50 +65,35 @@ Stories use Component Story Format 3 (a default export describing the component,
 as variants):
 
 ```jsx
-import ChatMessage from './ChatMessage.jsx';
+import ChatMessage, { USER } from './ChatMessage.jsx';
 
-export default {
-    title: 'Chat/ChatMessage',
+const meta = {
     component: ChatMessage,
 };
 
+export default meta;
+
 export const UserMessage = {
     args: {
-        message: {_key: 'msg-1', type: 'USER', text: 'Hello'},
+        message: { _key: 'msg-1', type: USER, text: 'Hello' },
     },
 };
 ```
 
 Put the file next to the component it covers (`Foo.jsx` → `Foo.stories.jsx`), matching how
-`Foo.css` already sits next to `Foo.jsx`.
-
-### Picking good candidates
-
-The best components to write stories for are the ones that already read cleanly in isolation:
-props in, JSX out, no `ApiClient`/`service/` calls of their own. `ChatMessage`, `ChatCard`,
-`MessageResponseMetadata`, and `MessageCopyButton` are all like this — see
-`src/chat/message/ChatMessage.stories.jsx` and `src/chat/message/MessageCopyButton.stories.jsx`
-for worked examples covering user/assistant/system messages, streaming, elicitation-resolved,
-error, and notification-log variants.
-
-The one thing a plain text message depends on:
-
-- **`SharedDataContext`** — already provided globally (see above); nothing to do.
+`Foo.css` already sits next to `Foo.jsx`. Prefer adding a `play` function (using `storybook/test`)
+that asserts on the rendered result — these run as real tests via `addon-vitest`, not just
+visual scaffolding.
 
 ## Known gaps
 
-- **Attachments and generated images are out of scope for now.** `MessageAttachments` /
-  `useAttachmentUrl` and `MessageGeneratedImages` → `GeneratedImage` / `useGeneratedImageUrl`
-  fetch authenticated blobs from the backend and will fail with no API running. `useAttachmentUrl`
-  does short-circuit when an attachment carries a `localObjectUrl` (a just-uploaded image already
-  has its bytes locally — see `src/hooks/useAttachmentUrl.js`), which is a usable seam if this
-  gets picked up later; `useGeneratedImageUrl` has no equivalent. The project's own tests mock
-  this by swapping the hook module (`vi.mock('.../useGeneratedImageUrl.js', ...)` in
-  `tests/image/GeneratedImage.test.jsx`) — the Storybook equivalent would be a `viteFinal`
-  `resolve.alias` pointing the hook's import at a mock implementation under a new
-  `.storybook/mocks/` directory, scoped to Storybook's own Vite instance only.
-- **`useKeycloak()` / `RoleGuard`** (`src/authorizer/`) — depends on `KeycloakProvider`, which
-  initializes a real Keycloak client. There is no mock provider for this yet. A component that
-  calls `useKeycloak()` (directly, or via `RoleGuard`) isn't currently coverable in Storybook.
-- No visual regression / interaction testing is wired in (that's what `addon-vitest` would have
-  given us, at the cost described above). Storybook here is for manual/visual development only.
+A handful of components are still not covered, all for the same underlying reason — they own
+something Storybook has no real backing for, rather than being missed by omission:
+
+- **`App.jsx`** — owns real browser routing (`createBrowserRouter`) and the live auth flow.
+  Storybook substitutes the pieces it needs (`MemoryRouter`, the Keycloak stub) as decorators
+  in `preview.jsx` instead of mounting `App` itself.
+- **`providers/KeycloakProvider.jsx`** — performs a real OIDC login-required redirect on mount
+  with no Keycloak server available in Storybook; see the stub described above.
+- A couple of thin pass-through wrapper components (e.g. `ChatGroupDialogs.jsx`) are skipped
+  since they're already exercised through their children's own stories.
