@@ -23,7 +23,7 @@
 
 .message {
     margin-top: 16px;
-    max-width: 70%;
+    max-width: 90%;
     padding: 1px 16px;
     border-radius: 8px;
     word-wrap: break-word;
@@ -32,7 +32,7 @@
 }
 
 /*
- * Column holding an assistant card and the action row under it. The 70% cap lives here rather
+ * Column holding an assistant card and the action row under it. The 90% cap lives here rather
  * than on .message, so the card and the row beneath it share one width — otherwise the row
  * would stretch to the full container and the button would drift far right of the card edge.
  */
@@ -40,7 +40,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    max-width: 70%;
+    max-width: 90%;
 }
 
 .message-with-actions .message {
@@ -48,8 +48,8 @@
 }
 
 /*
- * Faded rather than unmounted: revealing it must not reflow the transcript, and opacity leaves
- * the button in the tab order so a keyboard can still reach it.
+ * Horizontal padding matches .message's own 16px so the model name lines up with the bubble's
+ * text rather than the bubble's outer (unpadded) edge.
  */
 .message-actions {
     display: flex;
@@ -57,34 +57,16 @@
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
-    padding-top: 4px;
-    opacity: 0;
-    transition: opacity var(--transition-speed);
+    padding: 4px 16px 0;
 }
 
 /*
- * Scoped to pointer devices: touch browsers emulate :hover on tap and leave it stuck on the
- * last-tapped element, so on those the explicit --revealed flag is the only trigger.
+ * No per-type max-width override here: the base .message rule's 90% cap already covers both,
+ * and .message-with-actions .message's 100% override (higher specificity — two classes plus a
+ * descendant vs. one) relies on ASSISTANT not re-declaring max-width at equal specificity, which
+ * previously won the cascade by source order and silently re-capped the bubble to 90% of an
+ * already-90%-capped column (81% effective) while the footer row beneath it had no such cap.
  */
-@media (hover: hover) {
-    .message-with-actions:hover .message-actions {
-        opacity: 1;
-    }
-}
-
-/*
- * Keyboard reveal, kept in its own rule so browsers without :has() drop only this one.
- * :focus-visible, not :focus-within — clicking the copy button focuses it, and :focus-within
- * would then hold the row open after the pointer had left the message.
- */
-.message-with-actions:has(.message-copy-button:focus-visible) .message-actions {
-    opacity: 1;
-}
-
-.message-with-actions--revealed .message-actions {
-    opacity: 1;
-}
-
 .message.USER {
     background-color: #e0e0e0;
     color: #000;
@@ -452,5 +434,9 @@
     .message {
         margin-top: 8px;
         padding: 1px 12px;
+    }
+
+    .message-actions {
+        padding: 4px 12px 0;
     }
 }

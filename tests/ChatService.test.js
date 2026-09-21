@@ -101,6 +101,35 @@ describe('deleteChat', () => {
 });
 
 // ---------------------------------------------------------------------------
+// cancelStream
+// ---------------------------------------------------------------------------
+
+describe('cancelStream', () => {
+    it('posts to the cancel endpoint for the chat and user', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        await chatService.cancelStream('chat-42');
+
+        expect(apiClient.post).toHaveBeenCalledWith(
+            'https://api.example.com/stream/chat-42/users/mock-user-id/cancel',
+        );
+    });
+
+    /* apiClient already normalizes a bodiless 202/204 to null; nothing here should reinterpret it. */
+    it('resolves to null on a 202 or 204 ack', async () => {
+        apiClient.post.mockResolvedValue(null);
+
+        await expect(chatService.cancelStream('chat-42')).resolves.toBeNull();
+    });
+
+    it('propagates a 403/404 rather than swallowing it', async () => {
+        apiClient.post.mockRejectedValue(Object.assign(new Error('403'), {status: 403}));
+
+        await expect(chatService.cancelStream('chat-42')).rejects.toMatchObject({status: 403});
+    });
+});
+
+// ---------------------------------------------------------------------------
 // handleStreamChunk
 // ---------------------------------------------------------------------------
 
@@ -112,6 +141,9 @@ function makeCallbacks(overrides = {}) {
         appendNotificationMessage: vi.fn(),
         ensureChatIdFromResponse: vi.fn(),
         finalizeLastAIMessage: vi.fn(),
+        stopStreamingLastAIMessage: vi.fn(),
+        appendSystemMessage: vi.fn(),
+        isCancelling: false,
         setActiveElicitation: vi.fn(),
         setElicitationSubmitting: vi.fn(),
         setElicitationValues: vi.fn(),
@@ -200,6 +232,39 @@ describe('handleStreamChunk — CHUNK / MESSAGE', () => {
         expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('text');
     });
 
+    /*
+     * The only content that can legitimately arrive after a cancel signal is the "Chat canceled."
+     * notice itself (docs/api.md) — gluing it onto the visible answer reads as a garbled
+     * continuation of the model's own text, and the `done` handler already surfaces it correctly
+     * as its own system bubble.
+     */
+    it('while cancelling, does not append the trailing "Chat canceled." chunk', () => {
+        const callbacks = makeCallbacks({isCancelling: true});
+        const payload = {event: CHUNK, data: JSON.stringify({content: 'Chat canceled.'})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('while cancelling, still suppresses a MESSAGE-event chunk the same way', () => {
+        const callbacks = makeCallbacks({isCancelling: true});
+        const payload = {event: MESSAGE, data: JSON.stringify({content: 'Chat canceled.'})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('when not cancelling, content is appended as usual', () => {
+        const callbacks = makeCallbacks({isCancelling: false});
+        const payload = {event: CHUNK, data: JSON.stringify({content: 'hello'})};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('hello');
+    });
+
     it('malformed JSON logs error and does not throw', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const callbacks = makeCallbacks();
@@ -244,6 +309,49 @@ describe('handleStreamChunk — DONE', () => {
         expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
         expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
         consoleError.mockRestore();
+    });
+
+    /*
+     * A cancelled turn's `done` persists a SYSTEM message ("Chat canceled.") rather than the
+     * partial answer — docs/api.md, "Cancel a Streaming Turn". Overwriting the AI bubble with it
+     * via finalizeLastAIMessage would erase everything the user already watched stream in.
+     */
+    describe('a cancelled turn (SYSTEM messageType)', () => {
+        it('stops the AI bubble without rewriting its text, and appends the system message instead', () => {
+            const callbacks = makeCallbacks();
+            const doneData = {id: 'chat-1', message: {messageType: 'SYSTEM', message: 'Chat canceled.'}};
+            const payload = {event: DONE, data: JSON.stringify(doneData)};
+
+            chatService.handleStreamChunk(payload, callbacks);
+
+            expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+            expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+            expect(callbacks.appendSystemMessage).toHaveBeenCalledWith('Chat canceled.');
+        });
+
+        it('still resolves the chat id and clears elicitation state', () => {
+            const callbacks = makeCallbacks({activeElicitation: {someField: true}});
+            const doneData = {id: 'chat-1', message: {messageType: 'SYSTEM', message: 'Chat canceled.'}};
+            const payload = {event: DONE, data: JSON.stringify(doneData)};
+
+            chatService.handleStreamChunk(payload, callbacks);
+
+            expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith(doneData);
+            expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
+            expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+        });
+    });
+
+    it('an ordinary ASSISTANT done still finalizes the AI bubble, not the system path', () => {
+        const callbacks = makeCallbacks();
+        const doneData = {id: 'chat-1', message: {messageType: 'ASSISTANT', message: 'final text'}};
+        const payload = {event: DONE, data: JSON.stringify(doneData)};
+
+        chatService.handleStreamChunk(payload, callbacks);
+
+        expect(callbacks.finalizeLastAIMessage).toHaveBeenCalledWith(doneData);
+        expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
+        expect(callbacks.appendSystemMessage).not.toHaveBeenCalled();
     });
 });
 

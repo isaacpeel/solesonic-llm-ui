@@ -56,7 +56,14 @@ const preview = {
       // 'error' - fail CI on a11y violations
       // 'off' - skip a11y checks entirely
       test: "todo"
-    }
+    },
+
+    backgrounds: {
+      default: 'app-dark',
+      values: [
+        {name: 'app-dark', value: '#1e1e1e'},
+      ],
+    },
   },
   decorators: [
     (Story, context) => {

@@ -1,5 +1,6 @@
 export const ROLES = {
     MODEL_ADMIN: 'model-admin',
     MODEL_SELECT: 'model-select',
-    RAG_ADMIN: 'rag-admin'
+    RAG_ADMIN: 'rag-admin',
+    IMAGE_ADMIN: 'image-admin'
 };

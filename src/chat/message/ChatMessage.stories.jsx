@@ -52,6 +52,35 @@ export const StreamingAssistant = {
     },
 };
 
+export const AssistantWithNotifications = {
+    args: {
+        message: {
+            _key: 'n1',
+            type: AI,
+            text: 'Done — I searched the docs and found the answer.',
+            isStreaming: false,
+            model: 'qwen3.5-9b',
+            notifications: ['Searching documentation…', 'Reading 3 matching pages…'],
+        },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('2 steps completed')).toBeVisible();
+    },
+};
+
+export const SystemMessage = {
+    args: {
+        message: {
+            _key: 'sys1',
+            type: SYSTEM,
+            text: 'The model was switched to qwen3.5-9b for this conversation.',
+        },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('The model was switched to qwen3.5-9b for this conversation.')).toBeVisible();
+    },
+};
+
 export const ElicitationResolved = {
     args: {
         message: {
@@ -64,5 +93,34 @@ export const ElicitationResolved = {
     play: async ({ canvas }) => {
         await expect(canvas.getByText('Deploy the change to production?')).toBeVisible();
         await expect(canvas.getByText(/Accept/)).toBeVisible();
+    },
+};
+
+export const ElicitationDeclined = {
+    args: {
+        message: {
+            _key: 'ed1',
+            type: SYSTEM,
+            text: 'Remove this document from the RAG index?',
+            elicitationResponse: 'decline',
+        },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('Remove this document from the RAG index?')).toBeVisible();
+        await expect(canvas.getByText(/Decline/)).toBeVisible();
+    },
+};
+
+export const ErrorMessage = {
+    args: {
+        message: {
+            _key: 'err1',
+            type: AI,
+            text: 'The model backend timed out. Please try again.',
+            isError: true,
+        },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByRole('alert')).toBeVisible();
     },
 };

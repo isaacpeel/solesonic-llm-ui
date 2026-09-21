@@ -19,6 +19,10 @@ const userPreferencesService = {
         const userId = await authService.getUserId();
         return await apiClient.post(`${config.usersUri}/${userId}/preferences`, userPreferences);
     },
+    linkAddress: async (addressId) => {
+        const userId = await authService.getUserId();
+        return await apiClient.put(`${config.usersUri}/${userId}/preferences/${addressId}`);
+    },
 };
 
 export default userPreferencesService;

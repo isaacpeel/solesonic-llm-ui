@@ -32,7 +32,7 @@ describe('buildStreamingMarkdownDisplay - streaming repairs', () => {
     it('adds NBSP to bare list markers so they render', () => {
         const raw = '-\n*\n1.';
         const display = buildStreamingMarkdownDisplay(raw, { isFinal: false });
-        expect(display).toBe('- \u00A0\n* \u00A0\n1. \u00A0');
+        expect(display).toBe('-  \n*  \n1.  ');
     });
 });
 

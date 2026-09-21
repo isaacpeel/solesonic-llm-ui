@@ -1,75 +1,55 @@
 import './MessageResponseMetadata.css';
 
-const MISSING_VALUE_LABEL = '—';
+/*
+ * `responseMetadataCalls[0].predictedPerSecond` is the backend's own generation-speed figure
+ * (`1000 / predictedPerTokenMillis`) and is preferred when present. `responseMetadata.totalMillis`
+ * is not a safe fallback for it — on responses that carry `responseMetadataCalls`, `totalMillis`
+ * has been observed to be proxy/overhead time only (e.g. matching
+ * liteLlm.responseDurationMillis + overheadDurationMillis), not total generation time. The
+ * completionTokens/totalMillis derivation below is kept only for the older response shape that
+ * has neither `responseMetadataCalls` nor a precomputed `tokensPerSecond`.
+ */
+function resolveTokensPerSecond(responseMetadata, responseMetadataCalls) {
+    const predictedPerSecond = responseMetadataCalls?.[0]?.predictedPerSecond;
 
-function formatTokenCount(value) {
-    return typeof value === 'number' ? value.toLocaleString() : MISSING_VALUE_LABEL;
-}
-
-function formatMillisAsDuration(value) {
-    if (typeof value !== 'number') {
-        return MISSING_VALUE_LABEL;
+    if (typeof predictedPerSecond === 'number') {
+        return predictedPerSecond;
     }
 
-    return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s`;
-}
-
-function calculateTokensPerSecond(promptTokens, totalTokens, promptMillis) {
-    if (
-        typeof promptTokens !== 'number'
-        || typeof totalTokens !== 'number'
-        || typeof promptMillis !== 'number'
-    ) {
-        return null;
+    if (typeof responseMetadata?.tokensPerSecond === 'number') {
+        return responseMetadata.tokensPerSecond;
     }
 
-    const completionTokens = totalTokens - promptTokens;
+    const {completionTokens, totalMillis} = responseMetadata ?? {};
 
-    if (completionTokens <= 0 || promptMillis <= 0) {
-        return null;
+    if (typeof completionTokens === 'number' && typeof totalMillis === 'number' && totalMillis > 0) {
+        return completionTokens / (totalMillis / 1000);
     }
 
-    return completionTokens / (promptMillis / 1000);
+    return null;
 }
 
-function buildMetadataText({promptTokens, totalTokens, promptMillis}) {
-
-    const tokensPerSecond = calculateTokensPerSecond(promptTokens, totalTokens, promptMillis);
-
-    const segments = [
-        `tok:${formatTokenCount(totalTokens)}`,
-    ];
-
-    if (typeof tokensPerSecond === 'number') {
-        segments.push(`${tokensPerSecond.toFixed(1)} tok/s`);
-    }
-
-    segments.push(`dur:${formatMillisAsDuration(promptMillis)}`);
-
-    return segments.join(' · ');
-}
-
-function hasAnyMetadataValue(responseMetadata) {
-    const {promptTokens, completionTokens, totalTokens, promptMillis} = responseMetadata;
-
-    return [promptTokens, completionTokens, totalTokens, promptMillis]
-        .some((value) => typeof value === 'number');
+/* Floors rather than rounds, so the displayed figure never overstates the measured speed. */
+function formatTokensPerSecond(tokensPerSecond) {
+    return (Math.floor(tokensPerSecond * 10) / 10).toFixed(1);
 }
 
 /*
  * Sits beside the model name in .message-actions. Absent entirely on a cancelled turn (the
  * whole responseMetadata object is null there), on a message never sent through the `done`
  * event at all — e.g. one loaded from history before the backend added this field — or when
- * every field on the object came back empty.
+ * there isn't enough data to derive a tokens/second figure.
  */
-function MessageResponseMetadata({responseMetadata}) {
-    if (!responseMetadata || !hasAnyMetadataValue(responseMetadata)) {
+function MessageResponseMetadata({responseMetadata, responseMetadataCalls}) {
+    const tokensPerSecond = resolveTokensPerSecond(responseMetadata, responseMetadataCalls);
+
+    if (tokensPerSecond === null) {
         return null;
     }
 
     return (
         <span className="message-response-metadata">
-            {buildMetadataText(responseMetadata)}
+            {formatTokensPerSecond(tokensPerSecond)} tok/s
         </span>
     );
 }

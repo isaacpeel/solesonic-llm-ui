@@ -270,17 +270,7 @@ describe('ChatMessage', () => {
     });
 
     describe('model name', () => {
-        it('prefers the model name from responseMetadata over the top-level model field', () => {
-            const {container} = render(<ChatMessage message={buildMessage({
-                text: 'the answer',
-                model: 'legacy-model',
-                responseMetadata: {model: 'gpt-4o'},
-            })}/>);
-
-            expect(container.querySelector('.message-model-name').textContent).toBe('gpt-4o');
-        });
-
-        it('falls back to the top-level model field when responseMetadata carries none', () => {
+        it('renders the top-level model field', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 model: 'legacy-model',
@@ -294,6 +284,24 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             expect(container.querySelector('.message-model-name').textContent).toBe('AI Assistant');
+        });
+
+        it('falls back to responseMetadata.routedModel when the top-level model is absent', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {routedModel: 'qwen3.5-9b', model: 'auto-model'},
+            })}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('qwen3.5-9b');
+        });
+
+        it('falls back to responseMetadata.model when routedModel is absent', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {model: 'auto-model'},
+            })}/>);
+
+            expect(container.querySelector('.message-model-name').textContent).toBe('auto-model');
         });
     });
 
@@ -332,31 +340,25 @@ describe('ChatMessage', () => {
             expect(wrapper.children[1].classList.contains('message-actions')).toBe(true);
         });
 
-        /* Touch devices have no hover to reveal with, so a tap on the message stands in. */
-        it('marks the action row revealed once the message is clicked', () => {
+        /* The footer no longer waits for hover or a tap — it renders with the message. */
+        it('renders the action row without requiring hover or a click', () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
-
-            fireEvent.click(wrapper);
-
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(true);
+            expect(wrapper.querySelector('.message-actions .message-copy-button')).not.toBeNull();
         });
 
-        /* The row goes back to being hover-driven the moment the pointer leaves, copied or not. */
-        it('clears the revealed flag when the pointer leaves a message it just copied', async () => {
+        it('keeps the action row rendered after the pointer leaves the message', async () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
             const wrapper = container.querySelector('.message-with-actions');
             fireEvent.click(wrapper.querySelector('.message-copy-button'));
 
             await waitFor(() => expect(wrapper.querySelector('.message-copy-button--copied')).not.toBeNull());
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(true);
 
             fireEvent.mouseLeave(wrapper);
 
-            expect(wrapper.classList.contains('message-with-actions--revealed')).toBe(false);
+            expect(wrapper.querySelector('.message-actions .message-copy-button')).not.toBeNull();
         });
 
         it('does not render a timestamp beside the copy button', () => {
@@ -447,39 +449,81 @@ describe('ChatMessage', () => {
             await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdown));
         });
 
-        it('renders all response metadata fields inline beside the model name', () => {
+        it('renders a tokens-per-second figure computed from completionTokens and totalMillis', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 responseMetadata: {
-                    promptTokens: 412,
-                    completionTokens: 128,
-                    totalTokens: 540,
-                    tokensPerSecond: 34.7,
-                    timeToFirstTokenMillis: 380,
-                    durationMillis: 3690,
+                    promptTokens: 1555,
+                    completionTokens: 105,
+                    totalTokens: 1660,
+                    totalMillis: 204.277,
                 },
             })}/>);
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
             expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('tok:540 · dur:—');
+            expect(responseMetadata.textContent).toBe('514.0 tok/s');
         });
 
-        it('omits tok/s and shows a missing-value placeholder for token counts when tokensPerSecond is null', () => {
+        it('prefers a precomputed tokensPerSecond over deriving one', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 responseMetadata: {
-                    promptTokens: null,
-                    completionTokens: null,
-                    totalTokens: null,
-                    tokensPerSecond: null,
-                    timeToFirstTokenMillis: 380,
-                    durationMillis: 3690,
+                    completionTokens: 128,
+                    totalMillis: 3690,
+                    tokensPerSecond: 34.7,
                 },
             })}/>);
 
             const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata.textContent).toBe('tok:— · dur:—');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('34.7 tok/s');
+        });
+
+        /*
+         * On this response shape totalMillis is proxy/overhead time only, not generation time, so
+         * responseMetadataCalls[0].predictedPerSecond — the backend's own generation-speed figure —
+         * must win over both tokensPerSecond and the completionTokens/totalMillis derivation.
+         */
+        it('prefers responseMetadataCalls[0].predictedPerSecond over responseMetadata entirely', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    completionTokens: 82,
+                    totalMillis: 33.349,
+                    tokensPerSecond: 9999,
+                },
+                responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('144.0 tok/s');
+        });
+
+        /* Floors rather than rounds: 144.09 must read 144.0, not 144.1. */
+        it('floors the tokens-per-second figure to one decimal rather than rounding', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadataCalls: [{predictedPerSecond: 144.09}],
+            })}/>);
+
+            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+            expect(responseMetadata).not.toBeNull();
+            expect(responseMetadata.textContent).toBe('144.0 tok/s');
+        });
+
+        it('renders no response metadata element when completionTokens or totalMillis is missing', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {
+                    promptTokens: 412,
+                    completionTokens: null,
+                    totalTokens: 540,
+                },
+            })}/>);
+
+            expect(container.querySelector('.message-response-metadata')).toBeNull();
         });
 
         it('renders no response metadata element when the message carries none', () => {

@@ -7,9 +7,21 @@ import {
     formatProgressNotificationText
 } from '../service/ProgressNotificationService.js';
 import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
+import {generateMessageKey} from '../util/keys.js';
 
-function useChatHistory({onChatIdChangedExternally} = {}) {
+function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
+
+    /*
+     * Held in a ref rather than listed as a dependency of the hydration effect below. That
+     * effect clears `adoptedChatIdRef` on its fetching path, so re-running it refetches — and a
+     * caller passing an inline arrow would give it a new identity on every render.
+     */
+    const onChatNotFoundRef = useRef(onChatNotFound);
+
+    useEffect(() => {
+        onChatNotFoundRef.current = onChatNotFound;
+    }, [onChatNotFound]);
 
     /*
      * Holds an id this client adopted from its own in-flight stream, so hydration can tell
@@ -90,10 +102,37 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
          */
         adoptedChatIdRef.current = null;
 
+        /*
+         * The id this run asked for. A slow request that lands after the user has moved on must
+         * not act on the conversation now open — evicting it would drag them out of a chat they
+         * are reading and blame a different one.
+         */
+        const requestedChatId = chatId;
+        let supersededByLaterChat = false;
+
         reloadChatHistory()
             .catch((error) => {
+                if (supersededByLaterChat) {
+                    return;
+                }
+
+                /*
+                 * Handled here rather than inside `reloadChatHistory`, which stream recovery
+                 * awaits and relies on rejecting. 403 sits alongside 404 because the two are the
+                 * same event to the user — the id names nothing they can open, whether it never
+                 * existed or belongs to someone else — and only the backend knows which it is.
+                 */
+                if (error?.status === 404 || error?.status === 403) {
+                    onChatNotFoundRef.current?.(requestedChatId);
+                    return;
+                }
+
                 console.error('[useChatHistory] Failed to load chat details:', error);
             });
+
+        return () => {
+            supersededByLaterChat = true;
+        };
     }, [chatId, reloadChatHistory]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {
@@ -157,6 +196,8 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
                      * already renders nothing for a null value.
                      */
                     responseMetadata: response?.message?.responseMetadata ?? null,
+                    /* Sibling of responseMetadata on the envelope's message; carries the per-call speed stats. */
+                    responseMetadataCalls: response?.message?.responseMetadataCalls ?? null,
                     /*
                      * The turn is only stamped here, not when the placeholder is pushed — a long
                      * answer would otherwise land already reading "2 minutes ago". Prefers the
@@ -263,6 +304,27 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
 
             return newHistory;
         });
+    }, [setChatHistory]);
+
+    /*
+     * Appends a standalone SYSTEM bubble — the way a cancelled turn's "Chat canceled." notice
+     * reaches the transcript, since the backend does not persist the partial answer under it and
+     * `finalizeLastAIMessage` must not overwrite what the user already watched stream in.
+     */
+    const appendSystemMessage = useCallback((text) => {
+        if (!text || typeof text !== 'string') {
+            return;
+        }
+
+        setChatHistory((previousHistory) => [
+            ...previousHistory,
+            {
+                type: SYSTEM,
+                text,
+                _key: generateMessageKey('system'),
+                timestamp: new Date().toISOString(),
+            },
+        ]);
     }, [setChatHistory]);
 
     /*
@@ -418,6 +480,7 @@ function useChatHistory({onChatIdChangedExternally} = {}) {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
+        appendSystemMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
@@ -457,6 +520,7 @@ async function fetchFormattedChatMessages(chatId) {
             text: message.message,
             /* Persisted alongside model/generatedImages, so a reloaded turn shows it too. */
             responseMetadata: message.responseMetadata ?? null,
+            responseMetadataCalls: message.responseMetadataCalls ?? null,
             messageId: message.id,
             /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
             timestamp: message.timestamp,

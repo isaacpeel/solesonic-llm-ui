@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import log from 'loglevel';
+import {toast} from 'react-toastify';
 import {useSharedData} from '../context/useSharedData.jsx';
 import chatService, {DONE, ELICITATION, ERROR, INIT} from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
@@ -33,6 +34,7 @@ function useChatStream({
     updateSeededNotificationText,
     attachGeneratedImagesToLastAIMessage,
     stopStreamingLastAIMessage,
+    appendSystemMessage,
     reloadChatHistory,
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
@@ -55,6 +57,31 @@ function useChatStream({
     const controller = useRef(null);
 
     /*
+     * True only between `init` and the turn's end — narrower than `loading`, which also covers
+     * the brief pre-`init` window. The Stop control keys off this rather than `loading` because
+     * there is nothing to cancel server-side until `init` binds the turn to a chat id.
+     */
+    const [streamActive, setStreamActive] = useState(false);
+
+    /*
+     * The chat id `stopChat` targets. Mirrors the `resolvedChatId` closed over by `handleSubmit`
+     * — a brand-new chat only learns its id from its own `init` frame, after the `chatId` prop
+     * passed into this render has already gone stale.
+     */
+    const activeChatIdRef = useRef(null);
+
+    /* Guards against a double-click sending two cancel requests; reset per turn, not per click. */
+    const stoppingRef = useRef(false);
+
+    /*
+     * Whether `handleSubmit`'s try/finally is still open for the current turn. `stopChat` reads
+     * this after its cancel request settles to decide whether restoring the Stop control still
+     * makes sense — a turn that already ended (its own `finally` already ran) must not have it
+     * resurrected just because a failed cancel POST happened to resolve after the fact.
+     */
+    const turnInFlightRef = useRef(false);
+
+    /*
      * Whether the page went into the background at any point during the current turn. Checking
      * `isPageHidden()` at the moment the stream dies is not enough — the teardown surfaces
      * whenever the reader next runs, which is often after the user is already looking at the
@@ -74,6 +101,23 @@ function useChatStream({
         stopStreamingLastAIMessage,
     });
 
+    /*
+     * Drops this client's end of the turn. The backend runs an in-flight turn to completion
+     * either way — what this stops is the frames still arriving here, which would otherwise be
+     * appended to whatever bubble now sits at the end of a transcript they do not belong to.
+     * On a transcript that was just cleared, that bubble is the welcome message.
+     *
+     * Aborting makes `chatStream` reject with an AbortError, which the handler already treats as
+     * a clean end: it clears the streaming flag rather than reporting a failure. Any recovery
+     * still waiting on this turn goes with it, since it would reconcile against a conversation
+     * the user has left.
+     */
+    const abortActiveStream = useCallback(() => {
+        controller.current?.abort();
+        controller.current = null;
+        cancelActiveRecovery();
+    }, [cancelActiveRecovery]);
+
     const handleInputChange = (event) => {
         setInputValue(event.target.value);
     };
@@ -86,6 +130,13 @@ function useChatStream({
             appendNotificationMessage: appendNotificationToLastAIMessage,
             ensureChatIdFromResponse,
             finalizeLastAIMessage,
+            stopStreamingLastAIMessage,
+            appendSystemMessage,
+            /*
+             * Read at call time, not captured — `stoppingRef` is a ref precisely so this always
+             * sees the latest value regardless of when this callback's closure was created.
+             */
+            isCancelling: stoppingRef.current,
             setActiveElicitation,
             setElicitationSubmitting,
             setElicitationValues,
@@ -104,6 +155,8 @@ function useChatStream({
         attachGeneratedImagesToLastAIMessage,
         updateAttachmentStatus,
         finalizeLastAIMessage,
+        stopStreamingLastAIMessage,
+        appendSystemMessage,
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
@@ -212,6 +265,9 @@ function useChatStream({
         let resolvedUserMessageId = null;
 
         lastEventIdRef.current = null;
+        activeChatIdRef.current = chatId;
+        stoppingRef.current = false;
+        turnInFlightRef.current = true;
 
         /*
          * Recovery is only possible once the turn is bound server-side, which `init` is what
@@ -281,6 +337,8 @@ function useChatStream({
                         const initIdentifiers = readInitFrameIdentifiers(rawEvent);
                         resolvedChatId = initIdentifiers.chatId ?? resolvedChatId;
                         resolvedUserMessageId = initIdentifiers.messageId ?? resolvedUserMessageId;
+                        activeChatIdRef.current = resolvedChatId;
+                        setStreamActive(true);
                     }
 
                     if (TERMINAL_STREAM_EVENTS.includes(rawEvent?.event)) {
@@ -378,11 +436,44 @@ function useChatStream({
             }
 
             setLoading(false);
-            setTimeout(() => {
-                chatInputRef.current?.focus();
-            }, 300);
+            setStreamActive(false);
+            turnInFlightRef.current = false;
         }
     };
+
+    /*
+     * Sends the cancel signal for the turn in progress. Fire-and-forget on the server side — the
+     * outcome still arrives as a normal `chunk`/`done` pair on the stream already open, so this
+     * only hides the control and reports a failure to send the signal at all. Guarded by a ref
+     * rather than the `streamActive` state so two calls in the same tick (a double-click) cannot
+     * both pass the check before the first has re-rendered.
+     */
+    const stopChat = useCallback(async () => {
+        if (!streamActive || stoppingRef.current) {
+            return;
+        }
+
+        stoppingRef.current = true;
+        setStreamActive(false);
+
+        try {
+            await chatService.cancelStream(activeChatIdRef.current);
+        } catch (caughtError) {
+            console.error('[useChatStream] Failed to cancel the streaming chat:', caughtError);
+            toast.error('Could not stop the response. Please try again.');
+
+            /*
+             * The signal never reached the server, so the turn is still genuinely running —
+             * restore the Stop control and normal chunk handling so the user can try again.
+             * Skipped if the turn already ended while this request was in flight, which would
+             * otherwise resurrect Stop for a conversation that has already moved on.
+             */
+            if (turnInFlightRef.current) {
+                stoppingRef.current = false;
+                setStreamActive(true);
+            }
+        }
+    }, [streamActive]);
 
     return {
         loading,
@@ -393,12 +484,15 @@ function useChatStream({
         handleInputChange,
         handleSubmit,
         handleStreamChunk,
+        abortActiveStream,
         attachmentNotice,
         setAttachmentNotice,
         recovering,
         recoveryFailed,
         retryRecovery,
         dismissRecoveryFailure,
+        streamActive,
+        stopChat,
     };
 }
 

@@ -152,8 +152,15 @@
     .settings-nav {
         width: 100%;
         flex-direction: row;
-        flex-wrap: wrap;
-        gap: 8px 18px;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        gap: 4px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .settings-nav-group {
+        display: contents;
     }
 
     .settings-nav-group-label {
@@ -161,8 +168,36 @@
     }
 
     .settings-nav-row {
-        min-height: 44px;
-        border: 1px solid var(--border-color);
+        flex: 1;
+        justify-content: center;
+        flex-shrink: 0;
+        min-height: 40px;
+        padding: 8px 4px;
+        border: none;
+        border-radius: 0;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+    }
+
+    .settings-nav-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .settings-nav-icon {
+        margin: 0;
+    }
+
+    .settings-nav-row.selected {
+        background-color: transparent;
+        border-bottom-color: var(--settings-accent);
     }
 
     .settings-content {

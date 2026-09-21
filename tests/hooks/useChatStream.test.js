@@ -13,6 +13,7 @@ vi.mock('../../src/service/ChatService.js', () => ({
         /* Reached only through useStreamRecovery; default to a chat with no reply yet. */
         findChatDetails: vi.fn().mockResolvedValue({chatMessages: []}),
         chatStreamResume: vi.fn().mockResolvedValue('unavailable'),
+        cancelStream: vi.fn().mockResolvedValue(null),
     },
     /* useChatStream imports these constants directly; the mock must carry them. */
     CHUNK: 'chunk',
@@ -38,6 +39,10 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
     useSharedData: vi.fn(),
 }));
 
+vi.mock('react-toastify', () => ({
+    toast: Object.assign(vi.fn(), {error: vi.fn()}),
+}));
+
 /*
  * Recovery keys off page visibility, which the runner does not reliably provide. Stubbing the
  * module keeps these tests deciding for themselves whether the page was backgrounded.
@@ -52,6 +57,27 @@ import chatService from '../../src/service/ChatService.js';
 import streamService from '../../src/service/StreamService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
 import {isPageHidden, observePageHidden} from '../../src/util/pageLifecycle.js';
+import {toast} from 'react-toastify';
+
+/*
+ * A turn that hangs until its signal fires, so a test can hold a stream open and then abandon
+ * the conversation underneath it. Returns a getter for the captured signal.
+ */
+function hangingStreamUntilAborted() {
+    let capturedSignal = null;
+
+    chatService.chatStream.mockImplementationOnce((payload, chatId, {signal}) => {
+        capturedSignal = signal;
+
+        return new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+                reject(Object.assign(new Error('aborted'), {name: 'AbortError'}));
+            });
+        });
+    });
+
+    return () => capturedSignal;
+}
 
 function makeAttachmentTray(overrides = {}) {
     return {
@@ -77,6 +103,78 @@ function readyEntry(overrides = {}) {
         ...overrides,
     };
 }
+
+/*
+ * Nothing cancels the turn server-side, so what matters here is that this client stops listening.
+ * Without it the frames still arriving are appended to whatever bubble now ends the transcript —
+ * on a cleared one that is the welcome message, and the answer to a conversation the user has
+ * left streams into the blank "new chat" screen.
+ */
+describe('abandoning the conversation mid-turn', () => {
+    let options;
+    let chatInputRef;
+
+    beforeEach(() => {
+        chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
+        useSharedData.mockReturnValue({chatInputRef});
+
+        options = {
+            chatId: 'chat-a',
+            chatHistory: [{type: 'ASSISTANT', text: 'welcome', _key: '1', ephemeral: true}],
+            setChatHistory: vi.fn(),
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+        };
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('aborts the stream that is still running', async () => {
+        const readSignal = hangingStreamUntilAborted();
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.setInputValue('tell me about kafka');
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(readSignal()).not.toBeNull());
+        expect(readSignal().aborted).toBe(false);
+
+        act(() => {
+            result.current.abortActiveStream();
+        });
+
+        expect(readSignal().aborted).toBe(true);
+
+        /* An abort is a clean end, not a failure: no error surfaces and the turn stops loading. */
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.error).toBeNull();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('is safe to call when no turn is running', () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        expect(() => result.current.abortActiveStream()).not.toThrow();
+        expect(chatService.chatStream).not.toHaveBeenCalled();
+    });
+});
 
 describe('useChatStream', () => {
     let options;
@@ -140,7 +238,6 @@ describe('useChatStream', () => {
     });
 
     it('handleSubmit success flow', async () => {
-        vi.useFakeTimers();
         const {result} = renderHook(() => useChatStream(options));
 
         act(() => {
@@ -165,12 +262,6 @@ describe('useChatStream', () => {
                 signal: expect.any(AbortSignal),
             })
         );
-
-        act(() => {
-            vi.runAllTimers();
-        });
-
-        vi.useRealTimers();
     });
 
     it('handleSubmit abort', async () => {
@@ -262,6 +353,9 @@ describe('useChatStream', () => {
             appendNotificationMessage: options.appendNotificationToLastAIMessage,
             ensureChatIdFromResponse: options.ensureChatIdFromResponse,
             finalizeLastAIMessage: options.finalizeLastAIMessage,
+            stopStreamingLastAIMessage: options.stopStreamingLastAIMessage,
+            appendSystemMessage: options.appendSystemMessage,
+            isCancelling: false,
             setActiveElicitation: options.setActiveElicitation,
             setElicitationSubmitting: options.setElicitationSubmitting,
             setElicitationValues: options.setElicitationValues,
@@ -763,5 +857,374 @@ describe('backgrounded disconnect recovery', () => {
         await submitWith(result, 'tell me about the thing');
 
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+});
+
+describe('stopping an active stream', () => {
+    let options;
+    let setChatHistory;
+    let chatInputRef;
+
+    function emitInit(chunkOptions, initData = '{"id":"chat-1"}') {
+        chunkOptions.onChunk({event: 'init', data: initData});
+    }
+
+    function emitDone(chunkOptions) {
+        chunkOptions.onChunk({event: 'done', data: '{"id":"chat-1"}'});
+    }
+
+    async function submitWith(result, messageText) {
+        act(() => {
+            result.current.handleInputChange({target: {value: messageText}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+    }
+
+    beforeEach(() => {
+        setChatHistory = vi.fn();
+        chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
+        useSharedData.mockReturnValue({chatInputRef});
+
+        options = {
+            chatId: 'chat-1',
+            chatHistory: [],
+            setChatHistory,
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            adoptMessageIdForLastUserMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+        };
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('is not active before a turn starts', () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        expect(result.current.streamActive).toBe(false);
+    });
+
+    it('becomes active once init arrives, and clears again on done', async () => {
+        let capturedChunkOptions;
+
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            capturedChunkOptions = chunkOptions;
+            emitInit(chunkOptions);
+
+            await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+            emitDone(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about kafka');
+
+        expect(capturedChunkOptions).toBeDefined();
+        expect(result.current.streamActive).toBe(false);
+    });
+
+    it('stopChat posts the cancel request for the resolved chat id and hides itself immediately', async () => {
+        let capturedChunkOptions;
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            capturedChunkOptions = chunkOptions;
+            emitInit(chunkOptions);
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'tell me about kafka'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        let stopPromise;
+        act(() => {
+            stopPromise = result.current.stopChat();
+        });
+
+        /* Hidden synchronously — the caller does not wait on the POST to disable the button. */
+        expect(result.current.streamActive).toBe(false);
+
+        await act(async () => {
+            await stopPromise;
+        });
+
+        expect(chatService.cancelStream).toHaveBeenCalledWith('chat-1');
+        expect(chatService.cancelStream).toHaveBeenCalledTimes(1);
+
+        emitDone(capturedChunkOptions);
+        resolveChatStream();
+        await act(async () => {});
+    });
+
+    it('marks a chunk arriving after stopChat as cancelling, so its text is not appended', async () => {
+        let capturedChunkOptions;
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            capturedChunkOptions = chunkOptions;
+            emitInit(chunkOptions);
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'tell me about kafka'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        chatService.handleStreamChunk.mockClear();
+
+        act(() => {
+            capturedChunkOptions.onChunk({event: 'chunk', data: '{"content":"Chat canceled."}'});
+        });
+
+        expect(chatService.handleStreamChunk).toHaveBeenCalledWith(
+            {event: 'chunk', data: '{"content":"Chat canceled."}'},
+            expect.objectContaining({isCancelling: true}),
+        );
+
+        emitDone(capturedChunkOptions);
+        resolveChatStream();
+        await act(async () => {});
+    });
+
+    it('resolves the cancel target from the id learned on init, for a chat that had none yet', async () => {
+        options.chatId = null;
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions, '{"id":"brand-new-chat"}');
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'hello'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(chatService.cancelStream).toHaveBeenCalledWith('brand-new-chat');
+        resolveChatStream();
+        await act(async () => {});
+    });
+
+    it('is a no-op before init or after the turn has already ended', async () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(chatService.cancelStream).not.toHaveBeenCalled();
+    });
+
+    it('a second click is a no-op — the cancel request is only sent once', async () => {
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'tell me about kafka'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        await act(async () => {
+            await Promise.all([result.current.stopChat(), result.current.stopChat()]);
+        });
+
+        expect(chatService.cancelStream).toHaveBeenCalledTimes(1);
+        resolveChatStream();
+        await act(async () => {});
+    });
+
+    it('shows an error toast when the cancel request fails, without disturbing the running stream', async () => {
+        chatService.cancelStream.mockRejectedValueOnce(Object.assign(new Error('403'), {status: 403}));
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'tell me about kafka'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(options.setChatHistory).not.toHaveBeenCalledWith(expect.any(Function));
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+
+        /*
+         * The turn is still genuinely running — the failed POST never reached the server, so the
+         * user must get the Stop control (and normal chunk handling) back to try again.
+         */
+        expect(result.current.streamActive).toBe(true);
+
+        resolveChatStream();
+        await act(async () => {});
+    });
+
+    it('lets a retry after a failed cancel actually send a second request', async () => {
+        chatService.cancelStream.mockRejectedValueOnce(Object.assign(new Error('network'), {}));
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'tell me about kafka'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(result.current.streamActive).toBe(true);
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(chatService.cancelStream).toHaveBeenCalledTimes(2);
+
+        resolveChatStream();
+        await act(async () => {});
+    });
+
+    it('does not resurrect Stop for a turn that finished before the failed cancel resolved', async () => {
+        let rejectCancel;
+        chatService.cancelStream.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+            rejectCancel = reject;
+        }));
+        let resolveChatStream;
+
+        chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+
+            return new Promise((resolve) => {
+                resolveChatStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'tell me about kafka'}});
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        let stopPromise;
+        act(() => {
+            stopPromise = result.current.stopChat();
+        });
+
+        /* The turn ends normally while the cancel request is still in flight. */
+        await act(async () => {
+            resolveChatStream();
+        });
+
+        rejectCancel(Object.assign(new Error('network'), {}));
+        await act(async () => {
+            await stopPromise;
+        });
+
+        expect(result.current.streamActive).toBe(false);
     });
 });
