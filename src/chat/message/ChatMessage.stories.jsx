@@ -1,113 +1,126 @@
-import ChatMessage from './ChatMessage.jsx';
+import { expect, fn, waitFor } from 'storybook/test';
+import ChatMessage, { USER, AI, SYSTEM } from './ChatMessage.jsx';
 
-/*
- * ChatMessage takes plain data in (`message`) and renders synchronously — no service calls, no
- * context beyond SharedDataProvider (wired globally in .storybook/preview.jsx) — so every
- * variant below is just a differently-shaped `message` object, same as tests/chat/ChatMessage.test.jsx.
- */
-export default {
-    title: 'Chat/ChatMessage',
+const meta = {
     component: ChatMessage,
-    parameters: {
-        layout: 'padded',
-    },
-    decorators: [
-        (Story) => (
-            <div style={{maxWidth: 700, margin: '0 auto'}}>
-                <Story/>
-            </div>
-        ),
-    ],
+    tags: ['ai-generated'],
 };
+
+export default meta;
 
 export const UserMessage = {
     args: {
         message: {
-            _key: 'msg-user-1',
-            type: 'USER',
-            text: 'Can you summarize the last quarter\'s deploy incidents?',
+            _key: 'u1',
+            type: USER,
+            text: 'Can you help me plan a weekend trip to the coast?',
         },
     },
 };
 
-export const AssistantWithMetadata = {
+export const AssistantMessage = {
     args: {
         message: {
-            _key: 'msg-assistant-1',
-            type: 'ASSISTANT',
-            text: 'Here is a summary of last quarter\'s deploy incidents:\n\n1. **Rollback delay** — the canary check took too long to flag a regression.\n2. **Config drift** — a stale env var shipped to one region.\n\n```bash\nkubectl rollout undo deployment/llm-ui\n```',
-            model: 'qwen3.5-9b',
-            isStreaming: false,
-            notifications: [],
-            responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            _key: 'a1',
+            type: AI,
+            text: 'Sure — here are three coastal towns worth considering.',
+            model: 'llama3',
+            responseMetadata: { promptTokens: 120, totalTokens: 180, promptMillis: 850 },
         },
+        onExpandImage: fn(),
+    },
+    play: async ({ canvas, canvasElement, userEvent }) => {
+        /* .message-actions is opacity:0 until the row is hovered or revealed. */
+        await userEvent.hover(canvasElement.querySelector('.message-with-actions'));
+
+        await waitFor(() => expect(canvas.getByText('llama3')).toBeVisible());
+        await expect(canvas.getByRole('button', { name: 'Copy message as markdown' })).toBeVisible();
     },
 };
 
-export const AssistantStreaming = {
+export const StreamingAssistant = {
     args: {
         message: {
-            _key: 'msg-assistant-streaming',
-            type: 'ASSISTANT',
+            _key: 's1',
+            type: AI,
             text: '',
             isStreaming: true,
-            notifications: [],
         },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('Thinking...')).toBeVisible();
     },
 };
 
 export const AssistantWithNotifications = {
     args: {
         message: {
-            _key: 'msg-assistant-notifications',
-            type: 'ASSISTANT',
+            _key: 'n1',
+            type: AI,
             text: 'Done — I searched the docs and found the answer.',
             isStreaming: false,
             model: 'qwen3.5-9b',
             notifications: ['Searching documentation…', 'Reading 3 matching pages…'],
         },
     },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('2 steps completed')).toBeVisible();
+    },
 };
 
 export const SystemMessage = {
     args: {
         message: {
-            _key: 'msg-system-1',
-            type: 'SYSTEM',
+            _key: 'sys1',
+            type: SYSTEM,
             text: 'The model was switched to qwen3.5-9b for this conversation.',
         },
     },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('The model was switched to qwen3.5-9b for this conversation.')).toBeVisible();
+    },
 };
 
-export const ElicitationAccepted = {
+export const ElicitationResolved = {
     args: {
         message: {
-            _key: 'msg-elicitation-accept',
-            type: 'SYSTEM',
-            text: 'Remove this document from the RAG index?',
+            _key: 'e1',
+            type: SYSTEM,
+            text: 'Deploy the change to production?',
             elicitationResponse: 'accept',
         },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('Deploy the change to production?')).toBeVisible();
+        await expect(canvas.getByText(/Accept/)).toBeVisible();
     },
 };
 
 export const ElicitationDeclined = {
     args: {
         message: {
-            _key: 'msg-elicitation-decline',
-            type: 'SYSTEM',
+            _key: 'ed1',
+            type: SYSTEM,
             text: 'Remove this document from the RAG index?',
             elicitationResponse: 'decline',
         },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByText('Remove this document from the RAG index?')).toBeVisible();
+        await expect(canvas.getByText(/Decline/)).toBeVisible();
     },
 };
 
 export const ErrorMessage = {
     args: {
         message: {
-            _key: 'msg-error-1',
-            type: 'ASSISTANT',
+            _key: 'err1',
+            type: AI,
             text: 'The model backend timed out. Please try again.',
             isError: true,
         },
+    },
+    play: async ({ canvas }) => {
+        await expect(canvas.getByRole('alert')).toBeVisible();
     },
 };

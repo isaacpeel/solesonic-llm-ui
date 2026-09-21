@@ -6,7 +6,7 @@ import log from 'loglevel';
 import {toast} from 'react-toastify';
 
 // Create Keycloak context
-const KeycloakContext = createContext(null);
+export const KeycloakContext = createContext(null);
 
 /**
  * KeycloakProvider Component
