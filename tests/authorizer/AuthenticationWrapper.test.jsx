@@ -1,4 +1,4 @@
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen, waitFor, act} from '@testing-library/react';
 import AuthenticationWrapper from '../../src/authorizer/AuthenticationWrapper';
 import {useKeycloak} from '../../src/providers/KeycloakProvider';
 import authService from '../../src/service/AuthService.js';
@@ -84,11 +84,12 @@ describe('AuthenticationWrapper', () => {
         });
     });
 
-    test('should call authFailure when keycloak has error', async () => {
-        const mockKeycloak = { error: 'some-error' };
-        useKeycloak.mockReturnValue({ 
-            keycloak: mockKeycloak, 
-            authenticated: false, 
+    test('picks up a lockout recorded elsewhere (e.g. KeycloakProvider onAuthError) on the next poll', () => {
+        vi.useFakeTimers();
+
+        useKeycloak.mockReturnValue({
+            keycloak: {},
+            authenticated: false,
             loading: false,
             login: vi.fn()
         });
@@ -99,9 +100,18 @@ describe('AuthenticationWrapper', () => {
             </AuthenticationWrapper>
         );
 
-        await waitFor(() => {
-            expect(authService.authFailure).toHaveBeenCalledWith('some-error');
+        expect(screen.getByText('Authentication Required')).toBeDefined();
+
+        authService.isBlocked.mockReturnValue(true);
+        authService.remainingBlockTime.mockReturnValue(5000);
+
+        act(() => {
+            vi.advanceTimersByTime(1000);
         });
+
+        expect(screen.getByText('Account Locked')).toBeDefined();
+
+        vi.useRealTimers();
     });
 
     test('should show login prompt when unauthenticated', () => {

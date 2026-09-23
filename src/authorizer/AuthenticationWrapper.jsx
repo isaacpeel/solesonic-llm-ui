@@ -15,29 +15,14 @@ const AuthenticationWrapper = ({children}) => {
         }
     }, [keycloak]);
 
-    // Handle authentication errors (if needed)
     useEffect(() => {
-        if (keycloak && keycloak.error) {
-            authService.authFailure(keycloak.error).then(() => {
-                setIsBlocked(authService.isBlocked());
-            });
-        }
-    }, [keycloak]);
+        const interval = setInterval(() => {
+            setIsBlocked(authService.isBlocked());
+            setRemainingTime(authService.remainingBlockTime());
+        }, 1000);
 
-    // Handle block timer
-    useEffect(() => {
-        if (isBlocked) {
-            const interval = setInterval(() => {
-                const timeLeft = authService.remainingBlockTime();
-                setRemainingTime(timeLeft);
-                if (timeLeft <= 0) {
-                    setIsBlocked(false); // Unblock user after time expires
-                    clearInterval(interval);
-                }
-            }, 1000);
-            return () => clearInterval(interval);
-        }
-    }, [isBlocked]);
+        return () => clearInterval(interval);
+    }, []);
 
     // Show loading state while Keycloak initializes
     if (loading) {

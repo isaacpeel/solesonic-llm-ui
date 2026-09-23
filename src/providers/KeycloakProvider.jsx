@@ -4,6 +4,7 @@ import keycloakConfig from '../config/keycloak.js';
 import PropTypes from 'prop-types';
 import log from 'loglevel';
 import {toast} from 'react-toastify';
+import authService from '../service/AuthService.js';
 
 // Create Keycloak context
 const KeycloakContext = createContext(null);
@@ -54,6 +55,10 @@ export const KeycloakProvider = ({children}) => {
             });
         };
 
+        keycloakInstance.onAuthError = (errorData) => {
+            void authService.authFailure(errorData?.error ?? 'unknown_auth_error');
+        };
+
         keycloakInstance
             .init({
                 onLoad: 'login-required',
@@ -81,6 +86,7 @@ export const KeycloakProvider = ({children}) => {
             .catch((error) => {
                 log.error('[KeycloakProvider] Initialization failed', error);
                 toast.error('Authentication initialization failed. Please refresh the page.');
+                setKeycloak(keycloakInstance);
             })
             .finally(() => {
                 setLoading(false);
@@ -96,10 +102,8 @@ export const KeycloakProvider = ({children}) => {
         const tokenRefreshInterval = setInterval(() => {
             keycloak
                 .updateToken(70)
-                .catch((error) => {
-                    log.error('[KeycloakProvider] Session refresh failed', error);
-                    toast.error('Session expired. Please log in again.');
-                    keycloak.login({redirectUri: window.location.origin + '/'});
+                .catch((refreshError) => {
+                    log.warn('[KeycloakProvider] Token refresh failed; will retry on next tick', refreshError);
                 });
         }, 60000); // 60 seconds
 
