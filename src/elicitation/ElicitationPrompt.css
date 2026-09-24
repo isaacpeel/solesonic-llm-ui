@@ -19,3 +19,51 @@
 .elicitation-button-secondary {
     @apply border-slate-400 border-1 bg-slate-500 px-3 py-1 rounded-lg hover:bg-slate-600;
 }
+
+.elicitation-dropdown {
+    @apply relative mt-1 w-full;
+}
+
+.elicitation-dropdown-trigger {
+    @apply flex w-full items-center justify-between rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm transition-colors duration-150 hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.elicitation-dropdown-placeholder {
+    @apply text-slate-400;
+}
+
+.elicitation-dropdown-chevron {
+    @apply h-4 w-4 flex-shrink-0 text-slate-400 transition-transform duration-150;
+}
+
+.elicitation-dropdown-chevron-open {
+    @apply rotate-180 text-sky-400;
+}
+
+.elicitation-dropdown-panel {
+    @apply absolute z-20 mt-1.5 max-h-56 w-full overflow-auto rounded-lg border border-slate-600 bg-slate-800/95 py-1 shadow-lg shadow-black/30 backdrop-blur-sm;
+    animation: elicitation-dropdown-panel-in 120ms ease-out;
+}
+
+@keyframes elicitation-dropdown-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.elicitation-dropdown-option {
+    @apply flex cursor-pointer items-center justify-between px-3 py-2 text-sm text-slate-100 transition-colors duration-100 hover:bg-slate-700;
+}
+
+.elicitation-dropdown-option-selected {
+    @apply bg-slate-700/70 text-sky-300;
+}
+
+.elicitation-dropdown-check {
+    @apply h-4 w-4 flex-shrink-0 text-sky-400;
+}

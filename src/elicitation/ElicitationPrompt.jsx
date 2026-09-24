@@ -1,5 +1,6 @@
 import "./ElicitationPrompt.css";
 import elicitationService from '../service/ElicitationService.js';
+import { useEffect, useId, useRef, useState } from 'react';
 
 const SpinnerLabel = () => (
     <div className="inline-flex items-center text-xs text-slate-400">
@@ -38,6 +39,91 @@ const getMultiEnumOptions = (propertyDef) => {
 
 const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPROVE']);
 
+const Dropdown = ({ options, value, onChange, disabled }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef(null);
+    const triggerId = useId();
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+
+        const handleOutsideClick = (event) => {
+            if (containerRef.current && !containerRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        const handleEscapeKey = (event) => {
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('keydown', handleEscapeKey);
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+            document.removeEventListener('keydown', handleEscapeKey);
+        };
+    }, [isOpen]);
+
+    const selectedOption = options.find((option) => option.value === value);
+
+    return (
+        <div className="elicitation-dropdown" ref={containerRef}>
+            <button
+                id={triggerId}
+                type="button"
+                className="elicitation-dropdown-trigger"
+                disabled={disabled}
+                aria-haspopup="listbox"
+                aria-expanded={isOpen}
+                onClick={() => setIsOpen((previousIsOpen) => !previousIsOpen)}
+            >
+                <span className={selectedOption ? '' : 'elicitation-dropdown-placeholder'}>
+                    {selectedOption ? selectedOption.label : 'Select an option…'}
+                </span>
+                <svg
+                    className={`elicitation-dropdown-chevron ${isOpen ? 'elicitation-dropdown-chevron-open' : ''}`}
+                    xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none"
+                >
+                    <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+
+            {isOpen && (
+                <ul className="elicitation-dropdown-panel" role="listbox" aria-labelledby={triggerId}>
+                    {options.map((option) => {
+                        const isSelected = option.value === value;
+                        return (
+                            <li
+                                key={option.value}
+                                role="option"
+                                aria-selected={isSelected}
+                                className={`elicitation-dropdown-option ${isSelected ? 'elicitation-dropdown-option-selected' : ''}`}
+                                onClick={() => {
+                                    onChange(option.value);
+                                    setIsOpen(false);
+                                }}
+                            >
+                                <span>{option.label}</span>
+                                {isSelected && (
+                                    <svg className="elicitation-dropdown-check" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+                                        <path d="M4 10.5L8 14.5L16 6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </div>
+    );
+};
+
 function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting }) {
     if (!elicitation) {
         return null;
@@ -73,17 +159,12 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
 
             if (enumOptions.length > 3) {
                 return (
-                    <select
-                        className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    <Dropdown
+                        options={enumOptions}
                         value={currentValue}
-                        onChange={(event) => onChange(propertyName, event.target.value)}
+                        onChange={(selectedValue) => onChange(propertyName, selectedValue)}
                         disabled={submitting || isReadOnlyField}
-                    >
-                        <option value="" disabled>Select an option…</option>
-                        {enumOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                    </select>
+                    />
                 );
             }
 
