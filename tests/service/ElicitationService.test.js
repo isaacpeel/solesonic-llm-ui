@@ -172,6 +172,35 @@ describe('handleElicitationSubmit', () => {
         expect(aiPlaceholder.text).toBe('');
     });
 
+    it('seeds the AI placeholder with carriedNotifications when provided', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            chatHistory: [{type: 'USER', text: 'question', _key: 'u-1'}],
+            elicitationValues: {action: 'accept', chatId: 'c-1'},
+            carriedNotifications: ['Resolving project…', 'Checking assignee…'],
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const aiPlaceholder = newHistory.find(message => message.type === AI && message.isStreaming);
+        expect(aiPlaceholder.notifications).toEqual(['Resolving project…', 'Checking assignee…']);
+    });
+
+    it('seeds the AI placeholder with an empty notifications array when none are carried', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            chatHistory: [{type: 'USER', text: 'question', _key: 'u-1'}],
+            elicitationValues: {action: 'accept', chatId: 'c-1'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const aiPlaceholder = newHistory.find(message => message.type === AI && message.isStreaming);
+        expect(aiPlaceholder.notifications).toEqual([]);
+    });
+
     it('excludes chatId from the elicitationResponse summary', async () => {
         streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
         const args = makeSubmitArgs({
@@ -186,6 +215,137 @@ describe('handleElicitationSubmit', () => {
         expect(systemMessage.elicitationResponse).not.toContain('c-1');
         expect(systemMessage.elicitationResponse).toContain('accept');
         expect(systemMessage.elicitationResponse).toContain('Alice');
+    });
+
+    it('resolves a oneOf value to its title, not the raw const, in the summary', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            activeElicitation: {
+                message: 'Who should this story be assigned to?',
+                elicitationId: 'e-1',
+                chatId: 'c-1',
+                requestedSchema: {
+                    properties: {
+                        assignee: {
+                            type: 'string',
+                            title: 'Assignee',
+                            oneOf: [
+                                {const: '70121:ad77bd3b-88c0-4373-ab9d-db11b7b9dae9', title: 'Evan Baron'},
+                                {const: '5f2a-user-isaac', title: 'isaac'},
+                            ],
+                        },
+                    },
+                },
+            },
+            elicitationValues: {assignee: '70121:ad77bd3b-88c0-4373-ab9d-db11b7b9dae9', chatId: 'c-1'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const systemMessage = newHistory.find(message => message.type === SYSTEM);
+        expect(systemMessage.elicitationResponse).toBe('Evan Baron');
+        expect(systemMessage.elicitationResponse).not.toContain('70121');
+    });
+
+    it('resolves an enum value to its title-cased label in the summary', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            activeElicitation: {
+                message: 'Which environment should this deploy target?',
+                elicitationId: 'e-2',
+                chatId: 'c-1',
+                requestedSchema: {
+                    properties: {
+                        environment: {type: 'string', title: 'Environment', enum: ['staging', 'production']},
+                    },
+                },
+            },
+            elicitationValues: {environment: 'staging', chatId: 'c-1'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const systemMessage = newHistory.find(message => message.type === SYSTEM);
+        expect(systemMessage.elicitationResponse).toBe('Staging');
+    });
+
+    it('falls back to the raw value for a free-text field with no enum/oneOf', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            activeElicitation: {
+                message: 'What should the title be?',
+                elicitationId: 'e-3',
+                chatId: 'c-1',
+                requestedSchema: {
+                    properties: {
+                        title: {type: 'string', title: 'Title'},
+                    },
+                },
+            },
+            elicitationValues: {title: 'this is a test, delete later', chatId: 'c-1'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const systemMessage = newHistory.find(message => message.type === SYSTEM);
+        expect(systemMessage.elicitationResponse).toBe('this is a test, delete later');
+    });
+
+    it('resolves each item of a multi-select array to its label', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            activeElicitation: {
+                message: 'Which labels?',
+                elicitationId: 'e-4',
+                chatId: 'c-1',
+                requestedSchema: {
+                    properties: {
+                        labels: {
+                            type: 'array',
+                            title: 'Labels',
+                            items: {
+                                anyOf: [
+                                    {const: 'lbl-bug', title: 'Bug'},
+                                    {const: 'lbl-chore', title: 'Chore'},
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+            elicitationValues: {labels: ['lbl-bug', 'lbl-chore'], chatId: 'c-1'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const systemMessage = newHistory.find(message => message.type === SYSTEM);
+        expect(systemMessage.elicitationResponse).toBe('Bug, Chore');
+    });
+
+    it('resolves the label for a direct (no properties) enum schema', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            activeElicitation: {
+                message: 'Pick one',
+                elicitationId: 'e-5',
+                chatId: 'c-1',
+                requestedSchema: {
+                    type: 'string',
+                    enum: ['red', 'blue'],
+                },
+            },
+            elicitationValues: {value: 'blue', chatId: 'c-1'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const newHistory = args.setChatHistory.mock.calls[0][0];
+        const systemMessage = newHistory.find(message => message.type === SYSTEM);
+        expect(systemMessage.elicitationResponse).toBe('Blue');
     });
 
     it('merges overrideFields into the answer sent to streamService', async () => {

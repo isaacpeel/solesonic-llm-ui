@@ -565,7 +565,12 @@ async function fetchFormattedChatMessages(chatId) {
         };
 
         if (message.messageType === SYSTEM && message.elicitationId && message.elicitationResponse) {
-            base.elicitationResponse = message.elicitationResponse.action;
+            /*
+             * `summary` is the resolved, human-readable answer (e.g. "isaac" for an assignee
+             * picker) — preferred whenever the backend supplies it. `action` alone survives for
+             * records persisted before the backend started returning `summary`.
+             */
+            base.elicitationResponse = message.elicitationResponse.summary || message.elicitationResponse.action;
         }
 
         if (message.messageType === AI && pendingProgressNotifications.length > 0) {

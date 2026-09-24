@@ -13,30 +13,7 @@ const SpinnerLabel = () => (
     </div>
 );
 
-const getEnumOptions = (propertyDef) => {
-    if (propertyDef.enum) {
-        return propertyDef.enum.map((value) => ({
-            value,
-            label: value.charAt(0).toUpperCase() + value.slice(1).toLowerCase(),
-        }));
-    }
-    if (propertyDef.oneOf) {
-        return propertyDef.oneOf.map((item) => ({ value: item.const, label: item.title }));
-    }
-    return null;
-};
-
-const getMultiEnumOptions = (propertyDef) => {
-    const items = propertyDef.items;
-    if (!items) return null;
-    if (items.enum) {
-        return items.enum.map((value) => ({ value, label: value }));
-    }
-    if (items.anyOf) {
-        return items.anyOf.map((item) => ({ value: item.const, label: item.title }));
-    }
-    return null;
-};
+const { getEnumOptions, getMultiEnumOptions } = elicitationService;
 
 const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPROVE']);
 

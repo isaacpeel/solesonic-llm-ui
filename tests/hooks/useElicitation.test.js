@@ -99,6 +99,64 @@ describe('useElicitation', () => {
             setElicitationSubmitting: options.setElicitationSubmitting,
             appendErrorMessage: options.appendErrorMessage,
             handleStreamChunk: options.handleStreamChunk,
+            carriedNotifications: [],
         });
+    });
+
+    it('carries the popped placeholder\'s notifications into the submit call', async () => {
+        options.activeElicitation = {name: 'elicitation'};
+        const {result} = renderHook(() => useElicitation(options));
+
+        const updater = options.setChatHistory.mock.calls[0][0];
+        updater([
+            {type: AI, text: '', _key: 'ai-1', notifications: ['Resolving project…', 'Checking assignee…']},
+        ]);
+
+        await act(async () => {
+            await result.current.handleElicitationSubmit();
+        });
+
+        expect(elicitationService.handleElicitationSubmit).toHaveBeenCalledWith(
+            expect.objectContaining({
+                carriedNotifications: ['Resolving project…', 'Checking assignee…'],
+            }),
+        );
+    });
+
+    it('does not carry notifications forward when the last message has text', async () => {
+        options.activeElicitation = {name: 'elicitation'};
+        const {result} = renderHook(() => useElicitation(options));
+
+        const updater = options.setChatHistory.mock.calls[0][0];
+        updater([
+            {type: AI, text: 'hello', _key: 'ai-1', notifications: ['Resolving project…']},
+        ]);
+
+        await act(async () => {
+            await result.current.handleElicitationSubmit();
+        });
+
+        expect(elicitationService.handleElicitationSubmit).toHaveBeenCalledWith(
+            expect.objectContaining({carriedNotifications: []}),
+        );
+    });
+
+    it('resets carried notifications after they are consumed by a submit', async () => {
+        options.activeElicitation = {name: 'elicitation'};
+        const {result} = renderHook(() => useElicitation(options));
+
+        const updater = options.setChatHistory.mock.calls[0][0];
+        updater([
+            {type: AI, text: '', _key: 'ai-1', notifications: ['Resolving project…']},
+        ]);
+
+        await act(async () => {
+            await result.current.handleElicitationSubmit();
+        });
+        await act(async () => {
+            await result.current.handleElicitationSubmit();
+        });
+
+        expect(elicitationService.handleElicitationSubmit.mock.calls[1][0].carriedNotifications).toEqual([]);
     });
 });

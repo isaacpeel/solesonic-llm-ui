@@ -18,7 +18,7 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
 
 import chatService from '../../src/service/ChatService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
-import {AI, ERROR} from '../../src/chat/message/ChatMessage.jsx';
+import {AI, ERROR, SYSTEM} from '../../src/chat/message/ChatMessage.jsx';
 
 describe('useChatHistory', () => {
     let sharedState;
@@ -790,6 +790,72 @@ describe('attachment-aware chat history', () => {
             expect(mappedHistory).toHaveLength(2);
             expect(mappedHistory[0].attachments).toEqual([{id: 'attachment-1'}]);
             expect(mappedHistory[1].notifications).toEqual(['Reading attached image a.png']);
+        });
+    });
+
+    describe('elicitationResponse mapping', () => {
+        it('prefers the resolved summary over the raw action', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {
+                        id: 'msg-1',
+                        messageType: SYSTEM,
+                        message: 'No assignee could be found in the request. Who should this story be assigned to?',
+                        elicitationId: '05bb3d71-7da5-4536-996a-e5b5e460fda0',
+                        elicitationResponse: {
+                            action: 'ACCEPT',
+                            content: {assigneeAccountId: '70121:ad77bd3b-88c0-4373-ab9d-db11b7b9dae9'},
+                            summary: 'isaac',
+                        },
+                    },
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].elicitationResponse).toBe('isaac');
+        });
+
+        it('falls back to the raw action when no summary is present', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {
+                        id: 'msg-1',
+                        messageType: SYSTEM,
+                        message: 'Confirm action',
+                        elicitationId: 'elicit-legacy',
+                        elicitationResponse: {action: 'accept'},
+                    },
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].elicitationResponse).toBe('accept');
+        });
+
+        it('does not set elicitationResponse on a SYSTEM message with no elicitationId', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: SYSTEM, message: 'The model was switched to qwen3.5-9b.'},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].elicitationResponse).toBeUndefined();
         });
     });
 
