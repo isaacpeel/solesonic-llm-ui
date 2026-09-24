@@ -2,7 +2,7 @@ import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import { parseSseStream } from '../client/parseSseStream.js';
 import {AI} from "../chat/message/ChatMessage.jsx"
-import {DONE, ERROR} from './ChatService.js';
+import {TERMINAL_RUN_EVENTS} from './ChatService.js';
 
 /*
  * What a torn-down connection looks like across engines: Chrome throws `TypeError: Failed to
@@ -37,7 +37,7 @@ const streamService = {
         { onChunk, timeoutMs = 30000 } = {}
     ) => {
         const token = await authService.getAccessToken();
-        const uri = `${config.streamingChatsUri}/${chatId}/${elicitationId}/elicitation-response`;
+        const uri = `${config.streamingChatsUri}/${encodeURIComponent(chatId)}/${encodeURIComponent(elicitationId)}/elicitation-response`;
 
         const payload = typeof elicitationPayload === 'string'
             ? { chatMessage: elicitationPayload }
@@ -80,7 +80,7 @@ const streamService = {
             for await (const event of parseSseStream(response.body)) {
                 onChunk?.(event);
 
-                if (event.event === DONE || event.event === ERROR) {
+                if (TERMINAL_RUN_EVENTS.includes(event.event)) {
                     break;
                 }
             }

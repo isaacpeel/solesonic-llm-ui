@@ -52,6 +52,13 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
 
     const actionField = nonMetaPropertyEntries.length === 1 ? nonMetaPropertyEntries[0][1] : null;
     const isSingleActionField = Boolean(actionField?.enum || actionField?.oneOf);
+    const singleActionEnumOptions = isSingleActionField ? getEnumOptions(actionField) : null;
+    const singleActionAutoSubmits = Boolean(singleActionEnumOptions && singleActionEnumOptions.length <= 3);
+
+    const hasExplicitCancelOption = nonMetaPropertyEntries.some(([, propertyDef]) => {
+        const options = getEnumOptions(propertyDef);
+        return options?.some((option) => option.value.toLowerCase() === 'cancel');
+    });
 
     const fieldControl = (propertyName, propertyDef) => {
         const currentValue = values[propertyName] ?? '';
@@ -64,7 +71,7 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                 [...enumOptions].reverse().find((option) => PRIMARY_ACTION_KEYWORDS.has(option.value.toUpperCase()))?.value
                 ?? enumOptions[enumOptions.length - 1]?.value;
 
-            if (enumOptions.length > 5) {
+            if (enumOptions.length > 3) {
                 return (
                     <select
                         className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
@@ -187,17 +194,31 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                     </div>
                 ))}
             </div>
-            {!isSingleActionField && (
+            {(!singleActionAutoSubmits || !hasExplicitCancelOption) && (
                 <div className="mt-3 flex items-center gap-3">
-                    <button
-                        type="button"
-                        className="elicitation-button-primary"
-                        onClick={() => onSubmit()}
-                        disabled={submitting}
-                    >
-                        Submit
-                    </button>
-                    {submitting && <SpinnerLabel />}
+                    {!singleActionAutoSubmits && (
+                        <button
+                            type="button"
+                            className="elicitation-button-primary"
+                            onClick={() => onSubmit()}
+                            disabled={submitting}
+                        >
+                            Submit
+                        </button>
+                    )}
+
+                    {!hasExplicitCancelOption && (
+                        <button
+                            type="button"
+                            className="elicitation-button-secondary"
+                            onClick={() => onSubmit({ action: 'cancel' })}
+                            disabled={submitting}
+                        >
+                            Cancel
+                        </button>
+                    )}
+
+                    {submitting && !singleActionAutoSubmits && <SpinnerLabel />}
                 </div>
             )}
         </div>

@@ -12,7 +12,7 @@ vi.mock('../../src/chat/message/ChatMessage.jsx', () => ({
     SYSTEM: 'SYSTEM',
 }));
 
-import elicitationService from '../../src/service/ElicitationService.js';
+import elicitationService, {resolveElicitationAction} from '../../src/service/ElicitationService.js';
 import streamService from '../../src/service/StreamService.js';
 import {AI, SYSTEM} from '../../src/chat/message/ChatMessage.jsx';
 
@@ -188,7 +188,7 @@ describe('handleElicitationSubmit', () => {
         expect(systemMessage.elicitationResponse).toContain('Alice');
     });
 
-    it('merges overrideFields into the payload sent to streamService', async () => {
+    it('merges overrideFields into the answer sent to streamService', async () => {
         streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
         const args = makeSubmitArgs({
             overrideFields: {action: 'cancel'},
@@ -197,9 +197,87 @@ describe('handleElicitationSubmit', () => {
 
         await elicitationService.handleElicitationSubmit(args);
 
-        const [payload] = streamService.chatStreamElicitationResponse.mock.calls[0];
-        expect(payload.action).toBe('cancel');
+        const [toolMessage] = streamService.chatStreamElicitationResponse.mock.calls[0];
+        expect(JSON.parse(toolMessage.content).action).toBe('cancel');
     });
+
+    it('answers with an AG-UI ToolMessage for the elicitation tool call', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({
+            activeElicitation: {message: 'Confirm', elicitationId: 'e-99', chatId: 'c-42'},
+            elicitationValues: {action: 'accept'},
+        });
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const [toolMessage] = streamService.chatStreamElicitationResponse.mock.calls[0];
+        expect(toolMessage.role).toBe('tool');
+        expect(toolMessage.toolCallId).toBe('e-99');
+        expect(typeof toolMessage.id).toBe('string');
+        expect(toolMessage.id.length).toBeGreaterThan(0);
+        expect(typeof toolMessage.content).toBe('string');
+        expect(JSON.parse(toolMessage.content)).toEqual({action: 'accept'});
+        expect(toolMessage).not.toHaveProperty('elicitationId');
+    });
+
+    /* randomUUID exists only in secure contexts; a plain-http deployment must still answer. */
+    it('still answers when crypto.randomUUID is unavailable', async () => {
+        vi.stubGlobal('crypto', {});
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({elicitationValues: {action: 'accept'}});
+
+        try {
+            await elicitationService.handleElicitationSubmit(args);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+
+        const [toolMessage] = streamService.chatStreamElicitationResponse.mock.calls[0];
+        expect(typeof toolMessage.id).toBe('string');
+        expect(toolMessage.id.length).toBeGreaterThan(0);
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('keeps the submitted form fields in the content alongside the action', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeSubmitArgs({elicitationValues: {projectKey: 'PROJ', summary: 'Add dark mode'}});
+
+        await elicitationService.handleElicitationSubmit(args);
+
+        const [toolMessage] = streamService.chatStreamElicitationResponse.mock.calls[0];
+        expect(JSON.parse(toolMessage.content)).toEqual({
+            projectKey: 'PROJ',
+            summary: 'Add dark mode',
+            action: 'accept',
+        });
+    });
+});
+
+describe('resolveElicitationAction', () => {
+    it('uses an explicit action field, case-insensitively', () => {
+        expect(resolveElicitationAction({action: 'DECLINE'})).toBe('decline');
+        expect(resolveElicitationAction({action: 'cancel', chatId: 'c-1'})).toBe('cancel');
+    });
+
+    it('maps a single choice field that is not named action', () => {
+        expect(resolveElicitationAction({confirm: 'accept', chatId: 'c-1'})).toBe('accept');
+        expect(resolveElicitationAction({confirm: 'no'})).toBe('decline');
+        expect(resolveElicitationAction({answer: 'Yes'})).toBe('accept');
+        expect(resolveElicitationAction({answer: 'cancel'})).toBe('cancel');
+    });
+
+    it('treats a submitted form as an accept', () => {
+        expect(resolveElicitationAction({projectKey: 'PROJ', summary: 'no'})).toBe('accept');
+        expect(resolveElicitationAction({choice: 'option-b'})).toBe('accept');
+        expect(resolveElicitationAction({})).toBe('accept');
+    });
+
+    it('does not mistake an object-prototype key for an action', () => {
+        expect(resolveElicitationAction({answer: 'constructor'})).toBe('accept');
+    });
+});
+
+describe('handleElicitationSubmit stream outcome', () => {
 
     it('calls streamService with elicitationId and chatId from activeElicitation', async () => {
         streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);

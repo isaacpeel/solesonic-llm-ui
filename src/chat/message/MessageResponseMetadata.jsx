@@ -36,8 +36,8 @@ function formatTokensPerSecond(tokensPerSecond) {
 
 /*
  * Sits beside the model name in .message-actions. Absent entirely on a cancelled turn (the
- * whole responseMetadata object is null there), on a message never sent through the `done`
- * event at all — e.g. one loaded from history before the backend added this field — or when
+ * whole responseMetadata object is null there), on a message never sent through the
+ * RUN_FINISHED event at all — e.g. one loaded from history before the backend added this field — or when
  * there isn't enough data to derive a tokens/second figure.
  */
 function MessageResponseMetadata({responseMetadata, responseMetadataCalls}) {

@@ -16,7 +16,12 @@ vi.mock('../../src/service/AuthService.js', () => ({
     default: {getAccessToken: vi.fn(), getUserId: vi.fn()},
 }));
 
-import chatService, {DONE, IMAGE, extractGeneratedImages} from '../../src/service/ChatService.js';
+import chatService, {
+    CUSTOM,
+    CUSTOM_IMAGE,
+    RUN_FINISHED,
+    extractGeneratedImages,
+} from '../../src/service/ChatService.js';
 
 function makeHandlers() {
     return {
@@ -32,6 +37,14 @@ function makeHandlers() {
         setError: vi.fn(),
         attachGeneratedImages: vi.fn(),
     };
+}
+
+function imageFrame(value) {
+    return {event: CUSTOM, data: JSON.stringify({type: CUSTOM, name: CUSTOM_IMAGE, value})};
+}
+
+function runFinishedFrame(result) {
+    return {event: RUN_FINISHED, data: JSON.stringify({type: RUN_FINISHED, threadId: 'chat-1', runId: 'run-1', result})};
 }
 
 afterEach(() => {
@@ -65,46 +78,49 @@ describe('extractGeneratedImages', () => {
 });
 
 describe('handleStreamChunk generated images', () => {
-    it('attaches images from a dedicated image frame', () => {
+    it('attaches the GeneratedImageSummary carried by a CUSTOM image frame', () => {
         const handlers = makeHandlers();
 
-        chatService.handleStreamChunk(
-            {event: IMAGE, data: JSON.stringify({imageId: 'image-1', prompt: 'a lighthouse', seed: 42})},
-            handlers
-        );
+        chatService.handleStreamChunk(imageFrame({
+            imageId: 'image-1',
+            chatMessageId: null,
+            imageUrl: '/izzybot/images/image-1',
+            prompt: 'a small red lighthouse',
+            model: 'FLUX.1-schnell',
+            seed: 42,
+            width: 1024,
+            height: 1024,
+            steps: 4,
+            elapsedSeconds: 6.1,
+            fileSizeBytes: 1502931,
+            created: '2026-07-31T16:40:14Z',
+        }), handlers);
 
         expect(handlers.attachGeneratedImages).toHaveBeenCalledTimes(1);
         expect(handlers.attachGeneratedImages.mock.calls[0][0][0]).toMatchObject({
             imageId: 'image-1',
-            prompt: 'a lighthouse',
+            imageUrl: '/izzybot/images/image-1',
+            prompt: 'a small red lighthouse',
+            seed: 42,
         });
     });
 
-    it('attaches images riding on the done payload message', () => {
+    it('attaches images repeated on the RUN_FINISHED result message', () => {
         const handlers = makeHandlers();
 
-        chatService.handleStreamChunk(
-            {
-                event: DONE,
-                data: JSON.stringify({
-                    id: 'chat-1',
-                    message: {message: 'here it is', generatedImages: [{imageId: 'image-1'}]},
-                }),
-            },
-            handlers
-        );
+        chatService.handleStreamChunk(runFinishedFrame({
+            id: 'chat-1',
+            message: {message: 'here it is', generatedImages: [{imageId: 'image-1'}]},
+        }), handlers);
 
         expect(handlers.attachGeneratedImages).toHaveBeenCalledTimes(1);
         expect(handlers.finalizeLastAIMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('leaves an ordinary done frame alone', () => {
+    it('leaves an ordinary RUN_FINISHED alone', () => {
         const handlers = makeHandlers();
 
-        chatService.handleStreamChunk(
-            {event: DONE, data: JSON.stringify({id: 'chat-1', message: {message: 'plain text'}})},
-            handlers
-        );
+        chatService.handleStreamChunk(runFinishedFrame({id: 'chat-1', message: {message: 'plain text'}}), handlers);
 
         expect(handlers.attachGeneratedImages).not.toHaveBeenCalled();
         expect(handlers.finalizeLastAIMessage).toHaveBeenCalledTimes(1);
@@ -114,16 +130,15 @@ describe('handleStreamChunk generated images', () => {
         const handlers = makeHandlers();
         delete handlers.attachGeneratedImages;
 
-        expect(() => chatService.handleStreamChunk(
-            {event: IMAGE, data: JSON.stringify({imageId: 'image-1'})},
-            handlers
-        )).not.toThrow();
+        expect(() => chatService.handleStreamChunk(imageFrame({imageId: 'image-1'}), handlers)).not.toThrow();
     });
 
-    it('swallows an unparseable image frame', () => {
+    it('swallows an unparseable CUSTOM frame', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const handlers = makeHandlers();
 
-        expect(() => chatService.handleStreamChunk({event: IMAGE, data: 'not-json'}, handlers)).not.toThrow();
+        expect(() => chatService.handleStreamChunk({event: CUSTOM, data: 'not-json'}, handlers)).not.toThrow();
         expect(handlers.attachGeneratedImages).not.toHaveBeenCalled();
+        consoleError.mockRestore();
     });
 });

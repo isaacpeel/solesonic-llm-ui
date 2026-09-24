@@ -17,8 +17,7 @@ vi.mock('../../src/chat/message/ChatMessage.jsx', () => ({
 }));
 
 vi.mock('../../src/service/ChatService.js', () => ({
-    DONE: 'done',
-    ERROR: 'error',
+    TERMINAL_RUN_EVENTS: ['RUN_FINISHED', 'RUN_ERROR'],
 }));
 
 vi.mock('../../src/client/parseSseStream.js', () => ({
@@ -56,8 +55,8 @@ describe('chatStreamElicitationResponse', () => {
 
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
         parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: 'CHUNK', data: '{"content":"hi"}'},
-            {event: 'done', data: '{}'},
+            {event: 'TEXT_MESSAGE_CONTENT', data: '{"delta":"hi"}'},
+            {event: 'RUN_FINISHED', data: '{}'},
         ]));
 
         await streamService.chatStreamElicitationResponse(
@@ -67,18 +66,28 @@ describe('chatStreamElicitationResponse', () => {
             {onChunk},
         );
 
-        expect(onChunk).toHaveBeenCalledWith({event: 'CHUNK', data: '{"content":"hi"}'});
+        expect(onChunk).toHaveBeenCalledWith({event: 'TEXT_MESSAGE_CONTENT', data: '{"delta":"hi"}'});
     });
 
     it('builds the URI from streamingChatsUri, chatId, and elicitationId', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'done', data: '{}'}]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'RUN_FINISHED', data: '{}'}]));
 
         await streamService.chatStreamElicitationResponse({}, 'chat-42', 'elicit-7', {});
 
         const capturedUri = vi.mocked(fetch).mock.calls[0][0];
         expect(capturedUri).toBe(
             'https://api.example.com/stream/chat-42/elicit-7/elicitation-response',
+        );
+    });
+
+    it('percent-encodes the chat and elicitation ids in the path', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: null });
+
+        await streamService.chatStreamElicitationResponse({}, '../chat', 'elicit/7', {});
+
+        expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+            'https://api.example.com/stream/..%2Fchat/elicit%2F7/elicitation-response',
         );
     });
 
@@ -101,7 +110,7 @@ describe('chatStreamElicitationResponse', () => {
 
     it('uses POST method with JSON-serialized payload', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'done', data: '{}'}]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'RUN_FINISHED', data: '{}'}]));
 
         await streamService.chatStreamElicitationResponse(
             {action: 'accept', chatId: 'c-1'},
@@ -117,7 +126,7 @@ describe('chatStreamElicitationResponse', () => {
 
     it('string payload is wrapped in chatMessage object', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'done', data: '{}'}]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([{event: 'RUN_FINISHED', data: '{}'}]));
 
         await streamService.chatStreamElicitationResponse('user text', 'c-1', 'e-1', {});
 
@@ -125,18 +134,42 @@ describe('chatStreamElicitationResponse', () => {
         expect(JSON.parse(capturedBody)).toEqual({chatMessage: 'user text'});
     });
 
-    it('done event breaks the loop', async () => {
+    it('RUN_FINISHED breaks the loop', async () => {
         const onChunk = vi.fn();
 
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
         parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: 'done', data: '{}'},
-            {event: 'CHUNK', data: 'should not reach'},
+            {event: 'RUN_FINISHED', data: '{}'},
+            {event: 'TEXT_MESSAGE_CONTENT', data: 'should not reach'},
         ]));
 
         await streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {onChunk});
 
         expect(onChunk).toHaveBeenCalledTimes(1);
+    });
+
+    it('RUN_ERROR breaks the loop', async () => {
+        const onChunk = vi.fn();
+
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([
+            {event: 'RUN_ERROR', data: '{"message":"boom"}'},
+            {event: 'TEXT_MESSAGE_CONTENT', data: 'should not reach'},
+        ]));
+
+        await streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
+    });
+
+    it('a bodiless 200 is success — the turn continues on the stream already open', async () => {
+        const onChunk = vi.fn();
+
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: null });
+
+        await expect(streamService.chatStreamElicitationResponse({}, 'c-1', 'e-1', {onChunk})).resolves.toBeUndefined();
+        expect(parseSseStream).not.toHaveBeenCalled();
+        expect(onChunk).not.toHaveBeenCalled();
     });
 });
 

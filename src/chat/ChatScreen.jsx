@@ -131,8 +131,8 @@ function ChatScreen() {
      * that no longer exists.
      *
      * Derived from `loading` rather than set once when the turn starts: on a new chat the id only
-     * arrives with the `init` frame, and `loading` going false is what `done` and `error` both
-     * amount to here.
+     * arrives with the RUN_STARTED frame, and `loading` going false is what RUN_FINISHED and
+     * RUN_ERROR both amount to here.
      */
     useEffect(() => {
         setStreamingChatId(loading ? chatId : null);

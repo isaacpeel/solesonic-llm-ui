@@ -136,14 +136,18 @@ The UI communicates with the Solesonic backend using REST and SSE streaming. Aut
 - Uses a plain `fetch` plus `src/client/parseSseStream.js`, an async generator over the
   response body, to receive SSE frames. (`@microsoft/fetch-event-source` is still a dependency
   but is no longer used.)
-- Supported server events:
-  - `init` — initial payload that may include the chat id (read from `id`, falling back to
-    `chatId`) and a `messageId`
-  - `chunk` / `message` — incremental content for the assistant’s reply
-  - `elicitation` — request for more information from the user with a JSON schema
-  - `done` — end of assistant’s reply, with final metadata
-  - MCP `notifications/progress` frames are detected ahead of the event switch and rendered as
-    the message’s step log rather than as reply content
+- Every frame is an [AG-UI](https://docs.ag-ui.com) event, routed by `ChatService.handleStreamChunk`:
+  - `RUN_STARTED` — first frame of every turn; `threadId` is the chat id and the persisted user
+    message's id is on `input.messages`
+  - `TEXT_MESSAGE_CONTENT` — incremental assistant text in `delta` (`TEXT_MESSAGE_START`/`END`
+    bracket it and carry a wire-only `messageId`)
+  - `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` — an elicitation; see
+    [docs/ELICITATION.md](docs/ELICITATION.md)
+  - `CUSTOM` — `progress` (the message’s step log), `attachment` (per-attachment outcome keyed by
+    `attachmentId`), `image` (a generated image reference), `failure` (an error message, not
+    terminal), `cancel` (marker before a cancelled turn’s `RUN_FINISHED`)
+  - `RUN_FINISHED` — terminal; `result` is the structured chat response
+  - `RUN_ERROR` — terminal; `message` is user-facing, and no `RUN_FINISHED` follows
 
 ### Attachments
 
@@ -166,7 +170,7 @@ Flow:
    before the old id is deleted, so a failure loses the caption rather than the file.
 3. On send, the staged ids go out as `attachmentIds` on the chat payload — omitted entirely
    when nothing is attached.
-4. The tray is cleared only once an `init` frame arrives. If the stream ends without one,
+4. The tray is cleared only once a `RUN_STARTED` frame arrives. If the stream ends without one,
    nothing was bound server-side, so the ids are still valid: the message text and the tray are
    both restored for a retry.
 5. Sent attachments render on their `USER` bubble via `MessageAttachments`, resolving through a
@@ -183,12 +187,12 @@ Elicitation enables the assistant to request missing parameters through a struct
 
 High-level steps:
 
-1. The backend sends an `elicitation` SSE event with a `requestedSchema` and `message`.
+1. The backend streams an AG-UI tool call; `TOOL_CALL_ARGS.delta` carries the `requestedSchema` and `message`.
 2. The UI renders an elicitation form using `src/elicitation/ElicitationPrompt.jsx`.
 3. The user fills fields or clicks a boolean choice (accept/decline/cancel).
-4. `ElicitationService.handleElicitationSubmit(...)` constructs an `elicitationResponse` payload.
-5. `StreamService.chatStreamElicitationResponse(...)` posts the response to the backend and streams the assistant’s follow-up message.
-6. `ChatService.handleStreamChunk(...)` appends streamed content until `done`.
+4. `ElicitationService.handleElicitationSubmit(...)` builds an AG-UI `ToolMessage` whose `content` names the action.
+5. `StreamService.chatStreamElicitationResponse(...)` posts it; the answer resumes the parked tool call server-side.
+6. The follow-up streams in on the same connection and `ChatService.handleStreamChunk(...)` appends it until `RUN_FINISHED`.
 
 See the dedicated doc: [docs/ELICITATION.md](docs/ELICITATION.md).
 
@@ -206,33 +210,31 @@ Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:
 ### ChatService
 
 - `chatStream(message, chatId, { onChunk, onDone, signal })` — initiates or continues a chat stream via SSE
-- `handleStreamChunk(event, handlers)` — processes server events: `init`, `chunk`/`message`, `elicitation`, and `done`
+- `handleStreamChunk(event, handlers)` — routes AG-UI events: `RUN_STARTED`, `TEXT_MESSAGE_CONTENT`, `TOOL_CALL_ARGS`, `CUSTOM`, `RUN_FINISHED`, and `RUN_ERROR`
 - `findChatDetails(chatId)` — retrieves chat metadata
 - `findChatHistory({ page, size })` — fetches one page of the authenticated user's chats (newest first) from the Spring `Pageable` endpoint, flattened to `{ chats, page, last, totalPages, totalElements }`. The history drawer pages through it with `usePagedChatHistory`, which loads the next page as an infinite-scroll sentinel comes into view.
 
-Server events include `ELICITATION`, which triggers the elicitation form UI with a JSON schema and message.
+An elicitation arrives as `TOOL_CALL_ARGS`, which opens the elicitation form with a JSON schema and message.
 
 ### StreamService
 
-- `chatStreamElicitationResponse(payload, chatId, elicitationId, { onChunk, timeoutMs })` — submits elicitation responses and streams the assistant’s follow-up via SSE
+- `chatStreamElicitationResponse(toolMessage, chatId, elicitationId, { onChunk, timeoutMs })` — posts the elicitation answer; the follow-up continues on the stream already open
 - `handleStreamError(error, setError, setChatHistory)` — cleans up partial AI messages on stream errors
 
 ### ElicitationService
 
 - `handleElicitationChange(fieldName, value, setElicitationValues)` — updates form field state
-- `handleElicitationSubmit({ overrideFields, activeElicitation, elicitationValues, ... })` — constructs and submits the elicitation response payload
+- `handleElicitationSubmit({ overrideFields, activeElicitation, elicitationValues, ... })` — builds and submits the AG-UI `ToolMessage` answer
+- `resolveElicitationAction(fields)` — derives the `accept`/`decline`/`cancel` action the backend reads
 
-Example elicitation response:
+Example elicitation answer (`content` is a JSON string; only `action` reaches the MCP tool):
 
 ```json
 {
-  "elicitationResponse": {
-    "name": "<elicitation-name>",
-    "fields": {
-      "<fieldA>": "value",
-      "<fieldB>": "value"
-    }
-  }
+  "id": "b8e2…",
+  "role": "tool",
+  "toolCallId": "9c41…",
+  "content": "{\"action\":\"accept\"}"
 }
 ```
 

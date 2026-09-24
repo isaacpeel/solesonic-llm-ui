@@ -983,10 +983,18 @@ describe('attachment-aware chat history', () => {
     });
 
     describe('updateAttachmentStatus', () => {
-        it('merges the update into the matching attachment on the last USER message', () => {
+        it('merges the outcome into the attachment named by attachmentId on the last USER message', () => {
             const {result} = renderHook(() => useChatHistory());
 
-            result.current.updateAttachmentStatus({id: 'attachment-1', indexed: false, extractionReason: 'unsupported file type'});
+            result.current.updateAttachmentStatus({
+                attachmentId: 'attachment-1',
+                chatId: 'chat-1',
+                described: false,
+                reason: null,
+                indexed: false,
+                extractionReason: 'DOCUMENT_UNREADABLE',
+                chunkCount: null,
+            });
 
             const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const updatedHistory = updater([
@@ -994,18 +1002,27 @@ describe('attachment-aware chat history', () => {
                 {type: AI, text: '', _key: 'ai1', isStreaming: true},
             ]);
 
-            expect(updatedHistory[0].attachments[0]).toEqual({
+            expect(updatedHistory[0].attachments[0]).toMatchObject({
                 id: 'attachment-1',
                 fileName: 'a.pdf',
                 indexed: false,
-                extractionReason: 'unsupported file type',
+                extractionReason: 'DOCUMENT_UNREADABLE',
             });
+        });
+
+        it('ignores an update keyed by id rather than attachmentId', () => {
+            const {result} = renderHook(() => useChatHistory());
+            sharedState.setChatHistory.mockClear();
+
+            result.current.updateAttachmentStatus({id: 'attachment-1', described: false});
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
         });
 
         it('finds the attachment on an earlier USER message when the last one does not carry it', () => {
             const {result} = renderHook(() => useChatHistory());
 
-            result.current.updateAttachmentStatus({id: 'attachment-1', described: false, reason: 'vision model unavailable'});
+            result.current.updateAttachmentStatus({attachmentId: 'attachment-1', described: false, reason: 'vision model unavailable'});
 
             const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const updatedHistory = updater([
@@ -1030,7 +1047,7 @@ describe('attachment-aware chat history', () => {
         it('leaves history untouched when no attachment matches', () => {
             const {result} = renderHook(() => useChatHistory());
 
-            result.current.updateAttachmentStatus({id: 'attachment-unknown', indexed: false});
+            result.current.updateAttachmentStatus({attachmentId: 'attachment-unknown', indexed: false});
 
             const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const previousHistory = [

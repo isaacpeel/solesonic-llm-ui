@@ -64,7 +64,7 @@ function useChatUrlSync() {
 
         /*
          * State moved on its own, which today means exactly one thing: a new chat adopting the
-         * id from its first `init` frame, milliseconds into a stream. Replaced rather than
+         * id from its first RUN_STARTED frame, milliseconds into a stream. Replaced rather than
          * pushed — the user is mid-answer, and a pushed entry would leave Back pointing at a `/`
          * that clears the reply they are reading.
          */

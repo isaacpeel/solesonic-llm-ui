@@ -2,134 +2,108 @@ import {describe, it, expect} from 'vitest';
 import {
     appendProgressNotificationText,
     formatProgressNotificationText,
-    getProgressNotificationTextFromRawData,
+    getProgressNotificationText,
 } from '../../src/service/ProgressNotificationService.js';
 
-describe('getProgressNotificationTextFromRawData', () => {
+describe('getProgressNotificationText', () => {
     describe('invalid input', () => {
         it('returns null for null', () => {
-            expect(getProgressNotificationTextFromRawData(null)).toBeNull();
+            expect(getProgressNotificationText(null)).toBeNull();
         });
 
         it('returns null for undefined', () => {
-            expect(getProgressNotificationTextFromRawData(undefined)).toBeNull();
+            expect(getProgressNotificationText(undefined)).toBeNull();
         });
 
         it('returns null for a number', () => {
-            expect(getProgressNotificationTextFromRawData(42)).toBeNull();
+            expect(getProgressNotificationText(42)).toBeNull();
         });
 
-        it('returns null for an object', () => {
-            expect(getProgressNotificationTextFromRawData({})).toBeNull();
+        it('returns null for a string', () => {
+            expect(getProgressNotificationText('Step 1')).toBeNull();
         });
 
-        it('returns null for an empty string', () => {
-            expect(getProgressNotificationTextFromRawData('')).toBeNull();
-        });
-
-        it('returns null for invalid JSON', () => {
-            expect(getProgressNotificationTextFromRawData('not-json')).toBeNull();
-        });
-
-        it('returns null for malformed JSON', () => {
-            expect(getProgressNotificationTextFromRawData('{bad:')).toBeNull();
+        it('returns null for an empty object', () => {
+            expect(getProgressNotificationText({})).toBeNull();
         });
     });
 
     describe('missing required fields', () => {
         it('returns null when progressToken is absent', () => {
-            const payload = JSON.stringify({message: 'Step 1', progress: 1, total: 5});
-            expect(getProgressNotificationTextFromRawData(payload)).toBeNull();
+            expect(getProgressNotificationText({message: 'Step 1', progress: 1, total: 5})).toBeNull();
         });
 
         it('returns null when progressToken is present but none of message/progress/total are present', () => {
-            const payload = JSON.stringify({progressToken: 'tok'});
-            expect(getProgressNotificationTextFromRawData(payload)).toBeNull();
-        });
-
-        it('returns null for a plain non-object JSON value', () => {
-            expect(getProgressNotificationTextFromRawData('"just a string"')).toBeNull();
-            expect(getProgressNotificationTextFromRawData('42')).toBeNull();
+            expect(getProgressNotificationText({progressToken: 'tok'})).toBeNull();
         });
     });
 
     describe('valid progress notifications', () => {
         it('returns the trimmed message with its percentage when all fields are present', () => {
-            const payload = JSON.stringify({progressToken: 'tok', message: '  Step 1  ', progress: 1, total: 5});
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Step 1 20%');
+            expect(getProgressNotificationText({progressToken: 'tok', message: '  Step 1  ', progress: 1, total: 5}))
+                .toBe('Step 1 20%');
         });
 
         it('returns the message when only progressToken and message are present', () => {
-            const payload = JSON.stringify({progressToken: 'tok', message: 'Loading data'});
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Loading data');
+            expect(getProgressNotificationText({progressToken: 'tok', message: 'Loading data'})).toBe('Loading data');
         });
 
         it('returns a bare percentage when message is absent', () => {
-            const payload = JSON.stringify({progressToken: 'tok', progress: 2, total: 5});
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('40%');
+            expect(getProgressNotificationText({progressToken: 'tok', progress: 2, total: 5})).toBe('40%');
         });
 
         it('returns null for a total with no progress to measure against it', () => {
-            const payload = JSON.stringify({progressToken: 'tok', total: 10});
-            expect(getProgressNotificationTextFromRawData(payload)).toBeNull();
+            expect(getProgressNotificationText({progressToken: 'tok', total: 10})).toBeNull();
         });
 
         it('returns null when progressToken is present but message is whitespace only', () => {
-            const payload = JSON.stringify({progressToken: 'tok', message: '   '});
-            expect(getProgressNotificationTextFromRawData(payload)).toBeNull();
+            expect(getProgressNotificationText({progressToken: 'tok', message: '   '})).toBeNull();
         });
 
         it('returns null when progressToken is present but message is empty string', () => {
-            const payload = JSON.stringify({progressToken: 'tok', message: ''});
-            expect(getProgressNotificationTextFromRawData(payload)).toBeNull();
+            expect(getProgressNotificationText({progressToken: 'tok', message: ''})).toBeNull();
         });
 
         it('handles numeric progress and total sent as strings', () => {
-            const payload = JSON.stringify({progressToken: 'tok', progress: '3', total: '10', message: 'Step 3'});
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Step 3 30%');
+            expect(getProgressNotificationText({progressToken: 'tok', progress: '3', total: '10', message: 'Step 3'}))
+                .toBe('Step 3 30%');
         });
 
         /* The shape the image generation backend actually emits. */
         it('renders a generation frame as message plus percentage', () => {
-            const payload = JSON.stringify({
+            expect(getProgressNotificationText({
                 progressToken: '9a19a1de-887e-4e5e-b360-135754253499',
                 message: 'Generating…',
                 progress: '16.0',
                 total: '100.0',
                 chatId: '9a19a1de-887e-4e5e-b360-135754253499',
-            });
-
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Generating… 16%');
+            })).toBe('Generating… 16%');
         });
 
         it('renders a percentage from a notifications/progress wrapped frame', () => {
-            const payload = JSON.stringify({
+            expect(getProgressNotificationText({
                 method: 'notifications/progress',
                 params: {progressToken: 'tok', message: 'Generating…', progress: '50.0', total: '100.0'},
-            });
-
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Generating… 50%');
+            })).toBe('Generating… 50%');
         });
     });
 
     /*
      * The vision pass emits progress frames keyed by attachment id with null progress/total.
-     * These lock in that the existing detector recognises that shape unchanged.
+     * These lock in that the detector recognises that shape unchanged.
      */
     describe('vision attachment progress frames', () => {
         it('recognises a vision frame with null progress and total', () => {
-            const payload = JSON.stringify({
+            expect(getProgressNotificationText({
                 progressToken: 'a3f1c8e2-4b7d-4c9a-9f2e-1d8b6a5c3e7f',
                 message: 'Reading attached image screenshot.png',
                 progress: null,
                 total: null,
-            });
-
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Reading attached image screenshot.png');
+            })).toBe('Reading attached image screenshot.png');
         });
 
         it('recognises a vision frame wrapped in notifications/progress', () => {
-            const payload = JSON.stringify({
+            expect(getProgressNotificationText({
                 method: 'notifications/progress',
                 params: {
                     progressToken: 'a3f1c8e2-4b7d-4c9a-9f2e-1d8b6a5c3e7f',
@@ -137,20 +111,16 @@ describe('getProgressNotificationTextFromRawData', () => {
                     progress: null,
                     total: null,
                 },
-            });
-
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Reading attached image diagram.png');
+            })).toBe('Reading attached image diagram.png');
         });
 
         it('trims surrounding whitespace from a vision frame message', () => {
-            const payload = JSON.stringify({
+            expect(getProgressNotificationText({
                 progressToken: 'attachment-1',
                 message: '  Reading attached image a.png  ',
                 progress: null,
                 total: null,
-            });
-
-            expect(getProgressNotificationTextFromRawData(payload)).toBe('Reading attached image a.png');
+            })).toBe('Reading attached image a.png');
         });
     });
 });

@@ -32,7 +32,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
 
     /*
      * Reused by conversation-scoped UI state (e.g. a pinned slash command) that must reset on a
-     * real chat switch but survive a new chat's own first `init` frame assigning its id — the
+     * real chat switch but survive a new chat's own RUN_STARTED frame assigning its id — the
      * same distinction `adoptedChatIdRef` already draws for hydration below.
      */
     const previousChatIdRef = useRef(chatId);
@@ -85,7 +85,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         }
 
         /*
-         * A new chat learns its id from its own `init` frame, milliseconds after the stream
+         * A new chat learns its id from its own RUN_STARTED frame, milliseconds after the stream
          * opens. Hydrating on that transition would read a server state holding only the USER
          * message — the streaming placeholder would be replaced, and every later frame would
          * land on a USER entry where appendToLastAIMessage/finalizeLastAIMessage drop it in
@@ -175,7 +175,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
 
                 /*
                  * The backend emits a progress frame for every image it describes, so a seed
-                 * still standing at `done` means no image was read. Rendering it as a completed
+                 * still standing at RUN_FINISHED means no image was read. Rendering it as a completed
                  * step would put a green checkmark claiming the image was read directly above an
                  * assistant asking for one — drop it and flag the turn instead.
                  *
@@ -244,10 +244,6 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         });
     }, [setChatHistory]);
 
-    /*
-     * Only `done` clears the streaming flag on the normal path, so a stream that ends without it
-     * would otherwise spin forever. Callers use this when they have decided the turn is over.
-     */
     const attachGeneratedImagesToLastAIMessage = useCallback((generatedImages) => {
         if (!Array.isArray(generatedImages) || generatedImages.length === 0) {
             return;
@@ -264,7 +260,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
             const existingImages = Array.isArray(lastMessage.generatedImages) ? lastMessage.generatedImages : [];
             const knownImageIds = new Set(existingImages.map((existingImage) => existingImage.imageId));
 
-            /* `done` can repeat what an earlier `image` frame already delivered. */
+            /* RUN_FINISHED can repeat what an earlier `image` CUSTOM event already delivered. */
             const newImages = generatedImages.filter((generatedImage) => !knownImageIds.has(generatedImage.imageId));
 
             if (newImages.length === 0) {
@@ -281,6 +277,10 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         });
     }, [setChatHistory]);
 
+    /*
+     * Only RUN_FINISHED clears the streaming flag on the normal path, so a stream that ends without it
+     * would otherwise spin forever. Callers use this when they have decided the turn is over.
+     */
     const stopStreamingLastAIMessage = useCallback(() => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -292,7 +292,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
             const newHistory = [...previousHistory];
             /*
              * Clears the seed too. `finalizeLastAIMessage` infers a failed vision pass from a
-             * seed still standing at `done`, but that inference is only valid when `done`
+             * seed still standing at RUN_FINISHED, but that inference is only valid when RUN_FINISHED
              * actually arrived — on every path that ends here it did not, so the turn is left
              * unflagged rather than accused.
              */
@@ -328,9 +328,9 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     }, [setChatHistory]);
 
     /*
-     * The `init` frame has been observed carrying the chat id under `id`; the attachment
-     * design document specifies `chatId`. Accept both — guessing wrong means a new chat
-     * never adopts an id and every follow-up turn silently starts a fresh chat.
+     * RUN_STARTED hands over the chat id as `chatId` (from its `threadId`); RUN_FINISHED's result
+     * carries it as `id`. Accept both — missing one means a new chat never adopts an id and every
+     * follow-up turn silently starts a fresh chat.
      */
     const ensureChatIdFromResponse = useCallback((response) => {
         const resolvedChatId = response?.id ?? response?.chatId;
@@ -373,13 +373,13 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     }, [setChatHistory]);
 
     /*
-     * The `attachment` SSE frame reports a vision/extraction outcome for one attachment on the
+     * The `attachment` CUSTOM event reports a vision/extraction outcome for one attachment on the
      * turn's USER message after the fact — it can arrive well after that message was appended,
      * so this walks back to find it by attachment id rather than assuming it is the very last
      * entry. Merges rather than replaces, since the frame may carry only the fields that changed.
      */
     const updateAttachmentStatus = useCallback((attachmentUpdate) => {
-        const attachmentId = attachmentUpdate?.id;
+        const attachmentId = attachmentUpdate?.attachmentId;
 
         if (!attachmentId) {
             return;

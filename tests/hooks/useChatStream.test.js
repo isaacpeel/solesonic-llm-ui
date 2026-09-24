@@ -6,7 +6,9 @@ vi.mock('../../src/service/AuthService.js', () => ({
     default: {},
 }));
 
-vi.mock('../../src/service/ChatService.js', () => ({
+/* The event constants and frame readers stay real; only the service calls are stubbed. */
+vi.mock('../../src/service/ChatService.js', async (importOriginal) => ({
+    ...(await importOriginal()),
     default: {
         handleStreamChunk: vi.fn(),
         chatStream: vi.fn().mockResolvedValue(undefined),
@@ -15,18 +17,27 @@ vi.mock('../../src/service/ChatService.js', () => ({
         chatStreamResume: vi.fn().mockResolvedValue('unavailable'),
         cancelStream: vi.fn().mockResolvedValue(null),
     },
-    /* useChatStream imports these constants directly; the mock must carry them. */
-    CHUNK: 'chunk',
-    MESSAGE: 'message',
-    DONE: 'done',
-    INIT: 'init',
-    ELICITATION: 'elicitation',
-    ERROR: 'error',
-    RESUME_STREAMED: 'streamed',
-    RESUME_ALREADY_COMPLETE: 'alreadyComplete',
-    RESUME_UNAVAILABLE: 'unavailable',
-    RESUME_REJECTED: 'rejected',
 }));
+
+function runStartedFrame({threadId = 'chat-1', userMessageId = 'user-message-1', id} = {}) {
+    return {
+        event: 'RUN_STARTED',
+        ...(id ? {id} : {}),
+        data: JSON.stringify({
+            type: 'RUN_STARTED',
+            threadId,
+            runId: 'run-1',
+            input: {threadId, runId: 'run-1', messages: [{id: userMessageId, role: 'user', content: 'hello'}], tools: []},
+        }),
+    };
+}
+
+function runFinishedFrame(threadId = 'chat-1') {
+    return {
+        event: 'RUN_FINISHED',
+        data: JSON.stringify({type: 'RUN_FINISHED', threadId, runId: 'run-1', result: {id: threadId}}),
+    };
+}
 
 vi.mock('../../src/service/StreamService.js', () => ({
     default: {
@@ -340,7 +351,7 @@ describe('useChatStream', () => {
 
     it('handleStreamChunk', () => {
         const {result} = renderHook(() => useChatStream(options));
-        const rawPayload = {event: 'chunk', data: '{"content":"hello"}'};
+        const rawPayload = {event: 'TEXT_MESSAGE_CONTENT', data: '{"messageId":"wire-1","delta":"hello"}'};
 
         act(() => {
             result.current.handleStreamChunk(rawPayload);
@@ -371,11 +382,11 @@ describe('useChatStream with attachments', () => {
     let chatInputRef;
 
     function emitInit(chunkOptions) {
-        chunkOptions.onChunk({event: 'init', data: '{"id":"chat-1"}'});
+        chunkOptions.onChunk(runStartedFrame());
     }
 
     function emitDone(chunkOptions) {
-        chunkOptions.onChunk({event: 'done', data: '{"id":"chat-1"}'});
+        chunkOptions.onChunk(runFinishedFrame());
     }
 
     beforeEach(() => {
@@ -550,18 +561,29 @@ describe('useChatStream with attachments', () => {
         expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
     });
 
-    /* The turn continues over the elicitation-response endpoint, so this leg ending is normal. */
-    it('treats an elicitation frame as a legitimate end of the stream', async () => {
+    /*
+     * The answer's POST has no body — the rest of the turn can only arrive on this connection, so
+     * losing it while a question is open is a truncated turn like any other.
+     */
+    it('reports a stream that drops while an elicitation is still open', async () => {
         chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
             emitInit(chunkOptions);
-            chunkOptions.onChunk({event: 'elicitation', data: '{"elicitationId":"elicitation-1"}'});
+            chunkOptions.onChunk({event: 'TOOL_CALL_START', data: '{"toolCallId":"elicitation-1","toolCallName":"elicitation"}'});
+            chunkOptions.onChunk({
+                event: 'TOOL_CALL_ARGS',
+                data: JSON.stringify({
+                    toolCallId: 'elicitation-1',
+                    delta: JSON.stringify({elicitationId: 'elicitation-1', chatId: 'chat-1'}),
+                }),
+            });
         });
 
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'plain message');
 
-        expect(result.current.error).toBeNull();
-        expect(options.stopStreamingLastAIMessage).not.toHaveBeenCalled();
+        expect(result.current.error).toBeInstanceOf(Error);
+        expect(result.current.error.message).toContain('stopped before it finished');
+        expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
     });
 
     it('escalates the seeded step to warm-up copy while the vision pass is silent', async () => {
@@ -679,7 +701,7 @@ describe('backgrounded disconnect recovery', () => {
     let chatInputRef;
 
     function emitInit(chunkOptions) {
-        chunkOptions.onChunk({event: 'init', data: '{"chatId":"chat-1","messageId":"user-message-1"}'});
+        chunkOptions.onChunk(runStartedFrame());
     }
 
     /* The page went into the background at some point during the turn and is back now. */
@@ -797,12 +819,8 @@ describe('backgrounded disconnect recovery', () => {
     it('resumes from the last event id it saw, verbatim', async () => {
         simulateBackgroundedDuringTurn();
         chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
-            chunkOptions.onChunk({
-                event: 'init',
-                id: '1754062831234-0',
-                data: '{"chatId":"chat-1","messageId":"user-message-1"}',
-            });
-            chunkOptions.onChunk({event: 'chunk', id: '1754062831251-1', data: '{"content":"partial"}'});
+            chunkOptions.onChunk(runStartedFrame({id: '1754062831234-0'}));
+            chunkOptions.onChunk({event: 'TEXT_MESSAGE_CONTENT', id: '1754062831251-1', data: '{"delta":"partial"}'});
         });
 
         const {result} = renderHook(() => useChatStream(options));
@@ -815,6 +833,33 @@ describe('backgrounded disconnect recovery', () => {
         const [resumedChatId, resumedCursor] = chatService.chatStreamResume.mock.calls[0];
         expect(resumedChatId).toBe('chat-1');
         expect(resumedCursor).toBe('1754062831251-1');
+    });
+
+    it('recovers a backgrounded stream that dropped while an elicitation was open', async () => {
+        simulateBackgroundedDuringTurn();
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+            chunkOptions.onChunk({
+                event: 'TOOL_CALL_ARGS',
+                id: '1754062831260-0',
+                data: JSON.stringify({
+                    toolCallId: 'elicitation-1',
+                    delta: JSON.stringify({elicitationId: 'elicitation-1', chatId: 'chat-1'}),
+                }),
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'delete the ticket');
+
+        await waitFor(() => {
+            expect(chatService.chatStreamResume).toHaveBeenCalled();
+        });
+
+        const [resumedChatId, resumedCursor] = chatService.chatStreamResume.mock.calls[0];
+        expect(resumedChatId).toBe('chat-1');
+        expect(resumedCursor).toBe('1754062831260-0');
+        expect(result.current.error).toBeNull();
     });
 
     it('still reports a genuine network failure when the page was never backgrounded', async () => {
@@ -865,12 +910,12 @@ describe('stopping an active stream', () => {
     let setChatHistory;
     let chatInputRef;
 
-    function emitInit(chunkOptions, initData = '{"id":"chat-1"}') {
-        chunkOptions.onChunk({event: 'init', data: initData});
+    function emitInit(chunkOptions, threadId = 'chat-1') {
+        chunkOptions.onChunk(runStartedFrame({threadId}));
     }
 
     function emitDone(chunkOptions) {
-        chunkOptions.onChunk({event: 'done', data: '{"id":"chat-1"}'});
+        chunkOptions.onChunk(runFinishedFrame());
     }
 
     async function submitWith(result, messageText) {
@@ -1013,11 +1058,11 @@ describe('stopping an active stream', () => {
         chatService.handleStreamChunk.mockClear();
 
         act(() => {
-            capturedChunkOptions.onChunk({event: 'chunk', data: '{"content":"Chat canceled."}'});
+            capturedChunkOptions.onChunk({event: 'TEXT_MESSAGE_CONTENT', data: '{"delta":"late token"}'});
         });
 
         expect(chatService.handleStreamChunk).toHaveBeenCalledWith(
-            {event: 'chunk', data: '{"content":"Chat canceled."}'},
+            {event: 'TEXT_MESSAGE_CONTENT', data: '{"delta":"late token"}'},
             expect.objectContaining({isCancelling: true}),
         );
 
@@ -1031,7 +1076,7 @@ describe('stopping an active stream', () => {
         let resolveChatStream;
 
         chatService.chatStream.mockImplementation((payload, chatId, chunkOptions) => {
-            emitInit(chunkOptions, '{"id":"brand-new-chat"}');
+            emitInit(chunkOptions, 'brand-new-chat');
 
             return new Promise((resolve) => {
                 resolveChatStream = resolve;

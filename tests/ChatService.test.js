@@ -1,16 +1,24 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import chatService, {
-    ATTACHMENT,
-    CHUNK,
-    DONE,
-    ELICITATION,
-    ERROR,
-    INIT,
-    MESSAGE,
+    CUSTOM,
+    CUSTOM_ATTACHMENT,
+    CUSTOM_CANCEL,
+    CUSTOM_FAILURE,
+    CUSTOM_PROGRESS,
     RESUME_ALREADY_COMPLETE,
     RESUME_REJECTED,
     RESUME_STREAMED,
     RESUME_UNAVAILABLE,
+    RUN_ERROR,
+    RUN_FINISHED,
+    RUN_STARTED,
+    TEXT_MESSAGE_CONTENT,
+    TEXT_MESSAGE_END,
+    TEXT_MESSAGE_START,
+    TOOL_CALL_ARGS,
+    TOOL_CALL_END,
+    TOOL_CALL_START,
+    findRunStartedUserMessageId,
 } from '../src/service/ChatService.js';
 import authClient from "../src/service/AuthService.js";
 
@@ -152,382 +160,483 @@ function makeCallbacks(overrides = {}) {
     };
 }
 
-describe('handleStreamChunk — INIT', () => {
-    it('valid JSON with id calls ensureChatIdFromResponse', () => {
+function agUiFrame(eventType, fields = {}) {
+    return {event: eventType, data: JSON.stringify({type: eventType, ...fields})};
+}
+
+function customFrame(name, value) {
+    return agUiFrame(CUSTOM, {name, value});
+}
+
+function runStartedFrame(messages = [{id: 'user-message-1', role: 'user', content: 'hello'}]) {
+    return agUiFrame(RUN_STARTED, {
+        threadId: 'chat-1',
+        runId: 'run-1',
+        input: {threadId: 'chat-1', runId: 'run-1', messages, tools: []},
+    });
+}
+
+function elicitationArgsFrame(elicitationRequest, toolCallId = 'elicitation-1') {
+    return agUiFrame(TOOL_CALL_ARGS, {toolCallId, delta: JSON.stringify(elicitationRequest)});
+}
+
+function runFinishedFrame(result) {
+    return agUiFrame(RUN_FINISHED, {threadId: 'chat-1', runId: 'run-1', result});
+}
+
+function expectNoStreamHandlerCalled(callbacks) {
+    expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
+    expect(callbacks.appendNotificationMessage).not.toHaveBeenCalled();
+    expect(callbacks.ensureChatIdFromResponse).not.toHaveBeenCalled();
+    expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+    expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
+    expect(callbacks.appendSystemMessage).not.toHaveBeenCalled();
+    expect(callbacks.setActiveElicitation).not.toHaveBeenCalled();
+    expect(callbacks.setError).not.toHaveBeenCalled();
+}
+
+describe('handleStreamChunk', () => {
+    it('RUN_STARTED adopts the chat id from threadId', () => {
         const callbacks = makeCallbacks();
-        const payload = {event: INIT, data: JSON.stringify({id: 'new-chat'})};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(runStartedFrame(), callbacks);
 
-        expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith({id: 'new-chat'});
+        expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith({chatId: 'chat-1'});
     });
 
-    it('malformed JSON logs error and does not throw', () => {
+    it('RUN_STARTED adopts the persisted user message id from input.messages', () => {
+        const adoptMessageId = vi.fn();
+
+        chatService.handleStreamChunk(runStartedFrame(), makeCallbacks({adoptMessageId}));
+
+        expect(adoptMessageId).toHaveBeenCalledWith('user-message-1');
+    });
+
+    it('RUN_STARTED picks the newest user message when input carries earlier turns', () => {
+        const adoptMessageId = vi.fn();
+        const messages = [
+            {id: 'older-user-message', role: 'user', content: 'first'},
+            {id: 'assistant-message', role: 'assistant', content: 'reply'},
+            {id: 'newest-user-message', role: 'user', content: 'second'},
+        ];
+
+        chatService.handleStreamChunk(runStartedFrame(messages), makeCallbacks({adoptMessageId}));
+
+        expect(adoptMessageId).toHaveBeenCalledWith('newest-user-message');
+    });
+
+    it('RUN_STARTED passes null when input carries no user message', () => {
+        const adoptMessageId = vi.fn();
+
+        chatService.handleStreamChunk(runStartedFrame([]), makeCallbacks({adoptMessageId}));
+
+        expect(adoptMessageId).toHaveBeenCalledWith(null);
+    });
+
+    it('RUN_STARTED does not throw when no adoptMessageId handler is supplied', () => {
+        const callbacks = makeCallbacks();
+
+        expect(() => chatService.handleStreamChunk(runStartedFrame(), callbacks)).not.toThrow();
+        expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalled();
+    });
+
+    it('RUN_STARTED with malformed JSON logs and does not throw', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const callbacks = makeCallbacks();
-        const payload = {event: INIT, data: 'not-json'};
 
-        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        expect(() => chatService.handleStreamChunk({event: RUN_STARTED, data: 'not-json'}, callbacks)).not.toThrow();
         expect(callbacks.ensureChatIdFromResponse).not.toHaveBeenCalled();
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
-});
 
-describe('handleStreamChunk — CHUNK / MESSAGE', () => {
-    it('valid content calls appendToLastAIMessage', () => {
+    it('TEXT_MESSAGE_CONTENT appends the delta', () => {
         const callbacks = makeCallbacks();
-        const payload = {event: CHUNK, data: JSON.stringify({content: 'hello'})};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: 'hello'}), callbacks);
 
         expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('hello');
     });
 
-    it('MESSAGE event also calls appendToLastAIMessage', () => {
+    it('TEXT_MESSAGE_CONTENT with an empty or missing delta appends nothing', () => {
         const callbacks = makeCallbacks();
-        const payload = {event: MESSAGE, data: JSON.stringify({content: 'world'})};
 
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('world');
-    });
-
-    it('empty content breaks early without calling appendToLastAIMessage', () => {
-        const callbacks = makeCallbacks();
-        const payload = {event: CHUNK, data: JSON.stringify({content: ''})};
-
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: ''}), callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1'}), callbacks);
 
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
     });
 
-    it('missing content breaks early without calling appendToLastAIMessage', () => {
-        const callbacks = makeCallbacks();
-        const payload = {event: CHUNK, data: JSON.stringify({})};
+    it('TEXT_MESSAGE_CONTENT clears an active elicitation before appending', () => {
+        const callbacks = makeCallbacks({activeElicitation: {elicitationId: 'elicitation-1'}});
 
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
-    });
-
-    it('when activeElicitation is set, clears it before appending', () => {
-        const callbacks = makeCallbacks({activeElicitation: {someField: true}});
-        const payload = {event: CHUNK, data: JSON.stringify({content: 'text'})};
-
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: 'text'}), callbacks);
 
         expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
         expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
         expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('text');
     });
 
-    it('when activeElicitation is null, does not call setActiveElicitation', () => {
-        const callbacks = makeCallbacks({activeElicitation: null});
-        const payload = {event: CHUNK, data: JSON.stringify({content: 'text'})};
+    it('TEXT_MESSAGE_CONTENT leaves elicitation state alone when none is active', () => {
+        const callbacks = makeCallbacks();
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: 'text'}), callbacks);
 
         expect(callbacks.setActiveElicitation).not.toHaveBeenCalled();
-        expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('text');
     });
 
-    /*
-     * The only content that can legitimately arrive after a cancel signal is the "Chat canceled."
-     * notice itself (docs/api.md) — gluing it onto the visible answer reads as a garbled
-     * continuation of the model's own text, and the `done` handler already surfaces it correctly
-     * as its own system bubble.
-     */
-    it('while cancelling, does not append the trailing "Chat canceled." chunk', () => {
+    it('TEXT_MESSAGE_CONTENT is suppressed while the user is cancelling', () => {
         const callbacks = makeCallbacks({isCancelling: true});
-        const payload = {event: CHUNK, data: JSON.stringify({content: 'Chat canceled.'})};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: 'late token'}), callbacks);
 
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
     });
 
-    it('while cancelling, still suppresses a MESSAGE-event chunk the same way', () => {
-        const callbacks = makeCallbacks({isCancelling: true});
-        const payload = {event: MESSAGE, data: JSON.stringify({content: 'Chat canceled.'})};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
-    });
-
-    it('when not cancelling, content is appended as usual', () => {
-        const callbacks = makeCallbacks({isCancelling: false});
-        const payload = {event: CHUNK, data: JSON.stringify({content: 'hello'})};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.appendToLastAIMessage).toHaveBeenCalledWith('hello');
-    });
-
-    it('malformed JSON logs error and does not throw', () => {
+    it('TEXT_MESSAGE_CONTENT with malformed JSON logs and does not throw', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const callbacks = makeCallbacks();
-        const payload = {event: CHUNK, data: 'not-json'};
 
-        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        expect(() => chatService.handleStreamChunk({event: TEXT_MESSAGE_CONTENT, data: 'not-json'}, callbacks)).not.toThrow();
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
-});
 
-describe('handleStreamChunk — DONE', () => {
-    it('valid JSON calls ensureChatIdFromResponse and finalizeLastAIMessage', () => {
+    it('TEXT_MESSAGE_START and TEXT_MESSAGE_END are structural only', () => {
         const callbacks = makeCallbacks();
-        const doneData = {id: 'chat-1', message: {message: 'final text', model: 'gpt-4'}};
-        const payload = {event: DONE, data: JSON.stringify(doneData)};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_START, {messageId: 'wire-1', role: 'assistant'}), callbacks);
+        chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_END, {messageId: 'wire-1'}), callbacks);
 
-        expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith(doneData);
-        expect(callbacks.finalizeLastAIMessage).toHaveBeenCalledWith(doneData);
+        expectNoStreamHandlerCalled(callbacks);
     });
 
-    it('always calls setActiveElicitation(null) and setElicitationSubmitting(false)', () => {
-        const callbacks = makeCallbacks({activeElicitation: {someField: true}});
-        const payload = {event: DONE, data: JSON.stringify({id: 'chat-1'})};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
-        expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
-    });
-
-    it('calls setActiveElicitation and setElicitationSubmitting even on parse error', () => {
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('TOOL_CALL_ARGS opens the elicitation carried in the delta', () => {
         const callbacks = makeCallbacks();
-        const payload = {event: DONE, data: 'not-json'};
+        const elicitationRequest = {
+            message: 'Delete PROJ-12?',
+            requestedSchema: {properties: {action: {type: 'string', enum: ['accept', 'decline']}}},
+            elicitationId: 'elicitation-1',
+            chatId: 'chat-1',
+        };
 
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
-        expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
-        consoleError.mockRestore();
-    });
-
-    /*
-     * A cancelled turn's `done` persists a SYSTEM message ("Chat canceled.") rather than the
-     * partial answer — docs/api.md, "Cancel a Streaming Turn". Overwriting the AI bubble with it
-     * via finalizeLastAIMessage would erase everything the user already watched stream in.
-     */
-    describe('a cancelled turn (SYSTEM messageType)', () => {
-        it('stops the AI bubble without rewriting its text, and appends the system message instead', () => {
-            const callbacks = makeCallbacks();
-            const doneData = {id: 'chat-1', message: {messageType: 'SYSTEM', message: 'Chat canceled.'}};
-            const payload = {event: DONE, data: JSON.stringify(doneData)};
-
-            chatService.handleStreamChunk(payload, callbacks);
-
-            expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
-            expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
-            expect(callbacks.appendSystemMessage).toHaveBeenCalledWith('Chat canceled.');
-        });
-
-        it('still resolves the chat id and clears elicitation state', () => {
-            const callbacks = makeCallbacks({activeElicitation: {someField: true}});
-            const doneData = {id: 'chat-1', message: {messageType: 'SYSTEM', message: 'Chat canceled.'}};
-            const payload = {event: DONE, data: JSON.stringify(doneData)};
-
-            chatService.handleStreamChunk(payload, callbacks);
-
-            expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith(doneData);
-            expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
-            expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
-        });
-    });
-
-    it('an ordinary ASSISTANT done still finalizes the AI bubble, not the system path', () => {
-        const callbacks = makeCallbacks();
-        const doneData = {id: 'chat-1', message: {messageType: 'ASSISTANT', message: 'final text'}};
-        const payload = {event: DONE, data: JSON.stringify(doneData)};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.finalizeLastAIMessage).toHaveBeenCalledWith(doneData);
-        expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
-        expect(callbacks.appendSystemMessage).not.toHaveBeenCalled();
-    });
-});
-
-describe('handleStreamChunk — ATTACHMENT', () => {
-    it('forwards the parsed payload to updateAttachmentStatus', () => {
-        const updateAttachmentStatus = vi.fn();
-        const callbacks = makeCallbacks({updateAttachmentStatus});
-        const attachmentPayload = {id: 'attachment-1', indexed: false, extractionReason: 'unsupported file type'};
-        const payload = {event: ATTACHMENT, data: JSON.stringify(attachmentPayload)};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(updateAttachmentStatus).toHaveBeenCalledWith(attachmentPayload);
-    });
-
-    it('does not throw when no updateAttachmentStatus handler is supplied', () => {
-        const callbacks = makeCallbacks();
-        const payload = {event: ATTACHMENT, data: JSON.stringify({id: 'attachment-1', described: false})};
-
-        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
-    });
-
-    it('malformed JSON logs error and does not throw', () => {
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-        const updateAttachmentStatus = vi.fn();
-        const callbacks = makeCallbacks({updateAttachmentStatus});
-        const payload = {event: ATTACHMENT, data: 'not-json'};
-
-        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
-        expect(updateAttachmentStatus).not.toHaveBeenCalled();
-        expect(consoleError).toHaveBeenCalled();
-        consoleError.mockRestore();
-    });
-});
-
-describe('handleStreamChunk — ELICITATION', () => {
-    it('calls setElicitationSubmitting(false) and setActiveElicitation with parsed object', () => {
-        const callbacks = makeCallbacks();
-        const elicitation = {requestedSchema: {properties: {name: {}, city: {}}}};
-        const payload = {event: ELICITATION, data: JSON.stringify(elicitation)};
-
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(elicitationArgsFrame(elicitationRequest), callbacks);
 
         expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
-        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(elicitation);
+        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(elicitationRequest);
     });
 
-    it('populates setElicitationValues with empty strings for each property except chatId', () => {
+    it('TOOL_CALL_ARGS seeds an empty value for each schema property', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(elicitationArgsFrame({
+            requestedSchema: {properties: {name: {}, city: {}}},
+            elicitationId: 'elicitation-1',
+            chatId: 'chat-1',
+        }), callbacks);
+
+        expect(callbacks.setElicitationValues).toHaveBeenCalledWith({name: '', city: ''});
+    });
+
+    it('TOOL_CALL_ARGS seeds a chatId property from _meta.chatId first', () => {
         const callbacks = makeCallbacks({chatId: 'fallback-chat'});
-        const elicitation = {requestedSchema: {properties: {name: {}, chatId: {}}}};
-        const payload = {event: ELICITATION, data: JSON.stringify(elicitation)};
 
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.setElicitationValues).toHaveBeenCalledWith({
-            name: '',
-            chatId: 'fallback-chat',
-        });
-    });
-
-    it('chatId resolves from elicitation._meta.chatId first', () => {
-        const callbacks = makeCallbacks({chatId: 'fallback-chat'});
-        const elicitation = {
+        chatService.handleStreamChunk(elicitationArgsFrame({
             _meta: {chatId: 'meta-chat-id'},
             chatId: 'top-level-chat-id',
+            elicitationId: 'elicitation-1',
             requestedSchema: {properties: {chatId: {}}},
-        };
-        const payload = {event: ELICITATION, data: JSON.stringify(elicitation)};
-
-        chatService.handleStreamChunk(payload, callbacks);
+        }), callbacks);
 
         expect(callbacks.setElicitationValues).toHaveBeenCalledWith({chatId: 'meta-chat-id'});
     });
 
-    it('chatId falls back to elicitation.chatId when _meta.chatId is absent', () => {
+    it('TOOL_CALL_ARGS seeds a chatId property from the request chatId when _meta has none', () => {
         const callbacks = makeCallbacks({chatId: 'fallback-chat'});
-        const elicitation = {
-            chatId: 'top-level-chat-id',
-            requestedSchema: {properties: {chatId: {}}},
-        };
-        const payload = {event: ELICITATION, data: JSON.stringify(elicitation)};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(elicitationArgsFrame({
+            chatId: 'top-level-chat-id',
+            elicitationId: 'elicitation-1',
+            requestedSchema: {properties: {chatId: {}}},
+        }), callbacks);
 
         expect(callbacks.setElicitationValues).toHaveBeenCalledWith({chatId: 'top-level-chat-id'});
     });
 
-    it('malformed JSON logs error and does not throw', () => {
+    it('TOOL_CALL_ARGS ignores a tool call that is not an elicitation', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(
+            agUiFrame(TOOL_CALL_ARGS, {toolCallId: 'tool-call-7', delta: JSON.stringify({query: 'weather'})}),
+            callbacks,
+        );
+
+        expect(callbacks.setActiveElicitation).not.toHaveBeenCalled();
+        expect(callbacks.setElicitationValues).not.toHaveBeenCalled();
+    });
+
+    it('TOOL_CALL_ARGS without a toolCallId is not an elicitation', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(agUiFrame(TOOL_CALL_ARGS, {delta: JSON.stringify({message: 'no id anywhere'})}), callbacks);
+        chatService.handleStreamChunk(agUiFrame(TOOL_CALL_ARGS, {delta: '"just a string"'}), callbacks);
+
+        expect(callbacks.setActiveElicitation).not.toHaveBeenCalled();
+        expect(callbacks.setElicitationValues).not.toHaveBeenCalled();
+    });
+
+    it('TOOL_CALL_ARGS with an unparseable delta logs and does not throw', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const callbacks = makeCallbacks();
-        const payload = {event: ELICITATION, data: 'not-json'};
 
-        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        expect(() => chatService.handleStreamChunk(
+            agUiFrame(TOOL_CALL_ARGS, {toolCallId: 'elicitation-1', delta: '{not json'}),
+            callbacks,
+        )).not.toThrow();
+        expect(callbacks.setActiveElicitation).not.toHaveBeenCalled();
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
-});
 
-describe('handleStreamChunk — ERROR', () => {
-    it('valid content calls setError with an Error containing the message', () => {
+    it('TOOL_CALL_START and TOOL_CALL_END are structural only', () => {
         const callbacks = makeCallbacks();
-        const payload = {event: ERROR, data: JSON.stringify({content: 'Something went wrong on the server'})};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(TOOL_CALL_START, {toolCallId: 'elicitation-1', toolCallName: 'elicitation'}), callbacks);
+        chatService.handleStreamChunk(agUiFrame(TOOL_CALL_END, {toolCallId: 'elicitation-1'}), callbacks);
+
+        expectNoStreamHandlerCalled(callbacks);
+    });
+
+    it('RUN_FINISHED resolves the chat id and finalizes the bubble from result', () => {
+        const callbacks = makeCallbacks();
+        const result = {id: 'chat-1', message: {messageType: 'ASSISTANT', message: 'final text'}};
+
+        chatService.handleStreamChunk(runFinishedFrame(result), callbacks);
+
+        expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith(result);
+        expect(callbacks.finalizeLastAIMessage).toHaveBeenCalledWith(result);
+        expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
+        expect(callbacks.appendSystemMessage).not.toHaveBeenCalled();
+    });
+
+    it('RUN_FINISHED always clears elicitation state', () => {
+        const callbacks = makeCallbacks({activeElicitation: {elicitationId: 'elicitation-1'}});
+
+        chatService.handleStreamChunk(runFinishedFrame({id: 'chat-1'}), callbacks);
+
+        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
+        expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+    });
+
+    it('RUN_FINISHED clears elicitation state even when its payload cannot be parsed', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk({event: RUN_FINISHED, data: 'not-json'}, callbacks);
+
+        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
+        expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+        expect(consoleError).toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    it('RUN_FINISHED that cannot be parsed still stops the streaming bubble — the turn is over', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk({event: RUN_FINISHED, data: 'not-json'}, callbacks);
+
+        expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+        consoleError.mockRestore();
+    });
+
+    /*
+     * A cancelled turn persists a SYSTEM message ("Chat canceled.") rather than the partial
+     * answer. Finalizing with it would erase everything the user already watched stream in.
+     */
+    it('RUN_FINISHED for a cancelled turn stops the bubble and appends the system message', () => {
+        const callbacks = makeCallbacks();
+        const result = {id: 'chat-1', message: {messageType: 'SYSTEM', message: 'Chat canceled.'}};
+
+        chatService.handleStreamChunk(runFinishedFrame(result), callbacks);
+
+        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+        expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        expect(callbacks.appendSystemMessage).toHaveBeenCalledWith('Chat canceled.');
+        expect(callbacks.ensureChatIdFromResponse).toHaveBeenCalledWith(result);
+    });
+
+    it('RUN_ERROR surfaces its message', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message: 'The model timed out.', code: 'timeout'}), callbacks);
 
         expect(callbacks.setError).toHaveBeenCalledOnce();
         const receivedError = callbacks.setError.mock.calls[0][0];
         expect(receivedError).toBeInstanceOf(Error);
-        expect(receivedError.message).toBe('Something went wrong on the server');
-    });
-
-    it('does not call appendToLastAIMessage', () => {
-        const callbacks = makeCallbacks();
-        const payload = {event: ERROR, data: JSON.stringify({content: 'Oops'})};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
+        expect(receivedError.message).toBe('The model timed out.');
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
     });
 
-    it('empty content does not call setError', () => {
-        const callbacks = makeCallbacks();
-        const payload = {event: ERROR, data: JSON.stringify({content: ''})};
+    it('RUN_ERROR ends the turn: the bubble stops streaming and any open elicitation closes', () => {
+        const callbacks = makeCallbacks({activeElicitation: {elicitationId: 'elicitation-1'}});
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message: 'The model timed out.', code: 'timeout'}), callbacks);
 
-        expect(callbacks.setError).not.toHaveBeenCalled();
+        expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
+        expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });
 
-    it('missing content does not call setError', () => {
-        const callbacks = makeCallbacks();
-        const payload = {event: ERROR, data: JSON.stringify({})};
-
-        chatService.handleStreamChunk(payload, callbacks);
-
-        expect(callbacks.setError).not.toHaveBeenCalled();
-    });
-
-    it('malformed JSON logs error and does not throw', () => {
+    it('RUN_ERROR that cannot be parsed still ends the turn', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const callbacks = makeCallbacks();
-        const payload = {event: ERROR, data: 'not-json'};
 
-        expect(() => chatService.handleStreamChunk(payload, callbacks)).not.toThrow();
+        chatService.handleStreamChunk({event: RUN_ERROR, data: 'not-json'}, callbacks);
+
+        expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        consoleError.mockRestore();
+    });
+
+    it('RUN_ERROR without a message stays quiet', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {code: 'internal'}), callbacks);
+
+        expect(callbacks.setError).not.toHaveBeenCalled();
+    });
+
+    it('RUN_ERROR with malformed JSON logs and does not throw', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const callbacks = makeCallbacks();
+
+        expect(() => chatService.handleStreamChunk({event: RUN_ERROR, data: 'not-json'}, callbacks)).not.toThrow();
         expect(callbacks.setError).not.toHaveBeenCalled();
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
-});
 
-describe('handleStreamChunk — progress notification', () => {
-    it('calls appendNotificationMessage and returns early when notification text is present', () => {
+    it('CUSTOM progress appends a step to the notification log', () => {
         const callbacks = makeCallbacks();
-        const progressData = JSON.stringify({
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_PROGRESS, {
             progressToken: 'token-1',
             message: 'Step 1 done',
             progress: 1,
             total: 3,
-        });
-        const payload = {data: progressData};
-
-        chatService.handleStreamChunk(payload, callbacks);
+        }), callbacks);
 
         expect(callbacks.appendNotificationMessage).toHaveBeenCalledWith('Step 1 done 33%');
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
-        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });
 
-    it('does not short-circuit when progress notification returns undefined', () => {
+    it('CUSTOM progress with nothing to show appends nothing', () => {
         const callbacks = makeCallbacks();
-        const payload = {event: DONE, data: JSON.stringify({id: 'chat-1'})};
 
-        chatService.handleStreamChunk(payload, callbacks);
+        chatService.handleStreamChunk(customFrame(CUSTOM_PROGRESS, {progressToken: 'token-1'}), callbacks);
 
         expect(callbacks.appendNotificationMessage).not.toHaveBeenCalled();
-        expect(callbacks.finalizeLastAIMessage).toHaveBeenCalled();
+    });
+
+    it('CUSTOM attachment forwards its value to updateAttachmentStatus', () => {
+        const updateAttachmentStatus = vi.fn();
+        const attachmentOutcome = {
+            attachmentId: 'attachment-1',
+            chatId: 'chat-1',
+            described: false,
+            reason: 'VISION_TIMEOUT',
+            indexed: false,
+            extractionReason: null,
+            chunkCount: null,
+        };
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_ATTACHMENT, attachmentOutcome), makeCallbacks({updateAttachmentStatus}));
+
+        expect(updateAttachmentStatus).toHaveBeenCalledWith(attachmentOutcome);
+    });
+
+    it('CUSTOM attachment does not throw without an updateAttachmentStatus handler', () => {
+        expect(() => chatService.handleStreamChunk(
+            customFrame(CUSTOM_ATTACHMENT, {attachmentId: 'attachment-1', described: true}),
+            makeCallbacks(),
+        )).not.toThrow();
+    });
+
+    it('CUSTOM failure surfaces its content without ending the bubble', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the model refused'}), callbacks);
+
+        expect(callbacks.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the model refused'}));
+        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+        expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('CUSTOM failure falls back to message when content is absent', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(
+            customFrame(CUSTOM_FAILURE, {code: 'GENERATION_TIMEOUT', message: 'image generation timed out'}),
+            callbacks,
+        );
+
+        expect(callbacks.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'image generation timed out'}));
+    });
+
+    it('CUSTOM failure prefers content when both are present', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the real one', message: 'the other one'}), callbacks);
+
+        expect(callbacks.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the real one'}));
+    });
+
+    it('CUSTOM failure stays quiet when it carries no text', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {code: 'GENERATION_TIMEOUT'}), callbacks);
+
+        expect(callbacks.setError).not.toHaveBeenCalled();
+    });
+
+    it('CUSTOM cancel is a marker only — RUN_FINISHED carries the outcome', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_CANCEL, null), callbacks);
+
+        expectNoStreamHandlerCalled(callbacks);
+    });
+
+    it('ignores events it does not route, including the retired vocabulary', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(agUiFrame('STATE_SNAPSHOT', {snapshot: {}}), callbacks);
+        chatService.handleStreamChunk({event: 'chunk', data: JSON.stringify({content: 'hello'})}, callbacks);
+        chatService.handleStreamChunk({event: 'done', data: JSON.stringify({id: 'chat-1'})}, callbacks);
+
+        expectNoStreamHandlerCalled(callbacks);
+    });
+});
+
+describe('findRunStartedUserMessageId', () => {
+    it('returns the newest user message id', () => {
+        expect(findRunStartedUserMessageId({
+            input: {
+                messages: [
+                    {id: 'older', role: 'user'},
+                    {id: 'newest', role: 'user'},
+                ],
+            },
+        })).toBe('newest');
+    });
+
+    it('returns null for a missing or malformed input', () => {
+        expect(findRunStartedUserMessageId(null)).toBeNull();
+        expect(findRunStartedUserMessageId({input: {}})).toBeNull();
+        expect(findRunStartedUserMessageId({input: {messages: [{id: 'assistant-1', role: 'assistant'}]}})).toBeNull();
     });
 });
 
@@ -554,12 +663,12 @@ describe('chatStream', () => {
         vi.unstubAllGlobals();
     });
 
-    it('happy path — chunks then done: onChunk called for each event, exits after done', async () => {
+    it('happy path — onChunk is called for each frame and the stream exits after RUN_FINISHED', async () => {
         const onChunk = vi.fn();
         const events = [
-            {event: INIT, data: JSON.stringify({id: 'chat-1'})},
-            {event: CHUNK, data: JSON.stringify({content: 'hi'})},
-            {event: DONE, data: JSON.stringify({id: 'chat-1'})},
+            runStartedFrame(),
+            agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: 'hi'}),
+            runFinishedFrame({id: 'chat-1'}),
         ];
 
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
@@ -570,11 +679,11 @@ describe('chatStream', () => {
         expect(onChunk).toHaveBeenCalledTimes(3);
     });
 
-    it('done event triggers break before stream body closes', async () => {
+    it('RUN_FINISHED stops reading before the stream body closes', async () => {
         const onChunk = vi.fn();
         const events = [
-            {event: DONE, data: JSON.stringify({id: 'chat-1'})},
-            {event: CHUNK, data: JSON.stringify({content: 'should not reach'})},
+            runFinishedFrame({id: 'chat-1'}),
+            agUiFrame(TEXT_MESSAGE_CONTENT, {messageId: 'wire-1', delta: 'should not reach'}),
         ];
 
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
@@ -584,6 +693,38 @@ describe('chatStream', () => {
 
         expect(onChunk).toHaveBeenCalledTimes(1);
         expect(onChunk).toHaveBeenCalledWith(events[0]);
+    });
+
+    it('RUN_ERROR stops reading — no RUN_FINISHED follows it', async () => {
+        const onChunk = vi.fn();
+        const events = [
+            agUiFrame(RUN_ERROR, {message: 'boom', code: 'internal'}),
+            runFinishedFrame({id: 'chat-1'}),
+        ];
+
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator(events));
+
+        await chatService.chatStream('hello', null, {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps reading across an elicitation — the turn continues on the same connection', async () => {
+        const onChunk = vi.fn();
+        const events = [
+            agUiFrame(TOOL_CALL_START, {toolCallId: 'elicitation-1', toolCallName: 'elicitation'}),
+            elicitationArgsFrame({elicitationId: 'elicitation-1', chatId: 'chat-1'}),
+            agUiFrame(TOOL_CALL_END, {toolCallId: 'elicitation-1'}),
+            runFinishedFrame({id: 'chat-1'}),
+        ];
+
+        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
+        parseSseStream.mockImplementation(makeSseAsyncGenerator(events));
+
+        await chatService.chatStream('hello', null, {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(4);
     });
 
     it('server error on open — throws streaming failed error', async () => {
@@ -599,26 +740,9 @@ describe('chatStream', () => {
         await expect(chatService.chatStream('hello', null, {})).rejects.toMatchObject({name: 'AbortError'});
     });
 
-    it('INIT event sets chat ID and onChunk receives it', async () => {
-        const onChunk = vi.fn();
-        const initEvent = {event: INIT, data: JSON.stringify({id: 'abc'})};
-
-        vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            initEvent,
-            {event: DONE, data: JSON.stringify({id: 'abc'})},
-        ]));
-
-        await chatService.chatStream('hello', null, {onChunk});
-
-        expect(onChunk).toHaveBeenCalledWith(initEvent);
-    });
-
     it('null chatId → POST to streamingChatsUri/users/userId', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: DONE, data: JSON.stringify({id: 'c1'})},
-        ]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([runFinishedFrame({id: 'c1'})]));
 
         await chatService.chatStream('hello', null, {});
 
@@ -629,9 +753,7 @@ describe('chatStream', () => {
 
     it('existing chatId → PUT to streamingChatsUri/chatId/users/userId', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: DONE, data: JSON.stringify({id: 'existing'})},
-        ]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([runFinishedFrame({id: 'existing'})]));
 
         await chatService.chatStream('hello', 'existing', {});
 
@@ -642,9 +764,7 @@ describe('chatStream', () => {
 
     it('string message → body normalized to { chatMessage: string }', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: DONE, data: JSON.stringify({id: 'c1'})},
-        ]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([runFinishedFrame({id: 'c1'})]));
 
         await chatService.chatStream('hello', null, {});
 
@@ -654,9 +774,7 @@ describe('chatStream', () => {
 
     it('object message → body passed through unchanged', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: DONE, data: JSON.stringify({id: 'c1'})},
-        ]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([runFinishedFrame({id: 'c1'})]));
 
         await chatService.chatStream({chatMessage: 'from object'}, null, {});
 
@@ -666,9 +784,7 @@ describe('chatStream', () => {
 
     it('object message with attachmentIds → passed through unchanged', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: true, body: {} });
-        parseSseStream.mockImplementation(makeSseAsyncGenerator([
-            {event: DONE, data: JSON.stringify({id: 'c1'})},
-        ]));
+        parseSseStream.mockImplementation(makeSseAsyncGenerator([runFinishedFrame({id: 'c1'})]));
 
         await chatService.chatStream({chatMessage: 'look', attachmentIds: ['attachment-1', 'attachment-2']}, null, {});
 
@@ -677,130 +793,6 @@ describe('chatStream', () => {
             chatMessage: 'look',
             attachmentIds: ['attachment-1', 'attachment-2'],
         });
-    });
-});
-
-describe('handleStreamChunk INIT messageId', () => {
-    function makeHandlers(overrides = {}) {
-        return {
-            activeElicitation: null,
-            chatId: null,
-            appendToLastAIMessage: vi.fn(),
-            appendNotificationMessage: vi.fn(),
-            ensureChatIdFromResponse: vi.fn(),
-            finalizeLastAIMessage: vi.fn(),
-            setActiveElicitation: vi.fn(),
-            setElicitationSubmitting: vi.fn(),
-            setElicitationValues: vi.fn(),
-            setError: vi.fn(),
-            ...overrides,
-        };
-    }
-
-    it('calls adoptMessageId with the messageId from the init frame', () => {
-        const adoptMessageId = vi.fn();
-        const handlers = makeHandlers({adoptMessageId});
-
-        chatService.handleStreamChunk(
-            {event: INIT, data: JSON.stringify({id: 'chat-1', messageId: 'msg-1'})},
-            handlers
-        );
-
-        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalledWith({id: 'chat-1', messageId: 'msg-1'});
-        expect(adoptMessageId).toHaveBeenCalledWith('msg-1');
-    });
-
-    it('passes undefined to adoptMessageId when the init frame carries no messageId', () => {
-        const adoptMessageId = vi.fn();
-
-        chatService.handleStreamChunk(
-            {event: INIT, data: JSON.stringify({id: 'chat-1'})},
-            makeHandlers({adoptMessageId})
-        );
-
-        expect(adoptMessageId).toHaveBeenCalledWith(undefined);
-    });
-
-    it('does not throw when no adoptMessageId handler is supplied', () => {
-        const handlers = makeHandlers();
-
-        expect(() => chatService.handleStreamChunk(
-            {event: INIT, data: JSON.stringify({id: 'chat-1', messageId: 'msg-1'})},
-            handlers
-        )).not.toThrow();
-
-        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalled();
-    });
-
-    it('accepts an init frame carrying chatId instead of id', () => {
-        const handlers = makeHandlers();
-
-        chatService.handleStreamChunk(
-            {event: INIT, data: JSON.stringify({chatId: 'chat-1', messageId: 'msg-1'})},
-            handlers
-        );
-
-        expect(handlers.ensureChatIdFromResponse).toHaveBeenCalledWith({chatId: 'chat-1', messageId: 'msg-1'});
-    });
-});
-
-describe('error frame shapes', () => {
-    function makeHandlers(overrides = {}) {
-        return {
-            appendNotificationMessage: vi.fn(),
-            ensureChatIdFromResponse: vi.fn(),
-            finalizeLastAIMessage: vi.fn(),
-            appendToLastAIMessage: vi.fn(),
-            setActiveElicitation: vi.fn(),
-            setElicitationSubmitting: vi.fn(),
-            setElicitationValues: vi.fn(),
-            setError: vi.fn(),
-            ...overrides,
-        };
-    }
-
-    it('surfaces a chat error carrying content', () => {
-        const handlers = makeHandlers();
-
-        chatService.handleStreamChunk(
-            {event: ERROR, data: JSON.stringify({content: 'the model refused'})},
-            handlers
-        );
-
-        expect(handlers.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the model refused'}));
-    });
-
-    it('surfaces an image-generation failure carrying code and message', () => {
-        const handlers = makeHandlers();
-
-        chatService.handleStreamChunk(
-            {event: ERROR, data: JSON.stringify({code: 'GENERATION_TIMEOUT', message: 'image generation timed out'})},
-            handlers
-        );
-
-        expect(handlers.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'image generation timed out'}));
-    });
-
-    it('prefers content when a frame somehow carries both', () => {
-        const handlers = makeHandlers();
-
-        chatService.handleStreamChunk(
-            {event: ERROR, data: JSON.stringify({content: 'the real one', message: 'the other one'})},
-            handlers
-        );
-
-        expect(handlers.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the real one'}));
-    });
-
-    it('stays quiet when neither field carries text', () => {
-        const handlers = makeHandlers();
-
-        chatService.handleStreamChunk(
-            {event: ERROR, data: JSON.stringify({code: 'GENERATION_TIMEOUT'})},
-            handlers
-        );
-
-        expect(handlers.setError).not.toHaveBeenCalled();
     });
 });
 
@@ -825,7 +817,7 @@ describe('chatStreamResume', () => {
 
     it('requests the resume endpoint with the cursor as an opaque header', async () => {
         parseSseStream.mockImplementation(async function* () {
-            yield {event: DONE, id: '1754062831270-0', data: '{}'};
+            yield {event: RUN_FINISHED, id: '1754062831270-0', data: '{}'};
         });
         fetch.mockResolvedValue(makeResponse(200));
 
@@ -841,9 +833,18 @@ describe('chatStreamResume', () => {
         expect(requestInit.headers.Authorization).toBe('Bearer mock-access-token');
     });
 
+    /* The id can come straight from the route param, so dot segments must not reach the URL parser. */
+    it('percent-encodes the chat id in the resume path', async () => {
+        fetch.mockResolvedValue(makeResponse(204, {body: null}));
+
+        await chatService.chatStreamResume('../admin', '1754062831251-1', {});
+
+        expect(fetch.mock.calls[0][0]).toBe('https://api.example.com/stream/..%2Fadmin/users/mock-user-id/stream');
+    });
+
     it('sends the from-the-beginning sentinel when there is no cursor', async () => {
         parseSseStream.mockImplementation(async function* () {
-            yield {event: DONE, id: '1754062831270-0', data: '{}'};
+            yield {event: RUN_FINISHED, id: '1754062831270-0', data: '{}'};
         });
         fetch.mockResolvedValue(makeResponse(200));
 
@@ -854,9 +855,9 @@ describe('chatStreamResume', () => {
 
     it('routes replayed frames through onChunk and stops at the terminal frame', async () => {
         parseSseStream.mockImplementation(async function* () {
-            yield {event: CHUNK, id: '1754062831260-0', data: '{"content":"rest"}'};
-            yield {event: DONE, id: '1754062831270-0', data: '{}'};
-            yield {event: CHUNK, id: '1754062831280-0', data: '{"content":"never"}'};
+            yield {event: TEXT_MESSAGE_CONTENT, id: '1754062831260-0', data: '{"delta":"rest"}'};
+            yield {event: RUN_FINISHED, id: '1754062831270-0', data: '{}'};
+            yield {event: TEXT_MESSAGE_CONTENT, id: '1754062831280-0', data: '{"delta":"never"}'};
         });
         fetch.mockResolvedValue(makeResponse(200));
 
@@ -864,7 +865,20 @@ describe('chatStreamResume', () => {
         await chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk});
 
         expect(onChunk).toHaveBeenCalledTimes(2);
-        expect(onChunk.mock.calls[1][0].event).toBe(DONE);
+        expect(onChunk.mock.calls[1][0].event).toBe(RUN_FINISHED);
+    });
+
+    it('stops at RUN_ERROR as well', async () => {
+        parseSseStream.mockImplementation(async function* () {
+            yield {event: RUN_ERROR, id: '1754062831270-0', data: '{"message":"boom"}'};
+            yield {event: TEXT_MESSAGE_CONTENT, id: '1754062831280-0', data: '{"delta":"never"}'};
+        });
+        fetch.mockResolvedValue(makeResponse(200));
+
+        const onChunk = vi.fn();
+        await chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk});
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
     });
 
     it('reports 204 as nothing left to replay', async () => {

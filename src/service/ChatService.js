@@ -2,18 +2,28 @@ import apiClient from '../client/ApiClient.js';
 import { parseSseStream } from '../client/parseSseStream.js';
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
-import {getProgressNotificationTextFromRawData} from './ProgressNotificationService.js';
+import {getProgressNotificationText} from './ProgressNotificationService.js';
 import {normalizeGeneratedImage} from './ImageGenerationService.js';
 import {SYSTEM as SYSTEM_MESSAGE_TYPE} from '../chat/message/ChatMessage.jsx';
 
-export const CHUNK = "chunk";
-export const MESSAGE = "message";
-export const DONE = "done";
-export const INIT = "init";
-export const ELICITATION = "elicitation";
-export const ERROR = "error";
-export const IMAGE = "image";
-export const ATTACHMENT = "attachment";
+export const RUN_STARTED = "RUN_STARTED";
+export const RUN_FINISHED = "RUN_FINISHED";
+export const RUN_ERROR = "RUN_ERROR";
+export const TEXT_MESSAGE_START = "TEXT_MESSAGE_START";
+export const TEXT_MESSAGE_CONTENT = "TEXT_MESSAGE_CONTENT";
+export const TEXT_MESSAGE_END = "TEXT_MESSAGE_END";
+export const TOOL_CALL_START = "TOOL_CALL_START";
+export const TOOL_CALL_ARGS = "TOOL_CALL_ARGS";
+export const TOOL_CALL_END = "TOOL_CALL_END";
+export const CUSTOM = "CUSTOM";
+
+export const CUSTOM_PROGRESS = "progress";
+export const CUSTOM_ATTACHMENT = "attachment";
+export const CUSTOM_IMAGE = "image";
+export const CUSTOM_FAILURE = "failure";
+export const CUSTOM_CANCEL = "cancel";
+
+export const TERMINAL_RUN_EVENTS = [RUN_FINISHED, RUN_ERROR];
 
 /* Outcomes of a resume attempt, mapped from the status codes the resume endpoint decides up front. */
 export const RESUME_STREAMED = "streamed";
@@ -88,170 +98,232 @@ export function extractGeneratedImages(payload) {
         .filter((generatedImage) => !!generatedImage.imageId);
 }
 
-const chatService = {
-    // Handle streaming chunks including SSE frames for chunk/done/elicitation
-    handleStreamChunk: (eventPayload, {
-        activeElicitation,
-        chatId,
-        appendToLastAIMessage,
-        appendNotificationMessage,
-        ensureChatIdFromResponse,
-        finalizeLastAIMessage,
-        stopStreamingLastAIMessage,
-        appendSystemMessage,
-        isCancelling,
-        setActiveElicitation,
-        setElicitationSubmitting,
-        setElicitationValues,
-        setError,
-        adoptMessageId,
-        attachGeneratedImages,
-        updateAttachmentStatus,
-    }) => {
-        const progressNotificationText = getProgressNotificationTextFromRawData(eventPayload?.data);
+/*
+ * The persisted USER row is carried on RUN_STARTED as the run's input. Read from the end so a
+ * run whose input also replays earlier turns still yields the message this turn persisted.
+ */
+export function findRunStartedUserMessageId(runStartedData) {
+    const inputMessages = Array.isArray(runStartedData?.input?.messages) ? runStartedData.input.messages : [];
 
-        if (progressNotificationText) {
-            appendNotificationMessage(progressNotificationText);
+    for (let messageIndex = inputMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+        if (inputMessages[messageIndex]?.role === 'user') {
+            return inputMessages[messageIndex].id ?? null;
+        }
+    }
+
+    return null;
+}
+
+const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
+
+function surfaceErrorText(errorText, setError) {
+    if (typeof errorText === 'string' && errorText.length > 0) {
+        setError(new Error(errorText));
+    }
+}
+
+/*
+ * A failure carries the old error payload unchanged: chat errors put the text in `content`,
+ * image-generation failures in `message` next to a `code`.
+ */
+function readFailureText(failureValue) {
+    if (typeof failureValue === 'string') {
+        return failureValue;
+    }
+
+    if (typeof failureValue?.content === 'string' && failureValue.content.length > 0) {
+        return failureValue.content;
+    }
+
+    return failureValue?.message;
+}
+
+function handleRunStarted(runStartedData, {ensureChatIdFromResponse, adoptMessageId}) {
+    ensureChatIdFromResponse({chatId: runStartedData?.threadId});
+    adoptMessageId?.(findRunStartedUserMessageId(runStartedData));
+}
+
+function handleTextMessageContent(textMessageData, {
+    activeElicitation,
+    isCancelling,
+    appendToLastAIMessage,
+    setActiveElicitation,
+    setElicitationSubmitting,
+}) {
+    const delta = textMessageData?.delta;
+
+    if (typeof delta !== 'string' || delta.length === 0) {
+        return;
+    }
+
+    /* Tokens racing the cancel signal are never persisted (docs/api.md), so they are not shown either. */
+    if (isCancelling) {
+        return;
+    }
+
+    if (activeElicitation) {
+        setActiveElicitation(null);
+        setElicitationSubmitting(false);
+    }
+
+    appendToLastAIMessage(delta);
+}
+
+function handleToolCallArgs(toolCallData, {chatId, setActiveElicitation, setElicitationSubmitting, setElicitationValues}) {
+    let elicitation;
+
+    try {
+        elicitation = JSON.parse(toolCallData?.delta);
+    } catch (parseError) {
+        console.error('[ChatService] Failed to parse tool call arguments:', parseError);
+        return;
+    }
+
+    /* The API names every elicitation's tool call after its elicitation id; any other tool call is not a form. */
+    const isElicitation = typeof elicitation === 'object'
+        && elicitation !== null
+        && !!toolCallData?.toolCallId
+        && elicitation.elicitationId === toolCallData.toolCallId;
+
+    if (!isElicitation) {
+        return;
+    }
+
+    setElicitationSubmitting(false);
+    setActiveElicitation(elicitation);
+
+    const properties = elicitation.requestedSchema?.properties || {};
+    const initialValues = {};
+
+    for (const propertyName of Object.keys(properties)) {
+        if (propertyName === 'chatId') {
+            initialValues[propertyName] = elicitation._meta?.chatId || elicitation.chatId || chatId || '';
+        } else {
+            initialValues[propertyName] = '';
+        }
+    }
+
+    setElicitationValues(initialValues);
+}
+
+function handleRunFinished(runFinishedData, {
+    ensureChatIdFromResponse,
+    finalizeLastAIMessage,
+    stopStreamingLastAIMessage,
+    appendSystemMessage,
+    attachGeneratedImages,
+    setActiveElicitation,
+    setElicitationSubmitting,
+}) {
+    if (runFinishedData) {
+        const result = runFinishedData.result;
+        ensureChatIdFromResponse(result);
+
+        const finishedImages = extractGeneratedImages(result?.message ?? result);
+
+        if (finishedImages.length > 0) {
+            attachGeneratedImages?.(finishedImages);
+        }
+
+        /*
+         * A cancelled turn persists a SYSTEM message ("Chat canceled.") rather than the partial
+         * answer. Finalizing with it would overwrite everything already streamed onto the AI
+         * bubble — stop the bubble as-is instead and append the notice next to it.
+         */
+        if (result?.message?.messageType === SYSTEM_MESSAGE_TYPE) {
+            stopStreamingLastAIMessage?.();
+            appendSystemMessage?.(result.message.message);
+        } else {
+            finalizeLastAIMessage(result);
+        }
+    } else {
+        stopStreamingLastAIMessage?.();
+    }
+
+    setActiveElicitation(null);
+    setElicitationSubmitting(false);
+}
+
+function handleRunError(runErrorData, {setError, stopStreamingLastAIMessage, setActiveElicitation, setElicitationSubmitting}) {
+    surfaceErrorText(runErrorData?.message, setError);
+    stopStreamingLastAIMessage?.();
+    setActiveElicitation(null);
+    setElicitationSubmitting(false);
+}
+
+function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, setError}) {
+    const customValue = customEventData?.value;
+
+    switch (customEventData?.name) {
+        case CUSTOM_PROGRESS: {
+            const progressNotificationText = getProgressNotificationText(customValue);
+
+            if (progressNotificationText) {
+                appendNotificationMessage(progressNotificationText);
+            }
+
+            break;
+        }
+        case CUSTOM_IMAGE: {
+            const streamedImages = extractGeneratedImages(customValue);
+
+            if (streamedImages.length > 0) {
+                attachGeneratedImages?.(streamedImages);
+            }
+
+            break;
+        }
+        case CUSTOM_ATTACHMENT:
+            updateAttachmentStatus?.(customValue);
+            break;
+        case CUSTOM_FAILURE:
+            surfaceErrorText(readFailureText(customValue), setError);
+            break;
+    }
+}
+
+const chatService = {
+    handleStreamChunk: (eventPayload, handlers) => {
+        const event = eventPayload?.event;
+
+        if (!ROUTED_EVENTS.has(event)) {
             return;
         }
 
-        const event = eventPayload.event;
+        let eventData = null;
+
+        try {
+            eventData = JSON.parse(eventPayload.data);
+        } catch (parseError) {
+            console.error(`[ChatService] Failed to parse ${event} payload:`, parseError);
+        }
+
+        if (event === RUN_FINISHED) {
+            handleRunFinished(eventData, handlers);
+            return;
+        }
+
+        if (event === RUN_ERROR) {
+            handleRunError(eventData, handlers);
+            return;
+        }
+
+        if (!eventData) {
+            return;
+        }
 
         switch (event) {
-            case ERROR:
-                try {
-                    const errorData = JSON.parse(eventPayload.data);
-
-                    /*
-                     * Chat errors carry `content`; image-generation failures carry `code` plus
-                     * `message`. Reading only `content` surfaced those as an empty error.
-                     */
-                    const content = typeof errorData?.content === 'string' && errorData.content.length > 0
-                        ? errorData.content
-                        : errorData?.message;
-
-                    if (typeof content === 'string' && content.length > 0) {
-                        setError(new Error(content));
-                    }
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse error payload:', parseError);
-                }
+            case RUN_STARTED:
+                handleRunStarted(eventData, handlers);
                 break;
-            case INIT:
-                try {
-                    const initData = JSON.parse(eventPayload.data);
-                    ensureChatIdFromResponse(initData);
-
-                    /* Optional, so callers routing elicitation frames need not supply it. */
-                    adoptMessageId?.(initData?.messageId);
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse init payload:', parseError);
-                }
+            case TEXT_MESSAGE_CONTENT:
+                handleTextMessageContent(eventData, handlers);
                 break;
-            case CHUNK:
-            case MESSAGE:
-                try {
-                    const parsedPayload = JSON.parse(eventPayload.data);
-                    const content = parsedPayload?.content;
-
-                    if (typeof content !== 'string' || content.length === 0) {
-                        break;
-                    }
-
-                    /*
-                     * The only content that can arrive after a cancel signal is the "Chat
-                     * canceled." notice itself (docs/api.md) — the `done` handler already
-                     * surfaces it as its own system bubble, so it must not also be glued onto
-                     * the visible answer here.
-                     */
-                    if (isCancelling) {
-                        break;
-                    }
-
-                    if (activeElicitation) {
-                        setActiveElicitation(null);
-                        setElicitationSubmitting(false);
-                    }
-
-                    appendToLastAIMessage(content);
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse chunk payload:', parseError);
-                }
+            case TOOL_CALL_ARGS:
+                handleToolCallArgs(eventData, handlers);
                 break;
-            case DONE:
-                try {
-                    const payloadData = JSON.parse(eventPayload.data);
-                    ensureChatIdFromResponse(payloadData);
-
-                    /* The reference can ride on `done` rather than its own frame. */
-                    const doneImages = extractGeneratedImages(payloadData?.message ?? payloadData);
-
-                    if (doneImages.length > 0) {
-                        attachGeneratedImages?.(doneImages);
-                    }
-
-                    /*
-                     * A cancelled turn persists a SYSTEM message ("Chat canceled.") rather than
-                     * the partial answer (docs/api.md, "Cancel a Streaming Turn"). Finalizing with
-                     * it would overwrite everything already streamed onto the AI bubble with that
-                     * short notice — stop the bubble as-is instead and append the notice next to it.
-                     */
-                    if (payloadData?.message?.messageType === SYSTEM_MESSAGE_TYPE) {
-                        stopStreamingLastAIMessage?.();
-                        appendSystemMessage?.(payloadData.message.message);
-                    } else {
-                        finalizeLastAIMessage(payloadData);
-                    }
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse done payload:', parseError);
-                }
-
-                setActiveElicitation(null);
-                setElicitationSubmitting(false);
-                break;
-            case IMAGE:
-                try {
-                    const imagePayload = JSON.parse(eventPayload.data);
-                    const streamedImages = extractGeneratedImages(imagePayload);
-
-                    if (streamedImages.length > 0) {
-                        attachGeneratedImages?.(streamedImages);
-                    }
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse image payload:', parseError);
-                }
-                break;
-            case ATTACHMENT:
-                try {
-                    const attachmentPayload = JSON.parse(eventPayload.data);
-                    updateAttachmentStatus?.(attachmentPayload);
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse attachment payload:', parseError);
-                }
-                break;
-            case ELICITATION:
-                try {
-                    const elicitation = JSON.parse(eventPayload.data);
-
-                    setElicitationSubmitting(false);
-                    setActiveElicitation(elicitation);
-
-                    const schema = elicitation.requestedSchema || {};
-                    const properties = schema.properties || {};
-                    const initialValues = {};
-
-                    for (const propertyName of Object.keys(properties)) {
-                        if (propertyName === 'chatId') {
-                            initialValues[propertyName] = elicitation?._meta?.chatId || elicitation?.chatId || chatId || '';
-                        } else {
-                            initialValues[propertyName] = '';
-                        }
-                    }
-
-                    setElicitationValues(initialValues);
-                } catch (parseError) {
-                    console.error('[ChatService] Failed to parse elicitation payload:', parseError);
-                }
+            case CUSTOM:
+                handleCustomEvent(eventData, handlers);
                 break;
         }
     },
@@ -284,7 +356,7 @@ const chatService = {
         for await (const event of parseSseStream(response.body)) {
             onChunk?.(event);
 
-            if (event.event === DONE || event.event === ERROR) {
+            if (TERMINAL_RUN_EVENTS.includes(event.event)) {
                 break;
             }
         }
@@ -299,7 +371,7 @@ const chatService = {
     async chatStreamResume(chatId, lastEventId, { onChunk, signal } = {}) {
         const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
-        const uri = `${config.streamingChatsUri}/${chatId}/users/${userId}/stream`;
+        const uri = `${config.streamingChatsUri}/${encodeURIComponent(chatId)}/users/${userId}/stream`;
 
         const requestHeaders = {
             Accept: 'text/event-stream',
@@ -316,7 +388,7 @@ const chatService = {
             headers: requestHeaders,
         });
 
-        /* The turn finished and we already hold every frame, `done` included. */
+        /* The turn finished and we already hold every frame, the terminal one included. */
         if (response.status === 204) {
             return RESUME_ALREADY_COMPLETE;
         }
@@ -345,7 +417,7 @@ const chatService = {
         for await (const event of parseSseStream(response.body)) {
             onChunk?.(event);
 
-            if (event.event === DONE || event.event === ERROR) {
+            if (TERMINAL_RUN_EVENTS.includes(event.event)) {
                 break;
             }
         }
@@ -359,8 +431,9 @@ const chatService = {
 
     /*
      * Fire-and-forget: a 202 only means the signal was sent, not that the turn stopped. The real
-     * outcome still arrives on the SSE stream the caller is already subscribed to, as a `chunk`
-     * carrying "Chat canceled." followed by `done`. A 204 means there was nothing to cancel.
+     * outcome still arrives on the SSE stream the caller is already subscribed to, as a `cancel`
+     * CUSTOM event followed by RUN_FINISHED carrying "Chat canceled.". A 204 means there was
+     * nothing to cancel.
      */
     cancelStream: async (chatId) => {
         const userId = await authService.getUserId();
@@ -383,7 +456,7 @@ const chatService = {
      * repeat is a 404 rather than a 204, so callers treat 404 as "already gone" instead of as a
      * failure.
      *
-     * It does not cancel a turn that is already streaming; the caller must wait for `done`.
+     * It does not cancel a turn that is already streaming; the caller must wait for RUN_FINISHED.
      */
     deleteChat: async (chatId) => {
         return await apiClient.delete(`${config.chatsUri}/${chatId}`);

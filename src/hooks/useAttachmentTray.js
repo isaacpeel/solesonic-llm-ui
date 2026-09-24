@@ -268,7 +268,7 @@ function useAttachmentTray({chatId} = {}) {
     }, []);
 
     /**
-     * Forgets the tray WITHOUT deleting server-side — once `init` arrives the ids belong
+     * Forgets the tray WITHOUT deleting server-side — once RUN_STARTED arrives the ids belong
      * to a message. The local object URLs are handed to the cache rather than revoked, so
      * the sent bubble keeps rendering them with no fetch.
      */

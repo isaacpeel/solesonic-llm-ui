@@ -1,8 +1,63 @@
 import {AI, SYSTEM} from "../chat/message/ChatMessage.jsx";
 import streamService from "./StreamService.js"
+import {generateMessageKey} from "../util/keys.js";
+
+/* randomUUID exists only in secure contexts; a plain-http deployment still needs an id. */
+function generateToolMessageId() {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+
+    return generateMessageKey('tool');
+}
 
 
 const DEFAULT_CONFIRMATION_ACTIONS = ['accept', 'cancel', 'decline'];
+
+const ELICITATION_ACTION_ALIASES = new Map([
+    ['accept', 'accept'],
+    ['yes', 'accept'],
+    ['confirm', 'accept'],
+    ['ok', 'accept'],
+    ['approve', 'accept'],
+    ['decline', 'decline'],
+    ['no', 'decline'],
+    ['reject', 'decline'],
+    ['deny', 'decline'],
+    ['cancel', 'cancel'],
+]);
+
+function toElicitationAction(fieldValue) {
+    if (typeof fieldValue !== 'string') {
+        return null;
+    }
+
+    return ELICITATION_ACTION_ALIASES.get(fieldValue.trim().toLowerCase()) ?? null;
+}
+
+/*
+ * The API reads only `action` from the answer. A schema that names its single choice something
+ * else (`confirm: 'no'`) still maps onto one; a submitted form with no such choice is an accept.
+ */
+export function resolveElicitationAction(fields) {
+    const explicitAction = toElicitationAction(fields.action);
+
+    if (explicitAction) {
+        return explicitAction;
+    }
+
+    const answeredFields = Object.entries(fields).filter(([fieldName]) => fieldName !== 'chatId');
+
+    if (answeredFields.length === 1) {
+        const singleChoiceAction = toElicitationAction(answeredFields[0][1]);
+
+        if (singleChoiceAction) {
+            return singleChoiceAction;
+        }
+    }
+
+    return 'accept';
+}
 
 const elicitationService = {
     normalizeElicitationSchema: (requestedSchema) => {
@@ -74,16 +129,17 @@ const elicitationService = {
         const elicitationId = activeElicitation.elicitationId;
         const chatId = activeElicitation.chatId;
 
-        const payloadToSend = {
-            ...fieldsToSend,
-            elicitationId,
-            chatId,
-        };
-
         setError(null);
 
         try {
-            await streamService.chatStreamElicitationResponse(payloadToSend, chatId, elicitationId, {
+            const toolMessage = {
+                id: generateToolMessageId(),
+                role: 'tool',
+                toolCallId: elicitationId,
+                content: JSON.stringify({...fieldsToSend, action: resolveElicitationAction(fieldsToSend)}),
+            };
+
+            await streamService.chatStreamElicitationResponse(toolMessage, chatId, elicitationId, {
                 onChunk: handleStreamChunk,
             });
         } catch (error) {

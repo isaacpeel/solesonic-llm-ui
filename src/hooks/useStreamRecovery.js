@@ -1,12 +1,11 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import log from 'loglevel';
 import chatService, {
-    DONE,
-    ERROR,
     RESUME_ALREADY_COMPLETE,
     RESUME_REJECTED,
     RESUME_STREAMED,
     RESUME_UNAVAILABLE,
+    TERMINAL_RUN_EVENTS,
 } from '../service/ChatService.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {isPageHidden, observePageResumed} from '../util/pageLifecycle.js';
@@ -20,7 +19,7 @@ const RECOVERY_POLL_DELAYS_MILLISECONDS = [0, 1000, 2000, 4000, 8000, 10000, 100
 
 /*
  * True once the server holds an assistant reply for this turn. Anchored on the user message id
- * adopted from `init` so a turn cannot be satisfied by an older reply already in the chat; with
+ * adopted from RUN_STARTED so a turn cannot be satisfied by an older reply already in the chat; with
  * no id — the frame never arrived — the last USER row is the best available anchor.
  */
 export function hasCompletedAssistantReply(chatDetails, userMessageId) {
@@ -120,7 +119,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
                 }
 
                 if (resumeOutcome === RESUME_STREAMED) {
-                    /* `done` already finalized the bubble; nothing further needed here. */
+                    /* The terminal frame already finalized the bubble; nothing further needed here. */
                     stopStreamingLastAIMessage();
                     finishRecovery(false);
 
@@ -256,7 +255,7 @@ async function attemptResume(recoveryChatId, lastEventId, onResumeChunk) {
     try {
         const resumeOutcome = await chatService.chatStreamResume(recoveryChatId, lastEventId, {
             onChunk: (rawEvent) => {
-                if (rawEvent?.event === DONE || rawEvent?.event === ERROR) {
+                if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
                     sawTerminalFrame = true;
                 }
 

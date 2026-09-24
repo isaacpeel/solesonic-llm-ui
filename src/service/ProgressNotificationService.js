@@ -9,19 +9,8 @@
  */
 const PROGRESS_PERCENTAGE_SUFFIX_PATTERN = /\s\d{1,3}%$/;
 
-export function getProgressNotificationTextFromRawData(rawData) {
-    if (typeof rawData !== 'string' || rawData.length === 0) {
-        return null;
-    }
-
-    try {
-        const parsedPayload = JSON.parse(rawData);
-        const progressParams = extractProgressParams(parsedPayload);
-
-        return formatProgressNotificationText(progressParams);
-    } catch {
-        return null;
-    }
+export function getProgressNotificationText(progressPayload) {
+    return formatProgressNotificationText(extractProgressParams(progressPayload));
 }
 
 /*
