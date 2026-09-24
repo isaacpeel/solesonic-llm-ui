@@ -1,6 +1,7 @@
 import "./ElicitationPrompt.css";
 import elicitationService from '../service/ElicitationService.js';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const SpinnerLabel = () => (
     <div className="inline-flex items-center text-xs text-slate-400">
@@ -41,8 +42,30 @@ const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPR
 
 const Dropdown = ({ options, value, onChange, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [panelPosition, setPanelPosition] = useState(null);
     const containerRef = useRef(null);
+    const panelRef = useRef(null);
     const triggerId = useId();
+
+    /*
+     * Measured from the trigger and portalled to `document.body` (position: fixed) rather than
+     * positioned absolute in place — the chat message list this renders inside is a scroll
+     * container, and an absolutely-positioned panel that pokes past its box still grows that
+     * container's scrollHeight even though it's fully inside the viewport, which shows an
+     * unwanted scrollbar. Same pattern as ChatDropActionMenu.jsx.
+     */
+    useLayoutEffect(() => {
+        if (!isOpen || !containerRef.current) {
+            return;
+        }
+
+        const triggerRect = containerRef.current.getBoundingClientRect();
+        setPanelPosition({
+            top: triggerRect.bottom + 4,
+            left: triggerRect.left,
+            width: triggerRect.width,
+        });
+    }, [isOpen]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -50,9 +73,11 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
         }
 
         const handleOutsideClick = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
-                setIsOpen(false);
+            if (containerRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+                return;
             }
+
+            setIsOpen(false);
         };
 
         const handleEscapeKey = (event) => {
@@ -61,12 +86,16 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
             }
         };
 
+        const closeOnScroll = () => setIsOpen(false);
+
         document.addEventListener('mousedown', handleOutsideClick);
         document.addEventListener('keydown', handleEscapeKey);
+        document.addEventListener('scroll', closeOnScroll, true);
 
         return () => {
             document.removeEventListener('mousedown', handleOutsideClick);
             document.removeEventListener('keydown', handleEscapeKey);
+            document.removeEventListener('scroll', closeOnScroll, true);
         };
     }, [isOpen]);
 
@@ -94,8 +123,18 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
                 </svg>
             </button>
 
-            {isOpen && (
-                <ul className="elicitation-dropdown-panel" role="listbox" aria-labelledby={triggerId}>
+            {isOpen && panelPosition && createPortal(
+                <ul
+                    ref={panelRef}
+                    className="elicitation-dropdown-panel"
+                    role="listbox"
+                    aria-labelledby={triggerId}
+                    style={{
+                        top: `${panelPosition.top}px`,
+                        left: `${panelPosition.left}px`,
+                        width: `${panelPosition.width}px`,
+                    }}
+                >
                     {options.map((option) => {
                         const isSelected = option.value === value;
                         return (
@@ -118,7 +157,8 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
                             </li>
                         );
                     })}
-                </ul>
+                </ul>,
+                document.body
             )}
         </div>
     );

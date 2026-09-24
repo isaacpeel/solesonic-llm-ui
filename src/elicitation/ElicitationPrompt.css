@@ -21,7 +21,7 @@
 }
 
 .elicitation-dropdown {
-    @apply relative mt-1 w-full;
+    @apply mt-1 w-full;
 }
 
 .elicitation-dropdown-trigger {
@@ -41,7 +41,7 @@
 }
 
 .elicitation-dropdown-panel {
-    @apply absolute z-20 mt-1.5 max-h-56 w-full overflow-auto rounded-lg border border-slate-600 bg-slate-800/95 py-1 shadow-lg shadow-black/30 backdrop-blur-sm;
+    @apply fixed z-20 max-h-56 overflow-auto rounded-lg border border-slate-600 bg-slate-800/95 py-1 shadow-lg shadow-black/30 backdrop-blur-sm;
     animation: elicitation-dropdown-panel-in 120ms ease-out;
 }
 
