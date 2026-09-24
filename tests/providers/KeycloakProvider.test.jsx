@@ -34,6 +34,12 @@ vi.mock('keycloak-js', () => ({
     }),
 }));
 
+vi.mock('../../src/util/pageLifecycle.js', () => ({
+    observePageResumed: vi.fn().mockReturnValue(() => {}),
+}));
+
+import {observePageResumed} from '../../src/util/pageLifecycle.js';
+
 const Consumer = () => {
     const {authenticated, loading, keycloak, login} = useKeycloak();
 
@@ -52,6 +58,7 @@ describe('KeycloakProvider', () => {
         lastKeycloakInstance = undefined;
         mockInit = undefined;
         vi.clearAllMocks();
+        observePageResumed.mockImplementation(() => () => {});
     });
 
     test('wires onAuthError to feed authService.authFailure', () => {
@@ -117,5 +124,75 @@ describe('KeycloakProvider', () => {
 
         expect(screen.getByTestId('authenticated').textContent).toBe('true');
         expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('Session expired'));
+    });
+
+    test('refreshes the token as soon as the page resumes from background', async () => {
+        mockInit = vi.fn().mockResolvedValue(true);
+
+        let notifyPageResumed = null;
+        observePageResumed.mockImplementation((callback) => {
+            notifyPageResumed = callback;
+
+            return () => {};
+        });
+
+        render(
+            <KeycloakProvider>
+                <Consumer/>
+            </KeycloakProvider>
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('authenticated').textContent).toBe('true');
+        });
+
+        await waitFor(() => {
+            expect(notifyPageResumed).toBeInstanceOf(Function);
+        });
+
+        lastKeycloakInstance.updateToken.mockClear();
+        lastKeycloakInstance.updateToken.mockResolvedValue(true);
+
+        await act(async () => {
+            notifyPageResumed();
+        });
+
+        expect(lastKeycloakInstance.updateToken).toHaveBeenCalledWith(30);
+    });
+
+    test('shows a session-expired toast once keycloak-js has already cleared the token (refresh token genuinely dead)', () => {
+        mockInit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+        render(
+            <KeycloakProvider>
+                <Consumer/>
+            </KeycloakProvider>
+        );
+
+        // keycloak-js only reaches this state - token cleared - after it decided the refresh
+        // token was truly rejected (400/invalid_grant), and it has already redirected to
+        // login itself via clearToken() at that point; this handler only owns the toast.
+        lastKeycloakInstance.token = undefined;
+        lastKeycloakInstance.onAuthRefreshError();
+
+        expect(toast.error).toHaveBeenCalledWith('Your session expired. Please sign in again.');
+    });
+
+    test('does not toast or redirect for a transient refresh failure that leaves the token intact', () => {
+        mockInit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+        render(
+            <KeycloakProvider>
+                <Consumer/>
+            </KeycloakProvider>
+        );
+
+        // token stays at its mock default ('fake-token') - keycloak-js only clears it on a
+        // genuine invalid_grant, so a network blip during any API call must not force a
+        // real login redirect (this was firing unconditionally before the fix).
+        lastKeycloakInstance.onAuthRefreshError();
+
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(lastKeycloakInstance.login).not.toHaveBeenCalled();
     });
 });
