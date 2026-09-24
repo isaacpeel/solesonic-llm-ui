@@ -13,6 +13,15 @@ import {TERMINAL_RUN_EVENTS} from './ChatService.js';
 const TRANSIENT_DISCONNECT_MESSAGE_PATTERN =
     /failed to fetch|load failed|network ?error|network connection|connection (lost|closed|reset|aborted)/i;
 
+/* Turns a caught transport failure into a sentence readable in the transcript, not a raw Error. */
+function describeStreamError(error) {
+    if (streamService.isTransientStreamDisconnect(error)) {
+        return 'Lost connection to the assistant. Please check your connection and try again.';
+    }
+
+    return error?.message || 'Something went wrong while talking to the assistant. Please try again.';
+}
+
 const streamService = {
     /*
      * True when a stream ended because the transport died rather than because the request was
@@ -88,9 +97,9 @@ const streamService = {
             clearTimeout(timeoutId);
         }
     },
-    handleStreamError(error, setError, setChatHistory) {
+    handleStreamError(error, appendErrorMessage, setChatHistory) {
         console.error('[StreamService] Streaming error:', error);
-        setError(error);
+        appendErrorMessage(describeStreamError(error));
 
         setChatHistory((previousHistory) => {
             const newHistory = [...previousHistory];

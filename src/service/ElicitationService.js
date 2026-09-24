@@ -93,7 +93,7 @@ const elicitationService = {
         setChatHistory,
         setActiveElicitation,
         setElicitationSubmitting,
-        setError,
+        appendErrorMessage,
         handleStreamChunk,
     }) => {
         
@@ -129,8 +129,6 @@ const elicitationService = {
         const elicitationId = activeElicitation.elicitationId;
         const chatId = activeElicitation.chatId;
 
-        setError(null);
-
         try {
             const toolMessage = {
                 id: generateToolMessageId(),
@@ -143,7 +141,7 @@ const elicitationService = {
                 onChunk: handleStreamChunk,
             });
         } catch (error) {
-            streamService.handleStreamError(error, setError, setChatHistory);
+            streamService.handleStreamError(error, appendErrorMessage, setChatHistory);
         }
 
         setElicitationSubmitting(false);

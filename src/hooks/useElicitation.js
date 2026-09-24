@@ -12,7 +12,7 @@ function useElicitation({
     setElicitationValues,
     elicitationSubmitting,
     setElicitationSubmitting,
-    setError,
+    appendErrorMessage,
 }) {
     useEffect(() => {
         if (!activeElicitation) {
@@ -51,7 +51,7 @@ function useElicitation({
             setChatHistory,
             setActiveElicitation,
             setElicitationSubmitting,
-            setError,
+            appendErrorMessage,
             handleStreamChunk,
         });
     };

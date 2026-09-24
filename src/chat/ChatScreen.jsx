@@ -1,7 +1,6 @@
 import {useCallback, useRef, useState, useEffect} from 'react';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import {toast} from 'react-toastify';
-import ConsoleErrors from "../common/ConsoleErrors";
 import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
@@ -61,7 +60,7 @@ function ChatScreen() {
         toast.error('That conversation no longer exists.');
     }, [clearOpenChat]);
 
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, appendSystemMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, appendSystemMessage, appendErrorMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
         onChatIdChangedExternally: () => {
             /*
              * The conversation on screen is being replaced — a sidebar pick, New Chat, a delete,
@@ -101,7 +100,7 @@ function ChatScreen() {
         lightboxInvokerRef.current = null;
     }, []);
 
-    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery, streamActive, stopChat} = useChatStream({
+    const {loading, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery, streamActive, stopChat} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
@@ -111,6 +110,7 @@ function ChatScreen() {
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
         appendSystemMessage,
+        appendErrorMessage,
         reloadChatHistory,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
@@ -164,7 +164,7 @@ function ChatScreen() {
         setElicitationValues,
         elicitationSubmitting,
         setElicitationSubmitting,
-        setError,
+        appendErrorMessage,
     });
 
     const trayStateClassName = attachmentTray.trayEntries.length > 0
@@ -173,8 +173,6 @@ function ChatScreen() {
 
     return (
         <div className={`chat-app${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
-            {error && <ConsoleErrors error={error}/>}
-
             <div className="chat-content" ref={scrollContainerRef}>
                 {chatHistory.map((entry) => (
                     <ChatMessage key={entry._key} message={entry} onExpandImage={openLightbox}/>

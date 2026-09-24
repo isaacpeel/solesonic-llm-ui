@@ -178,24 +178,36 @@ describe('chatStreamElicitationResponse', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleStreamError', () => {
-    it('calls setError with the error', () => {
-        const setError = vi.fn();
+    it('calls appendErrorMessage with a readable message', () => {
+        const appendErrorMessage = vi.fn();
         const setChatHistory = vi.fn();
         const error = new Error('stream failed');
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        streamService.handleStreamError(error, setError, setChatHistory);
+        streamService.handleStreamError(error, appendErrorMessage, setChatHistory);
 
-        expect(setError).toHaveBeenCalledWith(error);
+        expect(appendErrorMessage).toHaveBeenCalledWith('stream failed');
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('describes a transient disconnect in plain language rather than the raw error message', () => {
+        const appendErrorMessage = vi.fn();
+        const setChatHistory = vi.fn();
+        const disconnectError = new TypeError('Failed to fetch');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        streamService.handleStreamError(disconnectError, appendErrorMessage, setChatHistory);
+
+        expect(appendErrorMessage).toHaveBeenCalledWith('Lost connection to the assistant. Please check your connection and try again.');
         consoleErrorSpy.mockRestore();
     });
 
     it('removes an empty streaming AI message from the end of history', () => {
-        const setError = vi.fn();
+        const appendErrorMessage = vi.fn();
         const setChatHistory = vi.fn();
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        streamService.handleStreamError(new Error('fail'), setError, setChatHistory);
+        streamService.handleStreamError(new Error('fail'), appendErrorMessage, setChatHistory);
 
         const updater = setChatHistory.mock.calls[0][0];
         const history = [
@@ -210,11 +222,11 @@ describe('handleStreamError', () => {
     });
 
     it('marks a non-empty streaming AI message as not streaming', () => {
-        const setError = vi.fn();
+        const appendErrorMessage = vi.fn();
         const setChatHistory = vi.fn();
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        streamService.handleStreamError(new Error('fail'), setError, setChatHistory);
+        streamService.handleStreamError(new Error('fail'), appendErrorMessage, setChatHistory);
 
         const updater = setChatHistory.mock.calls[0][0];
         const history = [
@@ -228,11 +240,11 @@ describe('handleStreamError', () => {
     });
 
     it('leaves history unchanged when the last message is not AI', () => {
-        const setError = vi.fn();
+        const appendErrorMessage = vi.fn();
         const setChatHistory = vi.fn();
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        streamService.handleStreamError(new Error('fail'), setError, setChatHistory);
+        streamService.handleStreamError(new Error('fail'), appendErrorMessage, setChatHistory);
 
         const updater = setChatHistory.mock.calls[0][0];
         const history = [{type: 'USER', text: 'question', _key: 'u-1'}];
@@ -243,11 +255,11 @@ describe('handleStreamError', () => {
     });
 
     it('leaves history unchanged when history is empty', () => {
-        const setError = vi.fn();
+        const appendErrorMessage = vi.fn();
         const setChatHistory = vi.fn();
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        streamService.handleStreamError(new Error('fail'), setError, setChatHistory);
+        streamService.handleStreamError(new Error('fail'), appendErrorMessage, setChatHistory);
 
         const updater = setChatHistory.mock.calls[0][0];
         const result = updater([]);

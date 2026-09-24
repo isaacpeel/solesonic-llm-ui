@@ -18,7 +18,7 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
 
 import chatService from '../../src/service/ChatService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
-import {AI} from '../../src/chat/message/ChatMessage.jsx';
+import {AI, ERROR} from '../../src/chat/message/ChatMessage.jsx';
 
 describe('useChatHistory', () => {
     let sharedState;
@@ -152,19 +152,31 @@ describe('useChatHistory', () => {
     });
 
     /* Anything else is a transient failure; discarding the open chat over one would be wrong. */
-    it('does not report any other hydration failure as a missing chat', async () => {
+    it('does not report any other hydration failure as a missing chat, but does surface it inline', async () => {
         sharedState.chatId = 'chat-1';
         chatService.findChatDetails.mockRejectedValue(
             Object.assign(new Error('Server Error'), {status: 500}),
         );
 
         const onChatNotFound = vi.fn();
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         renderHook(() => useChatHistory({onChatNotFound}));
 
         await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1'));
 
         expect(onChatNotFound).not.toHaveBeenCalled();
+
+        await waitFor(() => {
+            const lastUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = lastUpdater([]);
+            expect(updatedHistory).toContainEqual(expect.objectContaining({
+                type: ERROR,
+                text: 'This conversation could not be loaded. Please try again.',
+            }));
+        });
+
+        consoleErrorSpy.mockRestore();
     });
 
     /*
@@ -977,6 +989,34 @@ describe('attachment-aware chat history', () => {
 
             result.current.appendSystemMessage('');
             result.current.appendSystemMessage(undefined);
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('appendErrorMessage', () => {
+        it('appends a new ERROR entry carrying the given text', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendErrorMessage('The model backend timed out.');
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [
+                {type: AI, text: 'partial answer', _key: 'ai-1', isStreaming: false},
+            ];
+            const updatedHistory = updater(previousHistory);
+
+            expect(updatedHistory).toHaveLength(2);
+            expect(updatedHistory[0]).toBe(previousHistory[0]);
+            expect(updatedHistory[1]).toMatchObject({type: ERROR, text: 'The model backend timed out.'});
+            expect(updatedHistory[1]._key).toBeTruthy();
+        });
+
+        it('does nothing for a blank or missing message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendErrorMessage('');
+            result.current.appendErrorMessage(undefined);
 
             expect(sharedState.setChatHistory).not.toHaveBeenCalled();
         });

@@ -3,11 +3,12 @@ import {useMemo} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+import {ExclamationTriangleIcon} from "@heroicons/react/20/solid";
 import {buildStreamingMarkdownDisplay} from "../../util/streamingMarkdown.js";
 import {renderLatexArrows} from "../../util/latexArrows.js";
 import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
 import MessageFooter from "./MessageFooter.jsx";
-import {USER, AI, SYSTEM} from "./ChatMessage.jsx";
+import {USER, AI, SYSTEM, ERROR} from "./ChatMessage.jsx";
 import "./ChatMessage.css";
 
 function ChatCard({message, children, onExpandImage}) {
@@ -39,10 +40,11 @@ function ChatCard({message, children, onExpandImage}) {
         [USER]: {bgColor: '#e0e0e0', textColor: '#000'},
         [AI]: {bgColor: '#4a4a4a', textColor: '#dedede'},
         [SYSTEM]: {bgColor: '#3b4d61', textColor: '#ffffff'},
+        [ERROR]: {bgColor: '#4a2323', textColor: '#ffd9d9'},
     }), []);
 
     const isElicitation = !!message.elicitationResponse;
-    const isError = !!message.isError;
+    const isError = message.type === ERROR || !!message.isError;
     const isStreaming = !!message.isStreaming;
     const isAIMessage = message.type === AI;
     const notificationLog = Array.isArray(message.notifications) ? message.notifications : [];
@@ -75,6 +77,13 @@ function ChatCard({message, children, onExpandImage}) {
     const cardRole = isError ? 'alert' : isInfo ? 'status' : undefined;
     const ariaLabel = isError ? 'Error message' : isInfo ? 'Information message' : undefined;
 
+    const errorHeader = isError ? (
+        <div className="message-error-header">
+            <ExclamationTriangleIcon className="message-error-icon" aria-hidden="true"/>
+            <span>Error</span>
+        </div>
+    ) : null;
+
     const card = (
         <div
             className={`message ${cardClassName}`}
@@ -83,6 +92,7 @@ function ChatCard({message, children, onExpandImage}) {
             aria-label={ariaLabel}
         >
             <div className="message-text">
+                {errorHeader}
                 {children}
                 {(displayText || showPlaceholder) && (
                     <div className="markdown-body">

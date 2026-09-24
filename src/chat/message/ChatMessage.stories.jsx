@@ -105,9 +105,8 @@ export const ErrorMessage = {
     args: {
         message: {
             _key: 'msg-error-1',
-            type: 'ASSISTANT',
+            type: 'ERROR',
             text: 'The model backend timed out. Please try again.',
-            isError: true,
         },
     },
 };

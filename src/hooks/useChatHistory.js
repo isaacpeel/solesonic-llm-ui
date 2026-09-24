@@ -6,7 +6,7 @@ import {
     appendProgressNotificationText,
     formatProgressNotificationText
 } from '../service/ProgressNotificationService.js';
-import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
+import {AI, ERROR, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
 
 function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
@@ -79,6 +79,33 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         });
     }, [chatId, setChatHistory]);
 
+    /*
+     * Appends a standalone ERROR bubble — every stream/turn failure lands here rather than in a
+     * page-level banner, so it reads inline at the point it happened. Purely client-side and
+     * ephemeral like the welcome message: the backend never persists an ERROR messageType, so
+     * this never comes back from `fetchFormattedChatMessages` on reload.
+     *
+     * Declared here, ahead of the hydration effect below that lists it as a dependency — a
+     * `useEffect` dependency array is evaluated immediately during render, unlike a reference
+     * inside an async callback, so this must exist before that point or the render throws a TDZ
+     * ReferenceError.
+     */
+    const appendErrorMessage = useCallback((text) => {
+        if (!text || typeof text !== 'string') {
+            return;
+        }
+
+        setChatHistory((previousHistory) => [
+            ...previousHistory,
+            {
+                type: ERROR,
+                text,
+                _key: generateMessageKey('error'),
+                timestamp: new Date().toISOString(),
+            },
+        ]);
+    }, [setChatHistory]);
+
     useEffect(() => {
         if (!chatId) {
             return;
@@ -128,12 +155,13 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
                 }
 
                 console.error('[useChatHistory] Failed to load chat details:', error);
+                appendErrorMessage('This conversation could not be loaded. Please try again.');
             });
 
         return () => {
             supersededByLaterChat = true;
         };
-    }, [chatId, reloadChatHistory]);
+    }, [chatId, reloadChatHistory, appendErrorMessage]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {
         setChatHistory((previousHistory) => {
@@ -481,6 +509,7 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
         appendSystemMessage,
+        appendErrorMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,

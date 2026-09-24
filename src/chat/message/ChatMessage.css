@@ -21,6 +21,10 @@
     justify-content: flex-start;
 }
 
+.chat-message-container.ERROR {
+    justify-content: flex-start;
+}
+
 .message {
     margin-top: 16px;
     max-width: 90%;
@@ -70,6 +74,31 @@
     background-color: #3b4d61;
     color: #ffffff;
     align-self: flex-start;
+}
+
+.message.ERROR {
+    background-color: #4a2323;
+    color: #ffd9d9;
+    align-self: flex-start;
+    border-left: 3px solid #eb5757;
+}
+
+.message-error-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #eb5757;
+    margin-bottom: 4px;
+}
+
+.message-error-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
 }
 
 .message-text {

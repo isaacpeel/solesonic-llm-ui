@@ -155,7 +155,7 @@ function makeCallbacks(overrides = {}) {
         setActiveElicitation: vi.fn(),
         setElicitationSubmitting: vi.fn(),
         setElicitationValues: vi.fn(),
-        setError: vi.fn(),
+        appendErrorMessage: vi.fn(),
         ...overrides,
     };
 }
@@ -192,7 +192,7 @@ function expectNoStreamHandlerCalled(callbacks) {
     expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
     expect(callbacks.appendSystemMessage).not.toHaveBeenCalled();
     expect(callbacks.setActiveElicitation).not.toHaveBeenCalled();
-    expect(callbacks.setError).not.toHaveBeenCalled();
+    expect(callbacks.appendErrorMessage).not.toHaveBeenCalled();
 }
 
 describe('handleStreamChunk', () => {
@@ -473,10 +473,8 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message: 'The model timed out.', code: 'timeout'}), callbacks);
 
-        expect(callbacks.setError).toHaveBeenCalledOnce();
-        const receivedError = callbacks.setError.mock.calls[0][0];
-        expect(receivedError).toBeInstanceOf(Error);
-        expect(receivedError.message).toBe('The model timed out.');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledOnce();
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('The model timed out.');
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
     });
 
@@ -506,7 +504,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {code: 'internal'}), callbacks);
 
-        expect(callbacks.setError).not.toHaveBeenCalled();
+        expect(callbacks.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('RUN_ERROR with malformed JSON logs and does not throw', () => {
@@ -514,7 +512,7 @@ describe('handleStreamChunk', () => {
         const callbacks = makeCallbacks();
 
         expect(() => chatService.handleStreamChunk({event: RUN_ERROR, data: 'not-json'}, callbacks)).not.toThrow();
-        expect(callbacks.setError).not.toHaveBeenCalled();
+        expect(callbacks.appendErrorMessage).not.toHaveBeenCalled();
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
     });
@@ -570,7 +568,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the model refused'}), callbacks);
 
-        expect(callbacks.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the model refused'}));
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the model refused');
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
         expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
     });
@@ -583,7 +581,7 @@ describe('handleStreamChunk', () => {
             callbacks,
         );
 
-        expect(callbacks.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'image generation timed out'}));
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('image generation timed out');
     });
 
     it('CUSTOM failure prefers content when both are present', () => {
@@ -591,7 +589,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the real one', message: 'the other one'}), callbacks);
 
-        expect(callbacks.setError).toHaveBeenCalledWith(expect.objectContaining({message: 'the real one'}));
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the real one');
     });
 
     it('CUSTOM failure stays quiet when it carries no text', () => {
@@ -599,7 +597,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {code: 'GENERATION_TIMEOUT'}), callbacks);
 
-        expect(callbacks.setError).not.toHaveBeenCalled();
+        expect(callbacks.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('CUSTOM cancel is a marker only — RUN_FINISHED carries the outcome', () => {

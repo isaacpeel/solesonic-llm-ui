@@ -30,7 +30,7 @@ describe('useElicitation', () => {
             setElicitationValues: vi.fn(),
             elicitationSubmitting: false,
             setElicitationSubmitting: vi.fn(),
-            setError: vi.fn(),
+            appendErrorMessage: vi.fn(),
         };
     });
 
@@ -97,7 +97,7 @@ describe('useElicitation', () => {
             setChatHistory: options.setChatHistory,
             setActiveElicitation: options.setActiveElicitation,
             setElicitationSubmitting: options.setElicitationSubmitting,
-            setError: options.setError,
+            appendErrorMessage: options.appendErrorMessage,
             handleStreamChunk: options.handleStreamChunk,
         });
     });

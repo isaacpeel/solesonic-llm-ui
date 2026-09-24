@@ -139,6 +139,7 @@ describe('abandoning the conversation mid-turn', () => {
             stopStreamingLastAIMessage: vi.fn(),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
+            appendErrorMessage: vi.fn(),
             activeElicitation: null,
             setActiveElicitation: vi.fn(),
             setElicitationSubmitting: vi.fn(),
@@ -175,7 +176,7 @@ describe('abandoning the conversation mid-turn', () => {
 
         /* An abort is a clean end, not a failure: no error surfaces and the turn stops loading. */
         await waitFor(() => expect(result.current.loading).toBe(false));
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
     });
 
@@ -207,6 +208,7 @@ describe('useChatStream', () => {
             stopStreamingLastAIMessage: vi.fn(),
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
+            appendErrorMessage: vi.fn(),
             activeElicitation: null,
             setActiveElicitation: vi.fn(),
             setElicitationSubmitting: vi.fn(),
@@ -223,7 +225,6 @@ describe('useChatStream', () => {
         const {result} = renderHook(() => useChatStream(options));
 
         expect(result.current.loading).toBe(false);
-        expect(result.current.error).toBe(null);
         expect(result.current.inputValue).toBe('');
     });
 
@@ -291,7 +292,7 @@ describe('useChatStream', () => {
         });
 
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
-        expect(result.current.error).toBe(null);
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('handleSubmit error', async () => {
@@ -370,7 +371,7 @@ describe('useChatStream', () => {
             setActiveElicitation: options.setActiveElicitation,
             setElicitationSubmitting: options.setElicitationSubmitting,
             setElicitationValues: options.setElicitationValues,
-            setError: expect.any(Function),
+            appendErrorMessage: options.appendErrorMessage,
             adoptMessageId: options.adoptMessageIdForLastUserMessage,
         });
     });
@@ -405,6 +406,7 @@ describe('useChatStream with attachments', () => {
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             adoptMessageIdForLastUserMessage: vi.fn(),
+            appendErrorMessage: vi.fn(),
             activeElicitation: null,
             setActiveElicitation: vi.fn(),
             setElicitationSubmitting: vi.fn(),
@@ -508,7 +510,7 @@ describe('useChatStream with attachments', () => {
         expect(options.attachmentTray.restoreTray).toHaveBeenCalledWith(settledEntries);
         expect(options.attachmentTray.clearTray).not.toHaveBeenCalled();
         expect(result.current.inputValue).toBe('look at this');
-        expect(result.current.error).toBeInstanceOf(Error);
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('restored'));
 
         const droppedHistory = setChatHistory.mock.calls[setChatHistory.mock.calls.length - 1][0];
         expect(droppedHistory).toEqual([]);
@@ -525,7 +527,7 @@ describe('useChatStream with attachments', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, '/agile look at this');
 
-        expect(result.current.error.message).toContain('re-select the command');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('re-select the command'));
     });
 
     /* The continue-chat PUT path may legitimately never emit `init`; `done` is what matters. */
@@ -539,7 +541,7 @@ describe('useChatStream with attachments', () => {
 
         expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
         expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('reports a stream that dies after init, without offering the spent ids for retry', async () => {
@@ -554,8 +556,7 @@ describe('useChatStream with attachments', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'look at this');
 
-        expect(result.current.error).toBeInstanceOf(Error);
-        expect(result.current.error.message).toContain('stopped before it finished');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('stopped before it finished'));
         expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
         expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
         expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
@@ -581,8 +582,7 @@ describe('useChatStream with attachments', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'plain message');
 
-        expect(result.current.error).toBeInstanceOf(Error);
-        expect(result.current.error.message).toContain('stopped before it finished');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('stopped before it finished'));
         expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
     });
 
@@ -637,7 +637,7 @@ describe('useChatStream with attachments', () => {
         await submitWith(result, 'look at this');
 
         expect(chatService.chatStream.mock.calls[0][0].attachmentIds).toEqual(['attachment-1']);
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
         expect(result.current.attachmentNotice).toContain('screenshot.png');
         expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
     });
@@ -737,6 +737,7 @@ describe('backgrounded disconnect recovery', () => {
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             adoptMessageIdForLastUserMessage: vi.fn(),
+            appendErrorMessage: vi.fn(),
             activeElicitation: null,
             setActiveElicitation: vi.fn(),
             setElicitationSubmitting: vi.fn(),
@@ -772,7 +773,7 @@ describe('backgrounded disconnect recovery', () => {
         await submitWith(result, 'tell me about the thing');
 
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
         expect(chatService.chatStreamResume).toHaveBeenCalled();
         /* The turn is bound, so the ids are spent and the tray must not come back. */
         expect(options.attachmentTray.clearTray).toHaveBeenCalled();
@@ -787,7 +788,7 @@ describe('backgrounded disconnect recovery', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'tell me about the thing');
 
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
         expect(chatService.chatStreamResume).toHaveBeenCalled();
     });
 
@@ -813,7 +814,7 @@ describe('backgrounded disconnect recovery', () => {
         expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
         /* Cleared before the reload, so the merge lets the server's text win. */
         expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('resumes from the last event id it saw, verbatim', async () => {
@@ -859,7 +860,7 @@ describe('backgrounded disconnect recovery', () => {
         const [resumedChatId, resumedCursor] = chatService.chatStreamResume.mock.calls[0];
         expect(resumedChatId).toBe('chat-1');
         expect(resumedCursor).toBe('1754062831260-0');
-        expect(result.current.error).toBeNull();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('still reports a genuine network failure when the page was never backgrounded', async () => {
@@ -886,7 +887,7 @@ describe('backgrounded disconnect recovery', () => {
         await submitWith(result, 'look at this');
 
         expect(options.attachmentTray.restoreTray).toHaveBeenCalled();
-        expect(result.current.error).not.toBeNull();
+        expect(options.appendErrorMessage).toHaveBeenCalled();
     });
 
     it('leaves an aborted stream alone', async () => {
@@ -944,6 +945,7 @@ describe('stopping an active stream', () => {
             finalizeLastAIMessage: vi.fn(),
             ensureChatIdFromResponse: vi.fn(),
             adoptMessageIdForLastUserMessage: vi.fn(),
+            appendErrorMessage: vi.fn(),
             activeElicitation: null,
             setActiveElicitation: vi.fn(),
             setElicitationSubmitting: vi.fn(),

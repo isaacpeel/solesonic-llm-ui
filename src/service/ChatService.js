@@ -116,9 +116,9 @@ export function findRunStartedUserMessageId(runStartedData) {
 
 const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
 
-function surfaceErrorText(errorText, setError) {
+function surfaceErrorText(errorText, appendErrorMessage) {
     if (typeof errorText === 'string' && errorText.length > 0) {
-        setError(new Error(errorText));
+        appendErrorMessage(errorText);
     }
 }
 
@@ -244,14 +244,14 @@ function handleRunFinished(runFinishedData, {
     setElicitationSubmitting(false);
 }
 
-function handleRunError(runErrorData, {setError, stopStreamingLastAIMessage, setActiveElicitation, setElicitationSubmitting}) {
-    surfaceErrorText(runErrorData?.message, setError);
+function handleRunError(runErrorData, {appendErrorMessage, stopStreamingLastAIMessage, setActiveElicitation, setElicitationSubmitting}) {
+    surfaceErrorText(runErrorData?.message, appendErrorMessage);
     stopStreamingLastAIMessage?.();
     setActiveElicitation(null);
     setElicitationSubmitting(false);
 }
 
-function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, setError}) {
+function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, appendErrorMessage}) {
     const customValue = customEventData?.value;
 
     switch (customEventData?.name) {
@@ -277,7 +277,7 @@ function handleCustomEvent(customEventData, {appendNotificationMessage, attachGe
             updateAttachmentStatus?.(customValue);
             break;
         case CUSTOM_FAILURE:
-            surfaceErrorText(readFailureText(customValue), setError);
+            surfaceErrorText(readFailureText(customValue), appendErrorMessage);
             break;
     }
 }

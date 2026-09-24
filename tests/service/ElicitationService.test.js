@@ -99,7 +99,7 @@ function makeSubmitArgs(overrides = {}) {
         setChatHistory: vi.fn(),
         setActiveElicitation: vi.fn(),
         setElicitationSubmitting: vi.fn(),
-        setError: vi.fn(),
+        appendErrorMessage: vi.fn(),
         handleStreamChunk: vi.fn(),
         ...overrides,
     };
@@ -312,7 +312,7 @@ describe('handleElicitationSubmit stream outcome', () => {
 
         expect(streamService.handleStreamError).toHaveBeenCalledWith(
             streamError,
-            args.setError,
+            args.appendErrorMessage,
             args.setChatHistory,
         );
         const calls = args.setElicitationSubmitting.mock.calls.map(call => call[0]);

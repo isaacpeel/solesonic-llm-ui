@@ -44,6 +44,24 @@ describe('ChatMessage', () => {
             const {container} = render(<ChatMessage message={buildMessage({type: 'SYSTEM', text: 'System info'})}/>);
             expect(container.querySelector('[role="status"]')).not.toBeNull();
         });
+
+        it('renders ERROR message with ERROR type class', () => {
+            const {container} = render(<ChatMessage message={buildMessage({type: 'ERROR', text: 'The model timed out.'})}/>);
+            expect(container.querySelector('.chat-message-container.ERROR')).not.toBeNull();
+        });
+
+        it('marks ERROR messages with the alert role', () => {
+            const {container} = render(<ChatMessage message={buildMessage({type: 'ERROR', text: 'The model timed out.'})}/>);
+            const alertElement = container.querySelector('[role="alert"]');
+            expect(alertElement).not.toBeNull();
+            expect(alertElement.getAttribute('aria-label')).toBe('Error message');
+        });
+
+        it('renders an error header alongside the message text', () => {
+            const {container} = render(<ChatMessage message={buildMessage({type: 'ERROR', text: 'The model timed out.'})}/>);
+            expect(container.querySelector('.message-error-header')).not.toBeNull();
+            expect(screen.getByText('The model timed out.')).toBeDefined();
+        });
     });
 
     describe('placeholder', () => {

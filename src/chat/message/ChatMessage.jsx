@@ -9,6 +9,7 @@ const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
 export const USER = "USER";
 export const AI = "ASSISTANT";
 export const SYSTEM = "SYSTEM";
+export const ERROR = "ERROR";
 
 function toArray(value) {
     return Array.isArray(value) ? value : [];

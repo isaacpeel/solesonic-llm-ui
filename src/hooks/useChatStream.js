@@ -31,6 +31,7 @@ function useChatStream({
     attachGeneratedImagesToLastAIMessage,
     stopStreamingLastAIMessage,
     appendSystemMessage,
+    appendErrorMessage,
     reloadChatHistory,
     finalizeLastAIMessage,
     ensureChatIdFromResponse,
@@ -47,7 +48,6 @@ function useChatStream({
     const {chatInputRef} = useSharedData();
 
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
     const [inputValue, setInputValue] = useState('');
     const [attachmentNotice, setAttachmentNotice] = useState(null);
     const controller = useRef(null);
@@ -136,7 +136,7 @@ function useChatStream({
             setActiveElicitation,
             setElicitationSubmitting,
             setElicitationValues,
-            setError,
+            appendErrorMessage,
             adoptMessageId: adoptMessageIdForLastUserMessage,
             attachGeneratedImages: attachGeneratedImagesToLastAIMessage,
             updateAttachmentStatus,
@@ -156,7 +156,7 @@ function useChatStream({
         setActiveElicitation,
         setElicitationSubmitting,
         setElicitationValues,
-        setError,
+        appendErrorMessage,
     ]);
 
     /*
@@ -247,7 +247,6 @@ function useChatStream({
             chatInputRef.current.style.height = 'auto';
         }
 
-        setError(null);
         setAttachmentNotice(null);
 
         /* A new turn supersedes any recovery still waiting on the previous one. */
@@ -360,11 +359,11 @@ function useChatStream({
                 setChatHistory(updatedHistory);
                 setInputValue(submittedMessageText);
                 attachmentTray?.restoreTray(settledEntries);
-                setError(new Error(
+                appendErrorMessage(
                     selectedCommand
                         ? 'Your message could not be sent. Your text and attachments have been restored — please re-select the command and try again.'
                         : 'Your message could not be sent. Your text and attachments have been restored — please try again.'
-                ));
+                );
 
                 return;
             }
@@ -389,7 +388,7 @@ function useChatStream({
                 }
 
                 stopStreamingLastAIMessage?.();
-                setError(new Error('The response stopped before it finished. Your message was sent — ask again to see the rest.'));
+                appendErrorMessage('The response stopped before it finished. Your message was sent — ask again to see the rest.');
 
                 return;
             }
@@ -428,7 +427,7 @@ function useChatStream({
                 return;
             }
 
-            streamService.handleStreamError(caughtError, setError, setChatHistory);
+            streamService.handleStreamError(caughtError, appendErrorMessage, setChatHistory);
         } finally {
             unsubscribePageHidden();
 
@@ -478,8 +477,6 @@ function useChatStream({
 
     return {
         loading,
-        error,
-        setError,
         inputValue,
         setInputValue,
         handleInputChange,
