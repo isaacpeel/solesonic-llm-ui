@@ -18,7 +18,7 @@ vi.mock('../../src/context/useSharedData.jsx', () => ({
 
 import chatService from '../../src/service/ChatService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
-import {AI} from '../../src/chat/message/ChatMessage.jsx';
+import {AI, ERROR, SYSTEM} from '../../src/chat/message/ChatMessage.jsx';
 
 describe('useChatHistory', () => {
     let sharedState;
@@ -72,9 +72,129 @@ describe('useChatHistory', () => {
             const setHistoryUpdater = sharedState.setChatHistory.mock.calls[0][0];
             const mergedHistory = setHistoryUpdater([]);
             expect(mergedHistory).toEqual([
-                {type: AI, text: 'hello', model: 'model-1', messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
+                {
+                    type: AI,
+                    text: 'hello',
+                    responseMetadata: null,
+                    responseMetadataCalls: null,
+                    messageId: 'msg-1',
+                    attachments: [],
+                    generatedImages: [],
+                    _key: 'msg-1'
+                },
             ]);
         });
+    });
+
+    /*
+     * A url is now the main way to reach a chat that does not exist — a bookmark outliving the
+     * conversation, or a shared link to someone else's. The caller is told so it can send the
+     * user somewhere real; a bare log would leave them on a permanently empty transcript.
+     */
+    it('reports a chat that no longer exists to the caller', async () => {
+        sharedState.chatId = 'chat-gone';
+        chatService.findChatDetails.mockRejectedValue(
+            Object.assign(new Error('Not Found'), {status: 404}),
+        );
+
+        const onChatNotFound = vi.fn();
+
+        renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(onChatNotFound).toHaveBeenCalledWith('chat-gone'));
+    });
+
+    /*
+     * A foreign id may be refused rather than denied existence, and the two are the same event
+     * to the user. Missing this would leave them on a permanently empty transcript.
+     */
+    it('reports a chat the server refuses the same way as a missing one', async () => {
+        sharedState.chatId = 'chat-someone-elses';
+        chatService.findChatDetails.mockRejectedValue(
+            Object.assign(new Error('Forbidden'), {status: 403}),
+        );
+
+        const onChatNotFound = vi.fn();
+
+        renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(onChatNotFound).toHaveBeenCalledWith('chat-someone-elses'));
+    });
+
+    /*
+     * A slow 404 for a chat the user has already navigated away from must not evict the one they
+     * are now reading — that would drag them out of a live conversation and blame a stale id.
+     */
+    it('ignores a rejection that lands after the user has moved to another chat', async () => {
+        sharedState.chatId = 'chat-gone';
+
+        let rejectFirstLoad;
+        chatService.findChatDetails.mockReturnValue(new Promise((_resolve, reject) => {
+            rejectFirstLoad = reject;
+        }));
+
+        const onChatNotFound = vi.fn();
+
+        const {rerender, unmount} = renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-gone'));
+
+        sharedState.chatId = 'chat-open';
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+        rerender();
+
+        rejectFirstLoad(Object.assign(new Error('Not Found'), {status: 404}));
+        await Promise.resolve();
+
+        unmount();
+
+        expect(onChatNotFound).not.toHaveBeenCalled();
+    });
+
+    /* Anything else is a transient failure; discarding the open chat over one would be wrong. */
+    it('does not report any other hydration failure as a missing chat, but does surface it inline', async () => {
+        sharedState.chatId = 'chat-1';
+        chatService.findChatDetails.mockRejectedValue(
+            Object.assign(new Error('Server Error'), {status: 500}),
+        );
+
+        const onChatNotFound = vi.fn();
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        renderHook(() => useChatHistory({onChatNotFound}));
+
+        await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1'));
+
+        expect(onChatNotFound).not.toHaveBeenCalled();
+
+        await waitFor(() => {
+            const lastUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = lastUpdater([]);
+            expect(updatedHistory).toContainEqual(expect.objectContaining({
+                type: ERROR,
+                text: 'This conversation could not be loaded. Please try again.',
+            }));
+        });
+
+        consoleErrorSpy.mockRestore();
+    });
+
+    /*
+     * The callback is held in a ref rather than listed as a dependency. Hydration clears
+     * `adoptedChatIdRef` on the fetching path, so an effect re-run refetches — and a caller
+     * passing an inline arrow would re-run it on every single render.
+     */
+    it('hydrates once even when the caller passes a new callback each render', async () => {
+        sharedState.chatId = 'chat-1';
+
+        const {rerender} = renderHook(() => useChatHistory({onChatNotFound: () => {}}));
+
+        await waitFor(() => expect(chatService.findChatDetails).toHaveBeenCalledTimes(1));
+
+        rerender();
+        rerender();
+
+        expect(chatService.findChatDetails).toHaveBeenCalledTimes(1);
     });
 
     it('preserves local AI notifications when chat hydration runs', async () => {
@@ -101,11 +221,21 @@ describe('useChatHistory', () => {
         const mergedHistory = setHistoryUpdater(sharedState.chatHistory);
 
         expect(mergedHistory).toEqual([
-            {type: 'USER', text: 'question', model: undefined, messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
+            {
+                type: 'USER',
+                text: 'question',
+                responseMetadata: null,
+                responseMetadataCalls: null,
+                messageId: 'msg-1',
+                attachments: [],
+                generatedImages: [],
+                _key: 'msg-1'
+            },
             {
                 type: AI,
                 text: 'answer',
-                model: 'model-1',
+                responseMetadata: null,
+                responseMetadataCalls: null,
                 messageId: 'msg-2',
                 attachments: [],
                 generatedImages: [],
@@ -143,26 +273,51 @@ describe('useChatHistory', () => {
         result.current.finalizeLastAIMessage({
             message: {
                 message: 'line1\r\n\r\n\r\nline2',
-                model: 'gpt-4',
             },
         });
 
         const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-        const updatedHistory = updater([{type: AI, text: 'old', model: 'old-model', _key: 'ai-1'}]);
+        const updatedHistory = updater([{type: AI, text: 'old', _key: 'ai-1'}]);
         expect(updatedHistory[0].text).toBe('line1\n\nline2');
-        expect(updatedHistory[0].model).toBe('gpt-4');
         expect(updatedHistory[0].isStreaming).toBe(false);
     });
 
     it('finalizeLastAIMessage fallback', () => {
         const {result} = renderHook(() => useChatHistory());
 
-        result.current.finalizeLastAIMessage({message: {model: 'gpt-4'}});
+        result.current.finalizeLastAIMessage({message: {}});
 
         const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-        const updatedHistory = updater([{type: AI, text: 'old text', model: 'old-model', _key: 'ai-1'}]);
+        const updatedHistory = updater([{type: AI, text: 'old text', _key: 'ai-1'}]);
         expect(updatedHistory[0].text).toBe('old text');
-        expect(updatedHistory[0].model).toBe('gpt-4');
+    });
+
+    it('finalizeLastAIMessage captures responseMetadata from message.responseMetadata on the done payload', () => {
+        const {result} = renderHook(() => useChatHistory());
+        const responseMetadata = {
+            promptTokens: 412,
+            completionTokens: 128,
+            totalTokens: 540,
+            tokensPerSecond: 34.7,
+            timeToFirstTokenMillis: 380,
+            durationMillis: 3690,
+        };
+
+        result.current.finalizeLastAIMessage({message: {message: 'answer', model: 'gpt-4', responseMetadata}});
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const updatedHistory = updater([{type: AI, text: 'old', _key: 'ai-1'}]);
+        expect(updatedHistory[0].responseMetadata).toEqual(responseMetadata);
+    });
+
+    it('finalizeLastAIMessage stores a null responseMetadata for a cancelled turn', () => {
+        const {result} = renderHook(() => useChatHistory());
+
+        result.current.finalizeLastAIMessage({message: {message: 'answer', model: 'gpt-4', responseMetadata: null}});
+
+        const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+        const updatedHistory = updater([{type: AI, text: 'old', _key: 'ai-1'}]);
+        expect(updatedHistory[0].responseMetadata).toBeNull();
     });
 
     it('ensureChatIdFromResponse', () => {
@@ -354,7 +509,16 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
         const result = updater(previousHistory);
 
         expect(result).toEqual([
-            {type: AI, text: 'answer', model: 'gpt-4', messageId: 'msg-1', attachments: [], generatedImages: [], _key: 'msg-1'},
+            {
+                type: AI,
+                text: 'answer',
+                responseMetadata: null,
+                responseMetadataCalls: null,
+                messageId: 'msg-1',
+                attachments: [],
+                generatedImages: [],
+                _key: 'msg-1'
+            },
         ]);
     });
 
@@ -608,7 +772,12 @@ describe('attachment-aware chat history', () => {
             chatService.findChatDetails.mockResolvedValue({
                 chatMessages: [
                     {id: 'msg-1', messageType: 'USER', message: 'look', attachments: [{id: 'attachment-1'}]},
-                    {id: 'msg-2', messageType: AI, message: '', progressData: {message: 'Reading attached image a.png'}},
+                    {
+                        id: 'msg-2',
+                        messageType: AI,
+                        message: '',
+                        progressData: {message: 'Reading attached image a.png'}
+                    },
                     {id: 'msg-3', messageType: AI, message: 'I see a banner'},
                 ],
             });
@@ -621,6 +790,114 @@ describe('attachment-aware chat history', () => {
             expect(mappedHistory).toHaveLength(2);
             expect(mappedHistory[0].attachments).toEqual([{id: 'attachment-1'}]);
             expect(mappedHistory[1].notifications).toEqual(['Reading attached image a.png']);
+        });
+    });
+
+    describe('elicitationResponse mapping', () => {
+        it('prefers the resolved summary over the raw action', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {
+                        id: 'msg-1',
+                        messageType: SYSTEM,
+                        message: 'No assignee could be found in the request. Who should this story be assigned to?',
+                        elicitationId: '05bb3d71-7da5-4536-996a-e5b5e460fda0',
+                        elicitationResponse: {
+                            action: 'ACCEPT',
+                            content: {assigneeAccountId: '70121:ad77bd3b-88c0-4373-ab9d-db11b7b9dae9'},
+                            summary: 'isaac',
+                        },
+                    },
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].elicitationResponse).toBe('isaac');
+        });
+
+        it('falls back to the raw action when no summary is present', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {
+                        id: 'msg-1',
+                        messageType: SYSTEM,
+                        message: 'Confirm action',
+                        elicitationId: 'elicit-legacy',
+                        elicitationResponse: {action: 'accept'},
+                    },
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].elicitationResponse).toBe('accept');
+        });
+
+        it('does not set elicitationResponse on a SYSTEM message with no elicitationId', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: SYSTEM, message: 'The model was switched to qwen3.5-9b.'},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].elicitationResponse).toBeUndefined();
+        });
+    });
+
+    describe('responseMetadata mapping', () => {
+        it('carries responseMetadata through from a fetched AI message', async () => {
+            sharedState.chatId = 'chat-1';
+            const responseMetadata = {
+                promptTokens: 412,
+                completionTokens: 128,
+                totalTokens: 540,
+                tokensPerSecond: 34.7,
+                timeToFirstTokenMillis: 380,
+                durationMillis: 3690,
+            };
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: AI, message: 'answer', model: 'gpt-4', responseMetadata},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].responseMetadata).toEqual(responseMetadata);
+        });
+
+        it('normalises a missing responseMetadata field to null', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: AI, message: 'answer', model: 'gpt-4'},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory[0].responseMetadata).toBeNull();
         });
     });
 
@@ -755,6 +1032,138 @@ describe('attachment-aware chat history', () => {
         });
     });
 
+    describe('appendSystemMessage', () => {
+        it('appends a new SYSTEM entry carrying the given text', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendSystemMessage('Chat canceled.');
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [
+                {type: AI, text: 'partial answer', _key: 'ai-1', isStreaming: false},
+            ];
+            const updatedHistory = updater(previousHistory);
+
+            expect(updatedHistory).toHaveLength(2);
+            expect(updatedHistory[0]).toBe(previousHistory[0]);
+            expect(updatedHistory[1]).toMatchObject({type: 'SYSTEM', text: 'Chat canceled.'});
+            expect(updatedHistory[1]._key).toBeTruthy();
+        });
+
+        it('does nothing for a blank or missing message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendSystemMessage('');
+            result.current.appendSystemMessage(undefined);
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('appendErrorMessage', () => {
+        it('appends a new ERROR entry carrying the given text', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendErrorMessage('The model backend timed out.');
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [
+                {type: AI, text: 'partial answer', _key: 'ai-1', isStreaming: false},
+            ];
+            const updatedHistory = updater(previousHistory);
+
+            expect(updatedHistory).toHaveLength(2);
+            expect(updatedHistory[0]).toBe(previousHistory[0]);
+            expect(updatedHistory[1]).toMatchObject({type: ERROR, text: 'The model backend timed out.'});
+            expect(updatedHistory[1]._key).toBeTruthy();
+        });
+
+        it('does nothing for a blank or missing message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.appendErrorMessage('');
+            result.current.appendErrorMessage(undefined);
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('updateAttachmentStatus', () => {
+        it('merges the outcome into the attachment named by attachmentId on the last USER message', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateAttachmentStatus({
+                attachmentId: 'attachment-1',
+                chatId: 'chat-1',
+                described: false,
+                reason: null,
+                indexed: false,
+                extractionReason: 'DOCUMENT_UNREADABLE',
+                chunkCount: null,
+            });
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = updater([
+                {type: 'USER', text: 'look', _key: 'u1', attachments: [{id: 'attachment-1', fileName: 'a.pdf'}]},
+                {type: AI, text: '', _key: 'ai1', isStreaming: true},
+            ]);
+
+            expect(updatedHistory[0].attachments[0]).toMatchObject({
+                id: 'attachment-1',
+                fileName: 'a.pdf',
+                indexed: false,
+                extractionReason: 'DOCUMENT_UNREADABLE',
+            });
+        });
+
+        it('ignores an update keyed by id rather than attachmentId', () => {
+            const {result} = renderHook(() => useChatHistory());
+            sharedState.setChatHistory.mockClear();
+
+            result.current.updateAttachmentStatus({id: 'attachment-1', described: false});
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+
+        it('finds the attachment on an earlier USER message when the last one does not carry it', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateAttachmentStatus({attachmentId: 'attachment-1', described: false, reason: 'vision model unavailable'});
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const updatedHistory = updater([
+                {type: 'USER', text: 'first', _key: 'u1', attachments: [{id: 'attachment-1'}]},
+                {type: AI, text: 'answer', _key: 'ai1'},
+                {type: 'USER', text: 'second', _key: 'u2', attachments: []},
+            ]);
+
+            expect(updatedHistory[0].attachments[0]).toMatchObject({described: false, reason: 'vision model unavailable'});
+            expect(updatedHistory[2].attachments).toEqual([]);
+        });
+
+        it('is a no-op without an attachment id', () => {
+            const {result} = renderHook(() => useChatHistory());
+            sharedState.setChatHistory.mockClear();
+
+            result.current.updateAttachmentStatus({described: false});
+
+            expect(sharedState.setChatHistory).not.toHaveBeenCalled();
+        });
+
+        it('leaves history untouched when no attachment matches', () => {
+            const {result} = renderHook(() => useChatHistory());
+
+            result.current.updateAttachmentStatus({attachmentId: 'attachment-unknown', indexed: false});
+
+            const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
+            const previousHistory = [
+                {type: 'USER', text: 'look', _key: 'u1', attachments: [{id: 'attachment-1'}]},
+            ];
+
+            expect(updater(previousHistory)).toBe(previousHistory);
+        });
+    });
+
     describe('adoptMessageIdForLastUserMessage', () => {
         it('sets messageId on the last USER entry without touching its _key', () => {
             const {result} = renderHook(() => useChatHistory());
@@ -850,66 +1259,22 @@ describe('chat history support for stream recovery', () => {
     });
 
     describe('stopStreamingLastAIMessage', () => {
-        it('clears the reconnecting and seeded flags along with the streaming one', () => {
+        it('clears the streaming and seeded flags on the last AI entry', () => {
             const {result} = renderHook(() => useChatHistory());
 
             result.current.stopStreamingLastAIMessage();
 
             const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const updatedHistory = historyUpdater([
-                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true, isReconnecting: true, hasSeededNotification: true},
+                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true, hasSeededNotification: true},
             ]);
 
             expect(updatedHistory[0]).toMatchObject({
                 isStreaming: false,
-                isReconnecting: false,
                 hasSeededNotification: false,
                 text: 'partial',
                 _key: 'ai1',
             });
-        });
-    });
-
-    describe('markLastAIMessageReconnecting', () => {
-        it('flags the trailing AI message without disturbing it', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.markLastAIMessageReconnecting(true);
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const updatedHistory = historyUpdater([
-                {type: 'USER', text: 'question', _key: 'u1'},
-                {type: AI, text: 'partial', _key: 'ai1', isStreaming: true},
-            ]);
-
-            expect(updatedHistory[1]).toMatchObject({
-                isReconnecting: true,
-                isStreaming: true,
-                text: 'partial',
-                _key: 'ai1',
-            });
-        });
-
-        it('does not churn history when the flag is already set', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.markLastAIMessageReconnecting(true);
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const previousHistory = [{type: AI, text: 'partial', _key: 'ai1', isReconnecting: true}];
-
-            expect(historyUpdater(previousHistory)).toBe(previousHistory);
-        });
-
-        it('leaves history untouched when the last entry is not an AI message', () => {
-            const {result} = renderHook(() => useChatHistory());
-
-            result.current.markLastAIMessageReconnecting(true);
-
-            const historyUpdater = sharedState.setChatHistory.mock.calls.at(-1)[0];
-            const previousHistory = [{type: 'USER', text: 'question', _key: 'u1'}];
-
-            expect(historyUpdater(previousHistory)).toBe(previousHistory);
         });
     });
 });

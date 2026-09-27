@@ -6,10 +6,22 @@ import {
     appendProgressNotificationText,
     formatProgressNotificationText
 } from '../service/ProgressNotificationService.js';
-import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
+import {AI, ERROR, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
+import {generateMessageKey} from '../util/keys.js';
 
-function useChatHistory() {
+function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
     const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
+
+    /*
+     * Held in a ref rather than listed as a dependency of the hydration effect below. That
+     * effect clears `adoptedChatIdRef` on its fetching path, so re-running it refetches — and a
+     * caller passing an inline arrow would give it a new identity on every render.
+     */
+    const onChatNotFoundRef = useRef(onChatNotFound);
+
+    useEffect(() => {
+        onChatNotFoundRef.current = onChatNotFound;
+    }, [onChatNotFound]);
 
     /*
      * Holds an id this client adopted from its own in-flight stream, so hydration can tell
@@ -17,6 +29,24 @@ function useChatHistory() {
      * setChatId and are otherwise indistinguishable.
      */
     const adoptedChatIdRef = useRef(null);
+
+    /*
+     * Reused by conversation-scoped UI state (e.g. a pinned slash command) that must reset on a
+     * real chat switch but survive a new chat's own RUN_STARTED frame assigning its id — the
+     * same distinction `adoptedChatIdRef` already draws for hydration below.
+     */
+    const previousChatIdRef = useRef(chatId);
+
+    useEffect(() => {
+        const previousChatId = previousChatIdRef.current;
+        previousChatIdRef.current = chatId;
+
+        if (chatId === previousChatId || adoptedChatIdRef.current === chatId) {
+            return;
+        }
+
+        onChatIdChangedExternally?.();
+    }, [chatId, onChatIdChangedExternally]);
 
     useEffect(() => {
         if (chatHistory.length === 0) {
@@ -49,13 +79,40 @@ function useChatHistory() {
         });
     }, [chatId, setChatHistory]);
 
+    /*
+     * Appends a standalone ERROR bubble — every stream/turn failure lands here rather than in a
+     * page-level banner, so it reads inline at the point it happened. Purely client-side and
+     * ephemeral like the welcome message: the backend never persists an ERROR messageType, so
+     * this never comes back from `fetchFormattedChatMessages` on reload.
+     *
+     * Declared here, ahead of the hydration effect below that lists it as a dependency — a
+     * `useEffect` dependency array is evaluated immediately during render, unlike a reference
+     * inside an async callback, so this must exist before that point or the render throws a TDZ
+     * ReferenceError.
+     */
+    const appendErrorMessage = useCallback((text) => {
+        if (!text || typeof text !== 'string') {
+            return;
+        }
+
+        setChatHistory((previousHistory) => [
+            ...previousHistory,
+            {
+                type: ERROR,
+                text,
+                _key: generateMessageKey('error'),
+                timestamp: new Date().toISOString(),
+            },
+        ]);
+    }, [setChatHistory]);
+
     useEffect(() => {
         if (!chatId) {
             return;
         }
 
         /*
-         * A new chat learns its id from its own `init` frame, milliseconds after the stream
+         * A new chat learns its id from its own RUN_STARTED frame, milliseconds after the stream
          * opens. Hydrating on that transition would read a server state holding only the USER
          * message — the streaming placeholder would be replaced, and every later frame would
          * land on a USER entry where appendToLastAIMessage/finalizeLastAIMessage drop it in
@@ -72,11 +129,39 @@ function useChatHistory() {
          */
         adoptedChatIdRef.current = null;
 
+        /*
+         * The id this run asked for. A slow request that lands after the user has moved on must
+         * not act on the conversation now open — evicting it would drag them out of a chat they
+         * are reading and blame a different one.
+         */
+        const requestedChatId = chatId;
+        let supersededByLaterChat = false;
+
         reloadChatHistory()
             .catch((error) => {
+                if (supersededByLaterChat) {
+                    return;
+                }
+
+                /*
+                 * Handled here rather than inside `reloadChatHistory`, which stream recovery
+                 * awaits and relies on rejecting. 403 sits alongside 404 because the two are the
+                 * same event to the user — the id names nothing they can open, whether it never
+                 * existed or belongs to someone else — and only the backend knows which it is.
+                 */
+                if (error?.status === 404 || error?.status === 403) {
+                    onChatNotFoundRef.current?.(requestedChatId);
+                    return;
+                }
+
                 console.error('[useChatHistory] Failed to load chat details:', error);
+                appendErrorMessage('This conversation could not be loaded. Please try again.');
             });
-    }, [chatId, reloadChatHistory]);
+
+        return () => {
+            supersededByLaterChat = true;
+        };
+    }, [chatId, reloadChatHistory, appendErrorMessage]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {
         setChatHistory((previousHistory) => {
@@ -118,7 +203,7 @@ function useChatHistory() {
 
                 /*
                  * The backend emits a progress frame for every image it describes, so a seed
-                 * still standing at `done` means no image was read. Rendering it as a completed
+                 * still standing at RUN_FINISHED means no image was read. Rendering it as a completed
                  * step would put a green checkmark claiming the image was read directly above an
                  * assistant asking for one — drop it and flag the turn instead.
                  *
@@ -131,7 +216,16 @@ function useChatHistory() {
                 newHistory[lastIndex] = {
                     ...newHistory[lastIndex],
                     text: finalText,
-                    model: response?.message?.model ?? newHistory[lastIndex].model,
+                    /*
+                     * Lives on `message`, next to `model` and `generatedImages` — not a sibling
+                     * of `message` on the envelope. `null` on a cancelled turn (the whole object,
+                     * not just its fields) — kept as-is rather than falling back, since a
+                     * cancelled turn has nothing meaningful to report and MessageResponseMetadata
+                     * already renders nothing for a null value.
+                     */
+                    responseMetadata: response?.message?.responseMetadata ?? null,
+                    /* Sibling of responseMetadata on the envelope's message; carries the per-call speed stats. */
+                    responseMetadataCalls: response?.message?.responseMetadataCalls ?? null,
                     /*
                      * The turn is only stamped here, not when the placeholder is pushed — a long
                      * answer would otherwise land already reading "2 minutes ago". Prefers the
@@ -178,10 +272,6 @@ function useChatHistory() {
         });
     }, [setChatHistory]);
 
-    /*
-     * Only `done` clears the streaming flag on the normal path, so a stream that ends without it
-     * would otherwise spin forever. Callers use this when they have decided the turn is over.
-     */
     const attachGeneratedImagesToLastAIMessage = useCallback((generatedImages) => {
         if (!Array.isArray(generatedImages) || generatedImages.length === 0) {
             return;
@@ -198,7 +288,7 @@ function useChatHistory() {
             const existingImages = Array.isArray(lastMessage.generatedImages) ? lastMessage.generatedImages : [];
             const knownImageIds = new Set(existingImages.map((existingImage) => existingImage.imageId));
 
-            /* `done` can repeat what an earlier `image` frame already delivered. */
+            /* RUN_FINISHED can repeat what an earlier `image` CUSTOM event already delivered. */
             const newImages = generatedImages.filter((generatedImage) => !knownImageIds.has(generatedImage.imageId));
 
             if (newImages.length === 0) {
@@ -215,6 +305,10 @@ function useChatHistory() {
         });
     }, [setChatHistory]);
 
+    /*
+     * Only RUN_FINISHED clears the streaming flag on the normal path, so a stream that ends without it
+     * would otherwise spin forever. Callers use this when they have decided the turn is over.
+     */
     const stopStreamingLastAIMessage = useCallback(() => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -226,14 +320,13 @@ function useChatHistory() {
             const newHistory = [...previousHistory];
             /*
              * Clears the seed too. `finalizeLastAIMessage` infers a failed vision pass from a
-             * seed still standing at `done`, but that inference is only valid when `done`
+             * seed still standing at RUN_FINISHED, but that inference is only valid when RUN_FINISHED
              * actually arrived — on every path that ends here it did not, so the turn is left
              * unflagged rather than accused.
              */
             newHistory[lastIndex] = {
                 ...newHistory[lastIndex],
                 isStreaming: false,
-                isReconnecting: false,
                 hasSeededNotification: false,
             };
 
@@ -242,34 +335,30 @@ function useChatHistory() {
     }, [setChatHistory]);
 
     /*
-     * Keeps the bubble streaming but marks why it is quiet. Must not touch `text` or `_key` —
-     * the tokens already on screen stay, and a changed key would remount the bubble.
+     * Appends a standalone SYSTEM bubble — the way a cancelled turn's "Chat canceled." notice
+     * reaches the transcript, since the backend does not persist the partial answer under it and
+     * `finalizeLastAIMessage` must not overwrite what the user already watched stream in.
      */
-    const markLastAIMessageReconnecting = useCallback((isReconnecting) => {
-        setChatHistory((previousHistory) => {
-            const lastIndex = previousHistory.length - 1;
+    const appendSystemMessage = useCallback((text) => {
+        if (!text || typeof text !== 'string') {
+            return;
+        }
 
-            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
-                return previousHistory;
-            }
-
-            const lastMessage = previousHistory[lastIndex];
-
-            if (!!lastMessage.isReconnecting === !!isReconnecting) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            newHistory[lastIndex] = {...lastMessage, isReconnecting: !!isReconnecting};
-
-            return newHistory;
-        });
+        setChatHistory((previousHistory) => [
+            ...previousHistory,
+            {
+                type: SYSTEM,
+                text,
+                _key: generateMessageKey('system'),
+                timestamp: new Date().toISOString(),
+            },
+        ]);
     }, [setChatHistory]);
 
     /*
-     * The `init` frame has been observed carrying the chat id under `id`; the attachment
-     * design document specifies `chatId`. Accept both — guessing wrong means a new chat
-     * never adopts an id and every follow-up turn silently starts a fresh chat.
+     * RUN_STARTED hands over the chat id as `chatId` (from its `threadId`); RUN_FINISHED's result
+     * carries it as `id`. Accept both — missing one means a new chat never adopts an id and every
+     * follow-up turn silently starts a fresh chat.
      */
     const ensureChatIdFromResponse = useCallback((response) => {
         const resolvedChatId = response?.id ?? response?.chatId;
@@ -305,6 +394,51 @@ function useChatHistory() {
 
                     return newHistory;
                 }
+            }
+
+            return previousHistory;
+        });
+    }, [setChatHistory]);
+
+    /*
+     * The `attachment` CUSTOM event reports a vision/extraction outcome for one attachment on the
+     * turn's USER message after the fact — it can arrive well after that message was appended,
+     * so this walks back to find it by attachment id rather than assuming it is the very last
+     * entry. Merges rather than replaces, since the frame may carry only the fields that changed.
+     */
+    const updateAttachmentStatus = useCallback((attachmentUpdate) => {
+        const attachmentId = attachmentUpdate?.attachmentId;
+
+        if (!attachmentId) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            for (let messageIndex = previousHistory.length - 1; messageIndex >= 0; messageIndex -= 1) {
+                const candidateMessage = previousHistory[messageIndex];
+
+                if (candidateMessage.type !== USER || !Array.isArray(candidateMessage.attachments)) {
+                    continue;
+                }
+
+                const attachmentIndex = candidateMessage.attachments.findIndex(
+                    (attachment) => attachment.id === attachmentId,
+                );
+
+                if (attachmentIndex === -1) {
+                    continue;
+                }
+
+                const newAttachments = [...candidateMessage.attachments];
+                newAttachments[attachmentIndex] = {
+                    ...newAttachments[attachmentIndex],
+                    ...attachmentUpdate,
+                };
+
+                const newHistory = [...previousHistory];
+                newHistory[messageIndex] = {...candidateMessage, attachments: newAttachments};
+
+                return newHistory;
             }
 
             return previousHistory;
@@ -374,10 +508,12 @@ function useChatHistory() {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
-        markLastAIMessageReconnecting,
+        appendSystemMessage,
+        appendErrorMessage,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
+        updateAttachmentStatus,
         reloadChatHistory,
     };
 }
@@ -411,7 +547,9 @@ async function fetchFormattedChatMessages(chatId) {
         const base = {
             type: message.messageType,
             text: message.message,
-            model: message.model,
+            /* Persisted alongside model/generatedImages, so a reloaded turn shows it too. */
+            responseMetadata: message.responseMetadata ?? null,
+            responseMetadataCalls: message.responseMetadataCalls ?? null,
             messageId: message.id,
             /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
             timestamp: message.timestamp,
@@ -427,7 +565,12 @@ async function fetchFormattedChatMessages(chatId) {
         };
 
         if (message.messageType === SYSTEM && message.elicitationId && message.elicitationResponse) {
-            base.elicitationResponse = message.elicitationResponse.action;
+            /*
+             * `summary` is the resolved, human-readable answer (e.g. "isaac" for an assignee
+             * picker) — preferred whenever the backend supplies it. `action` alone survives for
+             * records persisted before the backend started returning `summary`.
+             */
+            base.elicitationResponse = message.elicitationResponse.summary || message.elicitationResponse.action;
         }
 
         if (message.messageType === AI && pendingProgressNotifications.length > 0) {

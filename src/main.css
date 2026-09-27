@@ -1,5 +1,8 @@
 :root {
     --background-color: #1e1e1e; /* Slightly lighter dark gray */
+
+    /* Set as an inline style on .chat-app by useKeyboardInset; declared here so it resolves statically. */
+    --keyboard-inset: 0px;
     --primary-color: #2c2c2c; /* Lighter dark gray for primary sections */
     --secondary-color: #3a3a3a; /* Lighter gray for content sections */
     --text-color: #e0e0e0; /* Softer white text */

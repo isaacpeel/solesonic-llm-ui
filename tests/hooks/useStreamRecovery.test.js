@@ -11,8 +11,7 @@ vi.mock('../../src/service/ChatService.js', () => ({
         findChatDetails: vi.fn(),
         chatStreamResume: vi.fn(),
     },
-    DONE: 'done',
-    ERROR: 'error',
+    TERMINAL_RUN_EVENTS: ['RUN_FINISHED', 'RUN_ERROR'],
     RESUME_STREAMED: 'streamed',
     RESUME_ALREADY_COMPLETE: 'alreadyComplete',
     RESUME_UNAVAILABLE: 'unavailable',
@@ -113,7 +112,6 @@ describe('useStreamRecovery', () => {
         options = {
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             stopStreamingLastAIMessage: vi.fn(),
-            markLastAIMessageReconnecting: vi.fn(),
         };
     });
 
@@ -131,7 +129,7 @@ describe('useStreamRecovery', () => {
         });
 
         expect(started).toBe(false);
-        expect(options.markLastAIMessageReconnecting).not.toHaveBeenCalled();
+        expect(options.stopStreamingLastAIMessage).not.toHaveBeenCalled();
     });
 
     it('reconciles the bubble once the reply is persisted', async () => {
@@ -140,8 +138,6 @@ describe('useStreamRecovery', () => {
         act(() => {
             result.current.beginRecovery({recoveryChatId: 'chat-1', userMessageId: 'user-1'});
         });
-
-        expect(options.markLastAIMessageReconnecting).toHaveBeenCalledWith(true);
 
         await waitFor(() => {
             expect(options.reloadChatHistory).toHaveBeenCalled();
@@ -246,6 +242,16 @@ describe('useStreamRecovery', () => {
         expect(options.reloadChatHistory).not.toHaveBeenCalled();
     }, 10000);
 
+    it('does nothing when there is no active recovery to cancel', () => {
+        const {result} = renderHook(() => useStreamRecovery(options));
+
+        act(() => {
+            result.current.cancelActiveRecovery();
+        });
+
+        expect(result.current.recovering).toBe(false);
+    });
+
     it('never attempts a resume without a chunk handler to route the replay through', async () => {
         const {result} = renderHook(() => useStreamRecovery(options));
 
@@ -311,7 +317,6 @@ describe('resuming a dropped stream', () => {
         options = {
             reloadChatHistory: vi.fn().mockResolvedValue(undefined),
             stopStreamingLastAIMessage: vi.fn(),
-            markLastAIMessageReconnecting: vi.fn(),
         };
     });
 
@@ -321,8 +326,8 @@ describe('resuming a dropped stream', () => {
 
     it('replays the missed frames and never falls back to reconciling', async () => {
         chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
-            onChunk({event: 'chunk', id: '1754062831260-0', data: '{"content":"rest of it"}'});
-            onChunk({event: 'done', id: '1754062831270-0', data: '{"chatId":"chat-1"}'});
+            onChunk({event: 'TEXT_MESSAGE_CONTENT', id: '1754062831260-0', data: '{"delta":"rest of it"}'});
+            onChunk({event: 'RUN_FINISHED', id: '1754062831270-0', data: '{"result":{"id":"chat-1"}}'});
 
             return 'streamed';
         });
@@ -342,7 +347,7 @@ describe('resuming a dropped stream', () => {
 
     it('sends the cursor back verbatim rather than as a number', async () => {
         chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
-            onChunk({event: 'done', id: '1754062831270-0', data: '{}'});
+            onChunk({event: 'RUN_FINISHED', id: '1754062831270-0', data: '{}'});
 
             return 'streamed';
         });
@@ -403,7 +408,7 @@ describe('resuming a dropped stream', () => {
 
     it('reconciles when the resumed stream dies again before a terminal frame', async () => {
         chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
-            onChunk({event: 'chunk', id: '1754062831260-0', data: '{"content":"partial"}'});
+            onChunk({event: 'TEXT_MESSAGE_CONTENT', id: '1754062831260-0', data: '{"delta":"partial"}'});
 
             return 'streamed';
         });
@@ -416,6 +421,24 @@ describe('resuming a dropped stream', () => {
         });
 
         expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+    });
+
+    it('treats a replayed RUN_ERROR as terminal rather than reconciling', async () => {
+        chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+            onChunk({event: 'RUN_ERROR', id: '1754062831270-0', data: '{"message":"boom","code":"internal"}'});
+
+            return 'streamed';
+        });
+
+        const {result} = renderHook(() => useStreamRecovery(options));
+        beginResume(result);
+
+        await waitFor(() => {
+            expect(result.current.recovering).toBe(false);
+        });
+
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+        expect(onResumeChunk).toHaveBeenCalledTimes(1);
     });
 
     it('gives up without polling when the chat is not ours', async () => {
@@ -434,7 +457,7 @@ describe('resuming a dropped stream', () => {
 
     it('replays from the beginning when no cursor was captured', async () => {
         chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
-            onChunk({event: 'done', id: '1754062831270-0', data: '{}'});
+            onChunk({event: 'RUN_FINISHED', id: '1754062831270-0', data: '{}'});
 
             return 'streamed';
         });

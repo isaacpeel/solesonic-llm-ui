@@ -1,0 +1,99 @@
+/*
+ * Above the drawer's own z-index (1000) and above the portalled row menu (2000), so the dialog is
+ * never rendered behind the list it was opened from.
+ */
+.delete-chat-group-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Wider than the single-conversation dialog: it carries three answers rather than two. */
+.delete-chat-group-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.delete-chat-group-dialog-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.delete-chat-group-dialog-body {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--text-color);
+}
+
+/* A group name is capped at 255 characters, so it gets the same clamp a conversation label does. */
+.delete-chat-group-dialog-label {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+.delete-chat-group-dialog-progress {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-color);
+    opacity: 0.8;
+}
+
+.delete-chat-group-dialog-error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #e57373;
+}
+
+/*
+ * Wrapped rather than squeezed onto one line: the two verbs are long, and a truncated destructive
+ * button is the last thing that should be guessed at. Reversed so the safe answer sits last in the
+ * visual order on a narrow screen while staying first in the DOM, where focus opens.
+ */
+.delete-chat-group-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.delete-chat-group-dialog-actions button {
+    padding: 6px 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.delete-chat-group-dialog-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Destructive, and coloured as such — it is the one button here that cannot be taken back. */
+.delete-chat-group-dialog-confirm:not(:disabled) {
+    color: #ffffff;
+    background-color: #c62828;
+    border-color: #c62828;
+}

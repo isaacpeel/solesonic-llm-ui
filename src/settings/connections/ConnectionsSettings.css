@@ -1,0 +1,193 @@
+.connections-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.connections-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px;
+    margin-bottom: 14px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.connections-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+}
+
+.connections-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.connections-name {
+    margin-bottom: 5px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.connections-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid;
+    border-radius: 999px;
+}
+
+.connections-status-icon {
+    width: 12px;
+    height: 12px;
+}
+
+.connections-status-connected {
+    color: #3fb950;
+    background-color: rgba(46, 160, 67, 0.12);
+    border-color: rgba(46, 160, 67, 0.3);
+}
+
+.connections-status-disconnected {
+    color: #ffb347;
+    background-color: rgba(255, 179, 71, 0.12);
+    border-color: rgba(255, 179, 71, 0.3);
+}
+
+.connections-meta {
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: var(--settings-muted);
+    overflow-wrap: anywhere;
+}
+
+.connections-message {
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: #ffb347;
+}
+
+.connections-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.connections-connect-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--settings-accent);
+    background-color: transparent;
+    border: 1px solid var(--settings-accent);
+    border-radius: var(--settings-radius-sm);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.connections-connect-button:hover:not(:disabled) {
+    background-color: var(--settings-accent-tint-weak);
+}
+
+.connections-connect-button:disabled {
+    color: var(--settings-muted);
+    border-color: var(--border-color);
+    cursor: not-allowed;
+}
+
+.connections-button-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.connections-disconnect-link {
+    padding: 0;
+    font-size: 12px;
+    color: var(--settings-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.connections-disconnect-link:hover {
+    color: #f85149;
+    text-decoration: underline;
+}
+
+.connections-confirm {
+    padding: 16px;
+    margin-top: 6px;
+    background-color: var(--primary-color);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: 10px;
+}
+
+.connections-confirm-text {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-color);
+}
+
+.connections-confirm-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.connections-confirm-button,
+.connections-cancel-button {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: var(--settings-radius-sm);
+    cursor: pointer;
+}
+
+.connections-confirm-button {
+    color: #ffffff;
+    background-color: #b3221b;
+    border: 1px solid #b3221b;
+}
+
+.connections-confirm-button:hover:not(:disabled) {
+    background-color: #8f1b15;
+}
+
+.connections-cancel-button {
+    color: var(--text-color);
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+}
+
+.connections-confirm-button:disabled,
+.connections-cancel-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+    .connections-card {
+        flex-wrap: wrap;
+    }
+
+    .connections-actions {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+    }
+}

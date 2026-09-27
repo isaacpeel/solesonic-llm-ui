@@ -35,6 +35,7 @@ function AttachmentTrayItem({
                 <AttachmentThumbnail
                     objectUrl={objectUrl}
                     fileName={entry.fileName}
+                    contentType={entry.contentType}
                     description={entry.caption}
                     status={thumbnailStatus}
                     onRetry={() => onRetryEntry(entry.trayKey)}

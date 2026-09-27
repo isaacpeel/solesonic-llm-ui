@@ -72,10 +72,6 @@ function AttachmentLightbox({attachment, onClose}) {
                     src={attachment.objectUrl}
                     alt={altText}
                 />
-
-                {attachment.description && (
-                    <p className="attachment-lightbox-caption">{attachment.description}</p>
-                )}
             </div>
         </div>
     );

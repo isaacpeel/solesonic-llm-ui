@@ -31,6 +31,19 @@
     outline-offset: -2px;
 }
 
+.attachment-thumbnail-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.attachment-thumbnail-file-icon {
+    width: 60%;
+    height: 60%;
+    color: var(--text-color);
+    opacity: 0.55;
+}
+
 .attachment-thumbnail--unavailable {
     display: flex;
     align-items: center;

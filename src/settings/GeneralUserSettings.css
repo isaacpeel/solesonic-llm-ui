@@ -1,0 +1,166 @@
+.general-settings-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.general-settings-profile-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+}
+
+.general-settings-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background-color: var(--settings-accent-tint);
+    color: var(--settings-accent);
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.general-settings-profile-name {
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.general-settings-profile-username {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+.general-settings-profile-grid {
+    margin-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.general-settings-profile-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(74, 74, 74, 0.5);
+}
+
+.general-settings-profile-label {
+    width: 130px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--settings-muted);
+}
+
+.general-settings-profile-value {
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-color);
+    overflow-wrap: anywhere;
+}
+
+.general-settings-role-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.general-settings-role-chip {
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+}
+
+.general-settings-no-roles {
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+.general-settings-timezone-select {
+    width: 100%;
+    max-width: 320px;
+    padding: 8px 10px;
+    font-size: 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.general-settings-timezone-select:disabled {
+    opacity: 0.6;
+}
+
+.general-settings-section-title {
+    margin-top: 28px;
+}
+
+.general-settings-address-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.general-settings-address-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.general-settings-address-field input,
+.general-settings-address-field select {
+    padding: 8px 10px;
+    font-size: 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.general-settings-address-field input:disabled,
+.general-settings-address-field select:disabled {
+    opacity: 0.6;
+}
+
+.general-settings-address-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.general-settings-save-button {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #fff;
+    background-color: var(--settings-accent);
+    border: 1px solid var(--settings-accent);
+}
+
+.general-settings-save-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+@media (max-width: 560px) {
+    .general-settings-profile-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+    }
+
+    .general-settings-profile-label {
+        width: auto;
+    }
+}

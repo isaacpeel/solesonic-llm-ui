@@ -1,12 +1,11 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import log from 'loglevel';
 import chatService, {
-    DONE,
-    ERROR,
     RESUME_ALREADY_COMPLETE,
     RESUME_REJECTED,
     RESUME_STREAMED,
     RESUME_UNAVAILABLE,
+    TERMINAL_RUN_EVENTS,
 } from '../service/ChatService.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {isPageHidden, observePageResumed} from '../util/pageLifecycle.js';
@@ -20,7 +19,7 @@ const RECOVERY_POLL_DELAYS_MILLISECONDS = [0, 1000, 2000, 4000, 8000, 10000, 100
 
 /*
  * True once the server holds an assistant reply for this turn. Anchored on the user message id
- * adopted from `init` so a turn cannot be satisfied by an older reply already in the chat; with
+ * adopted from RUN_STARTED so a turn cannot be satisfied by an older reply already in the chat; with
  * no id — the frame never arrived — the last USER row is the best available anchor.
  */
 export function hasCompletedAssistantReply(chatDetails, userMessageId) {
@@ -60,7 +59,7 @@ export function hasCompletedAssistantReply(chatDetails, userMessageId) {
  * bound server-side, so recovery never re-sends anything — it waits for the user to come back
  * and reconciles the bubble against what the server persisted.
  */
-function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markLastAIMessageReconnecting}) {
+function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
     const [recovering, setRecovering] = useState(false);
     const [recoveryFailed, setRecoveryFailed] = useState(false);
     const activeRecoveryRef = useRef(null);
@@ -120,7 +119,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
                 }
 
                 if (resumeOutcome === RESUME_STREAMED) {
-                    /* `done` already finalized the bubble; this only clears the reconnecting mark. */
+                    /* The terminal frame already finalized the bubble; nothing further needed here. */
                     stopStreamingLastAIMessage();
                     finishRecovery(false);
 
@@ -213,13 +212,12 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage, markL
 
         setRecovering(true);
         setRecoveryFailed(false);
-        markLastAIMessageReconnecting(true);
 
         /* Fire-and-forget by design — runRecovery handles its own failures and never rejects. */
         void runRecovery(recoveryToken, recoveryRequest);
 
         return true;
-    }, [cancelActiveRecovery, markLastAIMessageReconnecting, runRecovery]);
+    }, [cancelActiveRecovery, runRecovery]);
 
     const retryRecovery = useCallback(() => {
         const lastRecoveryRequest = lastRecoveryRequestRef.current;
@@ -257,7 +255,7 @@ async function attemptResume(recoveryChatId, lastEventId, onResumeChunk) {
     try {
         const resumeOutcome = await chatService.chatStreamResume(recoveryChatId, lastEventId, {
             onChunk: (rawEvent) => {
-                if (rawEvent?.event === DONE || rawEvent?.event === ERROR) {
+                if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
                     sawTerminalFrame = true;
                 }
 

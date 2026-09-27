@@ -11,7 +11,8 @@ The container uses the official `nginx:alpine` image to serve the built React ap
 - For production HTTPS, place a reverse proxy (like host Nginx) in front of the container
 
 Relevant files:
-- `nginx.conf` — Nginx configuration for the container
+- `nginx.conf` — envsubst **template** for the container's Nginx config
+- `docker/15-render-nginx-conf.sh` — Entrypoint hook that renders it, deriving the CSP origins from `.env`
 - `Dockerfile` — Multi-stage build that compiles React and configures Nginx
 - `docker-compose.yml` — Compose configuration that exposes the container
 
@@ -20,6 +21,7 @@ Relevant files:
 The `nginx.conf` file handles:
 - Static asset caching (7-day expiration for images, CSS, JS, fonts)
 - SPA routing fallback to `index.html` for client-side routes
+- Security headers, including a Content-Security-Policy built from `.env`
 - Error and access logging
 
 ```nginx
@@ -32,6 +34,51 @@ location / {
     try_files $uri $uri/ /index.html;
 }
 ```
+
+### It is a template, not a finished config
+
+`nginx.conf` is **not** copied to `conf.d/default.conf`. The Dockerfile installs it
+at `/etc/nginx/default.conf.template`, and `docker/15-render-nginx-conf.sh` renders
+it to `/etc/nginx/conf.d/default.conf` on every container start. Editing it
+therefore requires recreating the container, not just reloading Nginx.
+
+Two placeholders are substituted:
+
+| Placeholder              | Derived from                                  |
+|--------------------------|-----------------------------------------------|
+| `${CSP_API_ORIGIN}`      | `VITE_API_BASE_URI` in `.env`, path stripped  |
+| `${CSP_KEYCLOAK_ORIGIN}` | `VITE_KEYCLOAK_URL` in `.env`, path stripped  |
+
+The render script lives in `/docker-entrypoint.d/`, which the official Nginx
+entrypoint walks in sort order before starting Nginx. Two details matter:
+
+- **It must stay executable.** The entrypoint silently skips non-executable files,
+  which would leave the stock welcome-page config in place. The Dockerfile chmods
+  it explicitly.
+- **It writes a file rather than exporting variables.** The entrypoint runs these
+  scripts inside a `find | while read` pipeline, so an export may or may not escape
+  the subshell into the stock `20-envsubst-on-templates.sh` step. Producing the
+  rendered config directly sidesteps the question. Keeping the template out of
+  `/etc/nginx/templates/` also stops that stock step from overwriting the output.
+
+The script names both variables explicitly when calling `envsubst`, which is what
+keeps Nginx's own `$uri`, `$host`, and `$content_security_policy` from being
+clobbered. If either variable is missing or is not an absolute `http(s)` URL, it
+aborts startup with a message on stderr rather than letting Nginx come up with a
+broken policy.
+
+### Content-Security-Policy
+
+The policy is defined once via `set $content_security_policy` and referenced by
+each `add_header`. The duplication in the static-asset block is deliberate and
+unavoidable: Nginx inherits `add_header` into a nested location *only* when that
+location declares no `add_header` of its own. Referencing the variable rather than
+repeating the policy text means the two copies cannot disagree.
+
+`connect-src` must name the real API and Keycloak origins. If it does not,
+`keycloak-js` cannot POST the PKCE authorization code to the token endpoint,
+`init()` rejects, and the app is stuck on "Authentication Required" — a login loop
+with no visible error beyond a "Refused to connect" line in the browser console.
 
 ## Running the Container
 

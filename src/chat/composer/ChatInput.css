@@ -3,8 +3,9 @@
     align-items: center;
     justify-content: center;
     padding: 10px;
+    padding-bottom: max(10px, calc(10px + env(safe-area-inset-bottom) - var(--keyboard-inset, 0px)));
     position: fixed;
-    bottom: 0;
+    bottom: var(--keyboard-inset, 0px);
     left: 0;
     right: 0;
 }
@@ -52,12 +53,14 @@
  * The stack that holds SlashCommandList and SelectedCommandChip. Absolute, so neither one
  * can take horizontal space from the textarea; a column, so both can be shown at once
  * without overlapping when a command is already selected and the user types "/" again.
+ * Inset left/right by the pill's 22px border-radius (.chat-input-row) so the card's square
+ * corners land on the pill's flat edge instead of overhanging its curve.
  */
 .composer-popovers {
     position: absolute;
     bottom: 100%;
-    left: 0;
-    right: 0;
+    left: 22px;
+    right: 22px;
     z-index: 100;
     display: flex;
     flex-direction: column;
@@ -96,6 +99,38 @@
 }
 
 .composer-send-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+/* Same footprint as the send button — it occupies the same slot, only while a turn is streaming. */
+.composer-stop-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    cursor: pointer;
+    transition: background-color var(--transition-speed), opacity var(--transition-speed);
+}
+
+.composer-stop-button svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-color);
+}
+
+.composer-stop-button:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.composer-stop-button:focus-visible {
     outline: 2px solid var(--text-color);
     outline-offset: 2px;
 }
@@ -141,6 +176,6 @@
 
 @media (max-width: 768px) {
     .textarea-parent {
-        width: 85%;
+        width: 94%;
     }
 }

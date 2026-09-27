@@ -1,6 +1,6 @@
 import {useCallback, useRef, useState, useEffect} from 'react';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
-import ConsoleErrors from "../common/ConsoleErrors";
+import {toast} from 'react-toastify';
 import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
@@ -10,16 +10,18 @@ import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
 import useChatHistory from '../hooks/useChatHistory.js';
+import useChatUrlSync from '../hooks/useChatUrlSync.js';
 import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
 import useAttachmentTray from '../hooks/useAttachmentTray.js';
 import useScrollToBottom from '../hooks/useScrollToBottom.js';
+import useKeyboardInset from '../hooks/useKeyboardInset.js';
 
 
 function ChatScreen() {
-    const {chatInputRef} = useSharedData();
+    const {chatInputRef, setStreamingChatId} = useSharedData();
 
     useEffect(() => {
         const handleCopy = (event) => {
@@ -39,7 +41,39 @@ function ChatScreen() {
         document.addEventListener('copy', handleCopy);
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, markLastAIMessageReconnecting, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage} = useChatHistory();
+    const chatSwitchResetRef = useRef(null);
+    const abortActiveStreamRef = useRef(null);
+
+    /*
+     * Called before useChatHistory so its effect runs first: on a bookmarked `/chat/{id}` the
+     * url is adopted into shared state on the same commit that hydration then reads.
+     */
+    const {clearOpenChat} = useChatUrlSync();
+
+    /*
+     * The id in the url names nothing the server will serve. Leaving the user on a permanently
+     * empty transcript would be the worst outcome, so the chat is dropped and the url replaced —
+     * replaced rather than pushed, so Back cannot walk straight into the same dead id.
+     */
+    const handleChatNotFound = useCallback(() => {
+        clearOpenChat();
+        toast.error('That conversation no longer exists.');
+    }, [clearOpenChat]);
+
+    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, appendSystemMessage, appendErrorMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
+        onChatIdChangedExternally: () => {
+            /*
+             * The conversation on screen is being replaced — a sidebar pick, New Chat, a delete,
+             * or a back navigation. Nothing cancels the turn server-side, but its remaining
+             * frames would land on whatever bubble now ends the new transcript, so this client
+             * lets go of the stream before that can happen. Suppressed by `adoptedChatIdRef` for
+             * a new chat learning its own id, which must not abort the stream that issued it.
+             */
+            abortActiveStreamRef.current?.();
+            chatSwitchResetRef.current?.();
+        },
+        onChatNotFound: handleChatNotFound,
+    });
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
     const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
@@ -66,7 +100,7 @@ function ChatScreen() {
         lightboxInvokerRef.current = null;
     }, []);
 
-    const {loading, error, setError, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, attachmentNotice, recoveryFailed, retryRecovery} = useChatStream({
+    const {loading, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery, streamActive, stopChat} = useChatStream({
         chatId,
         chatHistory,
         setChatHistory,
@@ -75,11 +109,13 @@ function ChatScreen() {
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
         stopStreamingLastAIMessage,
-        markLastAIMessageReconnecting,
+        appendSystemMessage,
+        appendErrorMessage,
         reloadChatHistory,
         finalizeLastAIMessage,
         ensureChatIdFromResponse,
         adoptMessageIdForLastUserMessage,
+        updateAttachmentStatus,
         activeElicitation,
         setActiveElicitation,
         setElicitationSubmitting,
@@ -89,17 +125,34 @@ function ChatScreen() {
         attachmentTray,
     });
 
-    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory);
+    /*
+     * Publishes which conversation is mid-turn, so the history drawer can refuse to delete it — the
+     * backend runs an in-flight turn to completion and would write its message onto a conversation
+     * that no longer exists.
+     *
+     * Derived from `loading` rather than set once when the turn starts: on a new chat the id only
+     * arrives with the RUN_STARTED frame, and `loading` going false is what RUN_FINISHED and
+     * RUN_ERROR both amount to here.
+     */
+    useEffect(() => {
+        setStreamingChatId(loading ? chatId : null);
+    }, [loading, chatId, setStreamingChatId]);
+
+    const composerRef = useRef(null);
+    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
+    const keyboardInset = useKeyboardInset();
 
     const {commandCandidates} = useSlashCommands({inputValue});
 
-    const {selectedIndex, selectedCommand, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss} = useSlashCommandSelection({
+    const {selectedIndex, selectedCommand, isPinned, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss, handlePinToggle} = useSlashCommandSelection({
         commandCandidates,
         setInputValue,
     });
 
     getSelectedCommandRef.current = () => selectedCommand?.command || null;
     getMessageTextRef.current = () => inputValue.trim();
+    chatSwitchResetRef.current = handleDismiss;
+    abortActiveStreamRef.current = abortActiveStream;
 
     const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
         chatHistory,
@@ -111,7 +164,7 @@ function ChatScreen() {
         setElicitationValues,
         elicitationSubmitting,
         setElicitationSubmitting,
-        setError,
+        appendErrorMessage,
     });
 
     const trayStateClassName = attachmentTray.trayEntries.length > 0
@@ -119,9 +172,7 @@ function ChatScreen() {
         : '';
 
     return (
-        <div className={`chat-app${trayStateClassName}`}>
-            {error && <ConsoleErrors error={error}/>}
-
+        <div className={`chat-app${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
             <div className="chat-content" ref={scrollContainerRef}>
                 {chatHistory.map((entry) => (
                     <ChatMessage key={entry._key} message={entry} onExpandImage={openLightbox}/>
@@ -159,6 +210,8 @@ function ChatScreen() {
 
                 <ChatInput
                     loading={loading}
+                    streamActive={streamActive}
+                    onStopChat={stopChat}
                     inputValue={inputValue}
                     handleInputChange={handleInputChange}
                     handleSubmit={handleSubmit}
@@ -166,6 +219,8 @@ function ChatScreen() {
                     commandCandidates={commandCandidates}
                     selectedIndex={selectedIndex}
                     selectedCommand={selectedCommand}
+                    isPinned={isPinned}
+                    onTogglePin={handlePinToggle}
                     onCommandSelect={handleCommandSelect}
                     onArrowUp={handleArrowUp}
                     onArrowDown={handleArrowDown}
@@ -178,6 +233,7 @@ function ChatScreen() {
                     setEntryCaption={attachmentTray.setEntryCaption}
                     trayError={attachmentTray.trayError}
                     onCaptionOpenChange={setIsCaptionRowOpen}
+                    composerContainerRef={composerRef}
                 />
             </div>
 

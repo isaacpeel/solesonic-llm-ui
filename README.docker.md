@@ -11,7 +11,8 @@ This document describes how to deploy the Solesonic LLM UI React/Vite applicatio
 ## Files Overview
 
 - `Dockerfile` — Multi-stage build that compiles the React application and serves it with Nginx
-- `nginx.conf` — Nginx configuration for routing and static asset handling
+- `nginx.conf` — **envsubst template** for the container's Nginx config (routing, caching, security headers)
+- `docker/15-render-nginx-conf.sh` — Entrypoint hook that renders it, building the CSP allowlist from `.env`
 - `docker-compose.yml` — Docker Compose configuration for local deployment
 - `README.nginx.md` — Detailed Nginx configuration guide
 
@@ -19,21 +20,28 @@ This document describes how to deploy the Solesonic LLM UI React/Vite applicatio
 
 ### 1. Configure Environment Variables
 
-Create a `.env` file in the project root with your configuration:
+Copy `.env.example` to `.env` and fill in real values. That file documents the
+complete set — five `VITE_*` vars plus `TZ` — and nothing else is read.
 
 ```bash
-# Required: Backend API connection
-VITE_API_BASE_URI=http://localhost:8080/api
-VITE_UI_BASE_URI=http://localhost:3000
-
-# Required: Keycloak authentication
-VITE_KEYCLOAK_URL=http://localhost:8080
-VITE_KEYCLOAK_REALM=solesonic
-VITE_KEYCLOAK_CLIENT_ID=solesonic-ui
-
-# Optional: Container timezone
-TZ=UTC
+cp .env.example .env
 ```
+
+`.env` is gitignored and is the single source of truth for both phases of the
+deployment:
+
+- **Build time** — Vite inlines every `VITE_*` value into the JS bundle.
+- **Run time** — `docker-compose.yml` passes the same file to the container via
+  `env_file`, where `docker/15-render-nginx-conf.sh` derives the
+  Content-Security-Policy `connect-src` origins from `VITE_API_BASE_URI` and
+  `VITE_KEYCLOAK_URL`.
+
+Because both phases read one file, the browser's `connect-src` allowlist cannot
+drift away from the hosts the app actually calls. No hostname is committed to the
+repository.
+
+> `VITE_*` values are inlined into client-side JavaScript and are therefore
+> readable by anyone using the app. Never put a secret in one.
 
 ### 2. Build and Start the Container
 
@@ -94,6 +102,34 @@ Ensure `.env` file exists and contains all required variables:
 ```bash
 grep VITE_ .env
 ```
+
+### Login Loops / "Authentication initialization failed"
+
+If sign-in bounces to Keycloak and returns to an "Authentication Required" screen,
+the PKCE token exchange is being blocked. Check, in order:
+
+1. **The CSP actually resolved.** The container logs one line at startup naming the
+   allowed origins, and the rendered config should contain real hostnames:
+
+   ```bash
+   docker-compose logs solesonic-llm-ui | grep connect-src
+   docker-compose exec solesonic-llm-ui grep -o "connect-src[^;]*" /etc/nginx/conf.d/default.conf
+   ```
+
+   Empty or literal `${CSP_...}` values mean the container is not receiving `.env`
+   — confirm the `env_file` entry in `docker-compose.yml` and recreate the
+   container (`docker-compose up -d --force-recreate`; a plain restart keeps the
+   old environment).
+
+2. **Keycloak client configuration.** Valid Redirect URIs must include the UI
+   origin with a trailing slash (the app sends `origin + pathname`, no query), and
+   Web Origins must include the UI origin, or the token request fails CORS.
+
+3. **Mixed content.** An `http://` API or Keycloak URL called from an `https://`
+   page is blocked by the browser regardless of CSP.
+
+The browser console names which of these it is: a CSP failure says "Refused to
+connect", a CORS failure names the missing `Access-Control-Allow-Origin`.
 
 ### Container Not Starting
 

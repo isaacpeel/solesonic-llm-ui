@@ -107,7 +107,62 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
         void loadPage(nextPageRef.current, requestGenerationRef.current);
     }, [loadPage]);
 
-    return {chats, loading, error, hasMore, loadMore, retry};
+    /*
+     * Row-level edits, applied to the accumulated pages in place. Deliberately not a refetch of
+     * page 0: paging is accumulated here, so re-fetching would discard pages 1..n and the scroll
+     * position that goes with them, for a change the client already knows the outcome of.
+     */
+    const replaceChat = useCallback((updatedChat) => {
+        setChats(previousChats => previousChats.map(
+            chat => (chat.id === updatedChat.id ? {...chat, ...updatedChat} : chat)
+        ));
+    }, []);
+
+    /* Drops one chat from the accumulated pages, for a row the server says is gone. */
+    const removeChat = useCallback((chatId) => {
+        setChats(previousChats => previousChats.filter(chat => chat.id !== chatId));
+    }, []);
+
+    /*
+     * Puts a chat into the accumulated pages, merging over one that is already there.
+     *
+     * Filing and unfiling a conversation is expressed through this rather than through a remove and
+     * a re-add: `chatGroupId` is what decides whether a chat renders in the ungrouped list at all,
+     * so patching that one field moves the row between the sections without dropping anything.
+     * A chat that arrived from a group's own endpoint may never have been on a page the drawer has
+     * loaded, which is why this inserts rather than only replacing.
+     */
+    const upsertChat = useCallback((incomingChat) => {
+        setChats(previousChats => (
+            previousChats.some(chat => chat.id === incomingChat.id)
+                ? previousChats.map(chat => (chat.id === incomingChat.id ? {...chat, ...incomingChat} : chat))
+                : [incomingChat, ...previousChats]
+        ));
+    }, []);
+
+    /*
+     * Wholesale replacement of the accumulated list, for an optimistic reorder and its rollback.
+     *
+     * A move is the one edit that cannot be expressed as a patch of one row: it changes where every
+     * placed conversation sits relative to the others, and the caller has already computed that
+     * arrangement in order to redraw the drawer before the round trip resolves.
+     */
+    const setChatsDirectly = useCallback((nextChats) => {
+        setChats(nextChats);
+    }, []);
+
+    return {
+        chats,
+        loading,
+        error,
+        hasMore,
+        loadMore,
+        retry,
+        replaceChat,
+        removeChat,
+        upsertChat,
+        setChatsDirectly,
+    };
 }
 
 /*

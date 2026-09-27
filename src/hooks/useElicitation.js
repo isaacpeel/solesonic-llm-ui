@@ -1,4 +1,4 @@
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
 import elicitationService from '../service/ElicitationService.js';
 import {AI} from '../chat/message/ChatMessage.jsx';
 
@@ -12,8 +12,19 @@ function useElicitation({
     setElicitationValues,
     elicitationSubmitting,
     setElicitationSubmitting,
-    setError,
+    appendErrorMessage,
 }) {
+    /*
+     * Progress steps that streamed onto the placeholder before the tool asked its question
+     * belong to the same turn as whatever streams after the answer — captured here rather than
+     * discarded with the placeholder below, so the final AI bubble ends up with the full step
+     * list instead of only the steps that happened to stream after resubmission. A page reload
+     * already shows every step because fetchFormattedChatMessages (useChatHistory.js) accumulates
+     * progress frames across the whole turn with no such placeholder boundary; this keeps the
+     * live view consistent with that.
+     */
+    const carriedNotificationsRef = useRef([]);
+
     useEffect(() => {
         if (!activeElicitation) {
             return;
@@ -31,6 +42,9 @@ function useElicitation({
             const lastMessageIsEmptyAI = lastMessage.type === AI && (!lastMessage.text || lastMessage.text.trim() === '');
 
             if (lastMessageIsEmptyAI) {
+                carriedNotificationsRef.current = Array.isArray(lastMessage.notifications)
+                    ? lastMessage.notifications
+                    : [];
                 newHistory.pop();
             }
 
@@ -43,6 +57,9 @@ function useElicitation({
     };
 
     const handleElicitationSubmit = async (overrideFields) => {
+        const carriedNotifications = carriedNotificationsRef.current;
+        carriedNotificationsRef.current = [];
+
         await elicitationService.handleElicitationSubmit({
             overrideFields,
             activeElicitation,
@@ -51,8 +68,9 @@ function useElicitation({
             setChatHistory,
             setActiveElicitation,
             setElicitationSubmitting,
-            setError,
+            appendErrorMessage,
             handleStreamChunk,
+            carriedNotifications,
         });
     };
 

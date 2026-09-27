@@ -1,4 +1,5 @@
-import {ArrowPathIcon, ExclamationTriangleIcon, XMarkIcon} from '@heroicons/react/20/solid';
+import {ArrowPathIcon, DocumentIcon, ExclamationTriangleIcon, XMarkIcon} from '@heroicons/react/20/solid';
+import {isImageAttachment} from '../../util/imageValidation.js';
 import './AttachmentThumbnail.css';
 
 const UPLOADING = 'uploading';
@@ -7,6 +8,7 @@ const FAILED = 'failed';
 function AttachmentThumbnail({
     objectUrl,
     fileName,
+    contentType,
     description,
     status,
     warning,
@@ -15,12 +17,58 @@ function AttachmentThumbnail({
     onRetry,
     onExpand,
 }) {
-    const altText = description || fileName || 'Attached image';
+    const isImage = isImageAttachment({contentType, fileName});
+    const altText = description || fileName || (isImage ? 'Attached image' : 'Attached file');
 
     if (unavailable) {
         return (
             <div className="attachment-thumbnail attachment-thumbnail--unavailable" title={fileName}>
-                <span className="attachment-thumbnail-unavailable-text">Image no longer available</span>
+                <span className="attachment-thumbnail-unavailable-text">
+                    {isImage ? 'Image no longer available' : 'File no longer available'}
+                </span>
+            </div>
+        );
+    }
+
+    /* Non-image attachments have nothing to preview and cannot be opened in the lightbox. */
+    if (!isImage) {
+        return (
+            <div className="attachment-thumbnail attachment-thumbnail-file" title={fileName}>
+                <DocumentIcon className="attachment-thumbnail-file-icon"/>
+
+                {status === UPLOADING && (
+                    <div className="attachment-thumbnail-overlay" role="status" aria-label={`Uploading ${fileName || 'file'}`}>
+                        <span className="attachment-thumbnail-spinner"/>
+                    </div>
+                )}
+
+                {status === FAILED && (
+                    <button
+                        type="button"
+                        className="attachment-thumbnail-overlay attachment-thumbnail-retry"
+                        onClick={onRetry}
+                        aria-label={`Retry uploading ${fileName || 'file'}`}
+                    >
+                        <ArrowPathIcon/>
+                    </button>
+                )}
+
+                {warning && status !== FAILED && (
+                    <span className="attachment-thumbnail-warning" title={warning} aria-label={warning}>
+                        <ExclamationTriangleIcon/>
+                    </span>
+                )}
+
+                {onRemove && (
+                    <button
+                        type="button"
+                        className="attachment-thumbnail-remove"
+                        onClick={onRemove}
+                        aria-label={`Remove ${fileName || 'file'}`}
+                    >
+                        <XMarkIcon/>
+                    </button>
+                )}
             </div>
         );
     }

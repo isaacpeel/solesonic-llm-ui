@@ -73,6 +73,33 @@ const authService = {
             return null;
         }
     },
+    readStoredFailures: () => {
+        try {
+            const storedFailures = JSON.parse(localStorage.getItem(AUTH_FAILURES_KEY));
+            return Array.isArray(storedFailures) ? storedFailures : [];
+        } catch (parseError) {
+            log.warn('Stored auth failure count was unreadable; resetting', parseError);
+            localStorage.removeItem(AUTH_FAILURES_KEY);
+            return [];
+        }
+    },
+    readBlockedUntil: () => {
+        const storedBlockedUntil = localStorage.getItem(AUTH_BLOCKED_UNTIL);
+
+        if (!storedBlockedUntil) {
+            return null;
+        }
+
+        const blockedUntil = parseInt(storedBlockedUntil, 10);
+
+        if (Number.isNaN(blockedUntil)) {
+            log.warn('Stored auth block deadline was unreadable; ignoring');
+            localStorage.removeItem(AUTH_BLOCKED_UNTIL);
+            return null;
+        }
+
+        return blockedUntil;
+    },
     authFailure: async (error) => {
         const uri = buildUrl(`${config.uiBaseUri}/auth-failure`, { error: `${error}` });
 
@@ -84,7 +111,7 @@ const authService = {
 
         const now = Date.now();
 
-        let failures = JSON.parse(localStorage.getItem(AUTH_FAILURES_KEY)) || [];
+        let failures = authService.readStoredFailures();
         failures = failures.filter(attempt => now - attempt < BLOCK_DURATION_MS);
         failures.push(now);
 
@@ -95,9 +122,6 @@ const authService = {
         }
     },
     isBlocked: () => {
-        const blockedUntil = localStorage.getItem(AUTH_BLOCKED_UNTIL);
-
-        //If the browser doesn't support local storage it's probably a bot and always block
         try {
             const testKey = '__test__';
             localStorage.setItem(testKey, testKey);
@@ -107,26 +131,29 @@ const authService = {
             return true; // Local storage is not supported
         }
 
-        if(!blockedUntil) {
+        const blockedUntil = authService.readBlockedUntil();
+
+        if (blockedUntil === null) {
             return false;
         }
 
-        let currentlyBlocked =  blockedUntil && Date.now() < parseInt(blockedUntil, 10);
+        const currentlyBlocked = Date.now() < blockedUntil;
 
-        if(currentlyBlocked) {
+        if (!currentlyBlocked) {
             localStorage.removeItem(AUTH_FAILURES_KEY);
+            localStorage.removeItem(AUTH_BLOCKED_UNTIL);
         }
 
         return currentlyBlocked;
     },
     remainingBlockTime: () => {
-        const blockedUntil = localStorage.getItem(AUTH_BLOCKED_UNTIL);
+        const blockedUntil = authService.readBlockedUntil();
 
-        if(!blockedUntil) {
+        if (blockedUntil === null) {
             return 0;
         }
 
-        return Math.max(0, parseInt(blockedUntil, 10) - Date.now());
+        return Math.max(0, blockedUntil - Date.now());
     }
 };
 

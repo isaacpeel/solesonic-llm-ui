@@ -10,6 +10,10 @@
     color: var(--text-color);
 }
 
+.selected-command-chip--pinned {
+    border-color: var(--primary-color);
+}
+
 .selected-command-chip-name {
     font-weight: 600;
     font-size: 13px;
@@ -30,8 +34,34 @@
     white-space: nowrap;
 }
 
-.selected-command-chip-dismiss {
+.selected-command-chip-pin {
     margin-left: auto;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.selected-command-chip-pin svg {
+    width: 16px;
+    height: 16px;
+}
+
+.selected-command-chip-pin:hover {
+    opacity: 1;
+}
+
+.selected-command-chip-pin--active {
+    opacity: 1;
+    color: var(--primary-color);
+}
+
+.selected-command-chip-dismiss {
     flex-shrink: 0;
     background: none;
     border: none;

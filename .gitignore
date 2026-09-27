@@ -29,3 +29,5 @@ yarn-error.log*
 /prompt/
 /.junie/
 /src/preview/
+*storybook.log
+storybook-static

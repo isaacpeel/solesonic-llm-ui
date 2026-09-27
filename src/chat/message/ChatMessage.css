@@ -21,9 +21,13 @@
     justify-content: flex-start;
 }
 
+.chat-message-container.ERROR {
+    justify-content: flex-start;
+}
+
 .message {
     margin-top: 16px;
-    max-width: 70%;
+    max-width: 90%;
     padding: 1px 16px;
     border-radius: 8px;
     word-wrap: break-word;
@@ -32,7 +36,7 @@
 }
 
 /*
- * Column holding an assistant card and the action row under it. The 70% cap lives here rather
+ * Column holding an assistant card and the action row under it. The 90% cap lives here rather
  * than on .message, so the card and the row beneath it share one width — otherwise the row
  * would stretch to the full container and the button would drift far right of the card edge.
  */
@@ -40,7 +44,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    max-width: 70%;
+    max-width: 90%;
 }
 
 .message-with-actions .message {
@@ -48,42 +52,12 @@
 }
 
 /*
- * Faded rather than unmounted: revealing it must not reflow the transcript, and opacity leaves
- * the button in the tab order so a keyboard can still reach it.
+ * No per-type max-width override here: the base .message rule's 90% cap already covers both,
+ * and .message-with-actions .message's 100% override (higher specificity — two classes plus a
+ * descendant vs. one) relies on ASSISTANT not re-declaring max-width at equal specificity, which
+ * previously won the cascade by source order and silently re-capped the bubble to 90% of an
+ * already-90%-capped column (81% effective) while the footer row beneath it had no such cap.
  */
-.message-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    padding-top: 4px;
-    opacity: 0;
-    transition: opacity var(--transition-speed);
-}
-
-/*
- * Scoped to pointer devices: touch browsers emulate :hover on tap and leave it stuck on the
- * last-tapped element, so on those the explicit --revealed flag is the only trigger.
- */
-@media (hover: hover) {
-    .message-with-actions:hover .message-actions {
-        opacity: 1;
-    }
-}
-
-/*
- * Keyboard reveal, kept in its own rule so browsers without :has() drop only this one.
- * :focus-visible, not :focus-within — clicking the copy button focuses it, and :focus-within
- * would then hold the row open after the pointer had left the message.
- */
-.message-with-actions:has(.message-copy-button:focus-visible) .message-actions {
-    opacity: 1;
-}
-
-.message-with-actions--revealed .message-actions {
-    opacity: 1;
-}
-
 .message.USER {
     background-color: #e0e0e0;
     color: #000;
@@ -102,17 +76,29 @@
     align-self: flex-start;
 }
 
-.message-info {
-    display: flex;
-    align-items: center;
-    font-size: 12px;
-    margin-bottom: 5px;
-    visibility: hidden; /* Initially hidden */
+.message.ERROR {
+    background-color: #4a2323;
+    color: #ffd9d9;
+    align-self: flex-start;
+    border-left: 3px solid #eb5757;
 }
 
-.message:hover .message-info,
-.message:focus .message-info {
-    visibility: visible;
+.message-error-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #eb5757;
+    margin-bottom: 4px;
+}
+
+.message-error-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
 }
 
 .message-text {
@@ -121,7 +107,6 @@
     overflow-wrap: anywhere;
     white-space: normal;
     max-width: 100%;
-    overflow-x: auto;
 }
 
 .notification-log {
@@ -282,10 +267,14 @@
 }
 
 /* Add styles for markdown tables */
+.table-scroll-wrapper {
+    overflow-x: auto;
+    margin: 0.5rem 0;
+}
+
 .message-text .markdown-body table {
     border-collapse: collapse;
     width: 100%;
-    margin: 0.5rem 0;
 }
 
 .message-text .markdown-body th,
@@ -305,65 +294,6 @@
 
 .message-text .markdown-body td:first-child {
     white-space: nowrap;
-}
-
-.info-icon {
-    margin-right: 5px;
-    font-size: 16px;
-}
-
-.model-name {
-    font-weight: bold;
-    display: inline-block;
-    visibility: hidden; /* Hide initially */
-}
-
-/* For mobile (on touch, display model name) */
-.message:active .message-info,
-.message:focus-within .message-info {
-    visibility: visible; /* Show on tap or when the message is focused */
-}
-
-.info-icon-wrapper[data-dialog]:hover::after {
-    content: attr(data-dialog);
-    position: absolute;
-    background-color: var(--dialog-bg);
-    color: var(--dialog-text-color);
-    padding: 5px 10px;
-    border-radius: var(--border-radius);
-    font-size: 0.875rem;
-    white-space: nowrap;
-    z-index: 10;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    max-width: 200px;
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.info-icon-wrapper[data-dialog]:hover::after {
-    visibility: visible;
-    opacity: 1;
-}
-
-.info-icon-wrapper svg {
-    width: var(--icon-size);
-    height: var(--icon-size);
-    fill: currentColor;  /* Ensures the icon inherits the color */
-}
-
-.info-icon-wrapper:hover svg {
-    fill: var(--icon-hover-color);
-}
-
-.info-icon-wrapper[data-dialog]:hover[data-edge-left]::after {
-    left: 5%;
-    transform: translateX(0); /* Align tooltip to the left edge */
-}
-
-.info-icon-wrapper[data-dialog]:hover[data-edge-right]::after {
-    right: 5%;
-    transform: translateX(0); /* Align tooltip to the right edge */
 }
 
 /* Formatting styles for formatted messages */
@@ -501,19 +431,18 @@
  * Neutral, not amber: the connection dropped but the turn is still running, so this is status
  * rather than a warning about the answer.
  */
-.message-reconnecting {
-    margin-top: 8px;
-    padding: 6px 10px;
-    border-radius: 4px;
-    border-left: 2px solid rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.06);
-    font-size: 12px;
-    line-height: 1.4;
-    color: rgba(255, 255, 255, 0.7);
-}
-
 @media (max-width: 768px) {
-    .message {
+    .chat-message-container {
+        margin: 4px 0;
+    }
+
+    .message,
+    .message-with-actions {
         max-width: 100%;
+    }
+
+    .message {
+        margin-top: 8px;
+        padding: 1px 12px;
     }
 }

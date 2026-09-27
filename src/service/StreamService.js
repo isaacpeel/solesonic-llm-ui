@@ -2,7 +2,7 @@ import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import { parseSseStream } from '../client/parseSseStream.js';
 import {AI} from "../chat/message/ChatMessage.jsx"
-import {DONE, ERROR} from './ChatService.js';
+import {TERMINAL_RUN_EVENTS} from './ChatService.js';
 
 /*
  * What a torn-down connection looks like across engines: Chrome throws `TypeError: Failed to
@@ -12,6 +12,15 @@ import {DONE, ERROR} from './ChatService.js';
  */
 const TRANSIENT_DISCONNECT_MESSAGE_PATTERN =
     /failed to fetch|load failed|network ?error|network connection|connection (lost|closed|reset|aborted)/i;
+
+/* Turns a caught transport failure into a sentence readable in the transcript, not a raw Error. */
+function describeStreamError(error) {
+    if (streamService.isTransientStreamDisconnect(error)) {
+        return 'Lost connection to the assistant. Please check your connection and try again.';
+    }
+
+    return error?.message || 'Something went wrong while talking to the assistant. Please try again.';
+}
 
 const streamService = {
     /*
@@ -37,7 +46,7 @@ const streamService = {
         { onChunk, timeoutMs = 30000 } = {}
     ) => {
         const token = await authService.getAccessToken();
-        const uri = `${config.streamingChatsUri}/${chatId}/${elicitationId}/elicitation-response`;
+        const uri = `${config.streamingChatsUri}/${encodeURIComponent(chatId)}/${encodeURIComponent(elicitationId)}/elicitation-response`;
 
         const payload = typeof elicitationPayload === 'string'
             ? { chatMessage: elicitationPayload }
@@ -80,7 +89,7 @@ const streamService = {
             for await (const event of parseSseStream(response.body)) {
                 onChunk?.(event);
 
-                if (event.event === DONE || event.event === ERROR) {
+                if (TERMINAL_RUN_EVENTS.includes(event.event)) {
                     break;
                 }
             }
@@ -88,9 +97,9 @@ const streamService = {
             clearTimeout(timeoutId);
         }
     },
-    handleStreamError(error, setError, setChatHistory) {
+    handleStreamError(error, appendErrorMessage, setChatHistory) {
         console.error('[StreamService] Streaming error:', error);
-        setError(error);
+        appendErrorMessage(describeStreamError(error));
 
         setChatHistory((previousHistory) => {
             const newHistory = [...previousHistory];

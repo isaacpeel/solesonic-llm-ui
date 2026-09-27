@@ -1,0 +1,393 @@
+/*
+ * The panel between .drawer and .chat-drawer. It carries the flex chain down so the list can
+ * claim every pixel the fixed drawer leaves under the toggle icon.
+ */
+.chat-drawer-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+/*
+ * Holds the pinned title above the scroll box rather than scrolling itself. The virtualizer
+ * positions rows from the top of its scroll element, so anything scrolling above the rows — the
+ * title — would offset every row by its own height.
+ */
+.chat-drawer {
+    flex: 1;
+    min-height: 0; /* Without this a flex item refuses to shrink below its content height. */
+    display: flex;
+    flex-direction: column;
+    position: relative; /* Anchors the status overlay to the drawer's foot. */
+    padding: 20px 20px 0; /* No bottom padding: the list runs all the way to the bottom of the screen. */
+    overflow: hidden; /* .chat-history-scroll is the only scroll box. */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
+    z-index: 1000;
+}
+
+/*
+ * A conversation is being held outside the drawer, where releasing offers to delete it or to build
+ * a group around it. Fading the drawer is the only feedback available for a target that is, by
+ * definition, everywhere else on the screen.
+ */
+.chat-drawer-releasing {
+    opacity: 0.65;
+    transition: opacity var(--transition-speed);
+}
+
+/* Title style */
+.chat-drawer h2 {
+    flex-shrink: 0;
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: var(--text-color); /* Matches overall text color */
+}
+
+/* The scroll box the virtualizer observes, and the element rows are positioned against. */
+.chat-history-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/*
+ * Stands in for the full height of every loaded row, mounted or not, so the scrollbar reflects
+ * the whole list while only the visible window exists in the DOM.
+ */
+.chat-history-spacer {
+    position: relative;
+    width: 100%;
+}
+
+/*
+ * Rows are taken out of flow and placed by transform, which means their vertical margins would be
+ * invisible to the virtualizer's measurement and rows would overlap. Every gap in this list is
+ * therefore expressed as padding.
+ */
+.chat-history-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+}
+
+/* Replaces the margin that used to sit under .date-header. */
+.chat-history-header-row {
+    padding-bottom: 10px;
+}
+
+/* Replaces the margin that used to separate one .date-group from the next. */
+.chat-history-header-row-spaced {
+    padding-top: 20px;
+}
+
+/*
+ * A day bucket collapses the way a conversation group does, so its header is a button — stripped of
+ * every default a button brings, because the row's height is the one the virtualizer measured and
+ * placed every row below it against.
+ */
+.date-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 0 0 8px;
+    border: none;
+    border-bottom: 2px solid var(--border-color);
+    border-radius: 0;
+    background: none;
+    color: var(--text-color); /* Softer text */
+    font-family: inherit;
+    font-size: 1.2rem;
+    font-weight: bold;
+    line-height: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+/* One icon, rotated rather than swapped, so the row never reflows as a day opens. */
+.date-header-chevron {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    transition: transform var(--transition-speed);
+}
+
+.date-header-chevron-expanded {
+    transform: rotate(90deg);
+}
+
+/* min-width: 0 is what lets a flex child shrink far enough to actually ellipsize. */
+.date-header-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * Chat item styling. A flex row so the label and the action kebab share one line — the padding and
+ * the border are unchanged, so the measured height still matches ESTIMATED_CHAT_ROW_HEIGHT.
+ * Nothing in this row may wrap: the virtualizer placed every row below it against that height.
+ */
+.chat-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px;
+    border-bottom: 1px solid var(--border-color); /* Subtle separator */
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/*
+ * The grip a row is dragged by. Deliberately not `display: none` until hover — it is a real button
+ * and the keyboard path to reordering runs through it, so it is dimmed rather than hidden, and its
+ * 20px box is shorter than the row's line box so it cannot make the row taller than the height the
+ * virtualizer measured.
+ */
+.chat-history-drag-handle {
+    position: relative; /* Containing block for the touch target below. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-color);
+    opacity: 0.35;
+    cursor: grab;
+    transition: opacity var(--transition-speed);
+
+    /*
+     * The line that makes dragging work on a phone at all. `.chat-history-scroll` is an
+     * `overflow-y: auto` box, so without this the browser claims a vertical drag that starts here
+     * as a scroll of the list and cancels the pointer stream before the drag can begin.
+     */
+    touch-action: none;
+
+    /* A press-and-hold on the grip is a drag, never a text selection or an iOS callout. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/*
+ * An invisible touch target around the 16px glyph. It has to come from an absolutely positioned
+ * pseudo-element rather than from padding, because the virtualizer positioned every row below this
+ * one against the height it measured — growing the button would move all of them.
+ *
+ * `.chat-item` is `overflow: hidden`, which clips this to roughly the row's own 41px box. That is
+ * the ceiling here, and it is still far closer to the 44px touch minimum than the glyph alone.
+ */
+.chat-history-drag-handle::before {
+    content: "";
+    position: absolute;
+    inset: -12px;
+}
+
+.chat-history-drag-handle svg {
+    width: 14px;
+    height: 14px;
+    /* The glyph must never be the pointer's target, or a drag would start on a child of the grip. */
+    pointer-events: none;
+}
+
+.chat-item:hover .chat-history-drag-handle,
+.chat-group-header-row:hover .chat-history-drag-handle {
+    opacity: 0.85;
+}
+
+.chat-history-drag-handle:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--text-color);
+    outline-offset: 1px;
+}
+
+.chat-history-drag-handle:active {
+    cursor: grabbing;
+}
+
+/*
+ * Drag feedback.
+ *
+ * Every one of these paints with an absolutely positioned pseudo-element or a change of opacity,
+ * because the virtualizer placed every row below this one against the height it measured — a border
+ * or a margin here would move all of them the moment a drag started.
+ */
+/*
+ * Stands in for the drag image the HTML5 API used to render. A pointer drag has none, and on a
+ * touchscreen the finger covers the row, so the conversation in flight has to be obvious from what
+ * is left visible around it. Not a transform — the virtualizer owns this element's `transform` and
+ * sets it inline, where it would win anyway.
+ */
+.chat-history-row-dragging {
+    opacity: 0.5;
+}
+
+.chat-history-row-dragging .chat-item {
+    background-color: var(--secondary-color);
+}
+
+.chat-history-row-drop-before::after,
+.chat-history-row-drop-after::after,
+.chat-history-row-drop-onto::after {
+    content: "";
+    position: absolute;
+    background-color: transparent;
+    /* The indicator sits over the row it marks, which still has to receive dragover events. */
+    pointer-events: none;
+}
+
+.chat-history-row-drop-before::after,
+.chat-history-row-drop-after::after {
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--text-color);
+}
+
+.chat-history-row-drop-before::after {
+    top: 0;
+}
+
+.chat-history-row-drop-after::after {
+    bottom: 0;
+}
+
+/* A whole-row target: a group to file into, or a day header to send the row back to date order. */
+.chat-history-row-drop-onto::after {
+    inset: 0;
+    box-shadow: inset 0 0 0 2px var(--text-color);
+    border-radius: 4px;
+}
+
+/* min-width: 0 is what lets a flex child shrink far enough to actually ellipsize. */
+.chat-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*
+ * Sized to the row it replaces rather than to its content, and stripped of the chrome that would
+ * make the row look taller than the label it stands in for.
+ */
+.chat-item-rename {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    border-bottom: 1px solid var(--text-color);
+    border-radius: 0;
+    background: none;
+    color: var(--text-color);
+    font: inherit;
+    line-height: inherit;
+    outline: none;
+}
+
+.chat-item-rename::placeholder {
+    color: var(--text-color);
+    opacity: 0.5;
+}
+
+/* Hover effect on chat items */
+.chat-item:hover {
+    background-color: var(--secondary-color); /* Slight highlight on hover */
+}
+
+/*
+ * Paging feedback, laid over the foot of the scroll box rather than taking layout height from it.
+ * The scroll viewport therefore keeps one height for the drawer's whole life — "Loading…" toggling
+ * on every page fetch changes neither the scrollable height nor the viewport, so the scrollbar
+ * holds still — and the list reaches the bottom of the screen instead of stopping above a
+ * permanently reserved footer.
+ */
+.chat-history-status-area {
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    bottom: 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none; /* While empty it sits over rows that still have to be clickable. */
+}
+
+.chat-history-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    opacity: 0.7;
+    pointer-events: auto; /* Restores clicks for the one child that is actually rendered. */
+    background-color: var(--primary-color); /* Opaque, so a status reads over the rows it covers. */
+    border-radius: 4px;
+}
+
+.chat-history-error {
+    opacity: 1;
+}
+
+.chat-history-retry {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.chat-history-retry:hover {
+    background-color: var(--primary-color);
+}
+
+/* Drawer styles */
+.drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 250px;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--primary-color); /* Matches primary sections */
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    overflow: hidden; /* .chat-history-scroll is the only scroll box, so the drawer never scrolls. */
+}
+
+.drawer.open {
+    transform: translateX(0);
+}
+
+.drawer-close-button {
+    cursor: pointer;
+    height: 26px;
+    width: 26px;
+    color: var(--text-color);
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

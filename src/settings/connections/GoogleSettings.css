@@ -1,0 +1,88 @@
+.google-settings-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    border-radius: var(--border-radius);
+    max-width: 28rem;
+}
+
+.google-auth-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 15rem;
+}
+
+.google-settings-item {
+    display: flex;
+    justify-content: flex-end;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+}
+
+.google-settings-item-label {
+    justify-content: flex-end;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.google-settings-icon-wrapper {
+    height: 36px;
+    width: 36px;
+}
+
+.google-settings-account {
+    font-size: 14px;
+    color: var(--text-color);
+    word-break: break-all;
+}
+
+.google-settings-message {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.8;
+}
+
+.google-settings-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+}
+
+.google-settings-confirm-text {
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.google-settings-confirm-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+}
+
+.google-settings-confirm-button,
+.google-settings-cancel-button {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--text-color);
+    background-color: var(--accent-color);
+}
+
+.google-settings-confirm-button:hover:enabled,
+.google-settings-cancel-button:hover:enabled {
+    background-color: var(--secondary-color);
+}
+
+.google-settings-confirm-button:disabled,
+.google-settings-cancel-button:disabled {
+    cursor: default;
+    opacity: 0.6;
+}

@@ -1,5 +1,7 @@
 import "./ElicitationPrompt.css";
 import elicitationService from '../service/ElicitationService.js';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const SpinnerLabel = () => (
     <div className="inline-flex items-center text-xs text-slate-400">
@@ -11,32 +13,133 @@ const SpinnerLabel = () => (
     </div>
 );
 
-const getEnumOptions = (propertyDef) => {
-    if (propertyDef.enum) {
-        return propertyDef.enum.map((value) => ({
-            value,
-            label: value.charAt(0).toUpperCase() + value.slice(1).toLowerCase(),
-        }));
-    }
-    if (propertyDef.oneOf) {
-        return propertyDef.oneOf.map((item) => ({ value: item.const, label: item.title }));
-    }
-    return null;
-};
-
-const getMultiEnumOptions = (propertyDef) => {
-    const items = propertyDef.items;
-    if (!items) return null;
-    if (items.enum) {
-        return items.enum.map((value) => ({ value, label: value }));
-    }
-    if (items.anyOf) {
-        return items.anyOf.map((item) => ({ value: item.const, label: item.title }));
-    }
-    return null;
-};
+const { getEnumOptions, getMultiEnumOptions } = elicitationService;
 
 const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPROVE']);
+
+const Dropdown = ({ options, value, onChange, disabled }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [panelPosition, setPanelPosition] = useState(null);
+    const containerRef = useRef(null);
+    const panelRef = useRef(null);
+    const triggerId = useId();
+
+    /*
+     * Measured from the trigger and portalled to `document.body` (position: fixed) rather than
+     * positioned absolute in place — the chat message list this renders inside is a scroll
+     * container, and an absolutely-positioned panel that pokes past its box still grows that
+     * container's scrollHeight even though it's fully inside the viewport, which shows an
+     * unwanted scrollbar. Same pattern as ChatDropActionMenu.jsx.
+     */
+    useLayoutEffect(() => {
+        if (!isOpen || !containerRef.current) {
+            return;
+        }
+
+        const triggerRect = containerRef.current.getBoundingClientRect();
+        setPanelPosition({
+            top: triggerRect.bottom + 4,
+            left: triggerRect.left,
+            width: triggerRect.width,
+        });
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+
+        const handleOutsideClick = (event) => {
+            if (containerRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+                return;
+            }
+
+            setIsOpen(false);
+        };
+
+        const handleEscapeKey = (event) => {
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+            }
+        };
+
+        const closeOnScroll = () => setIsOpen(false);
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('keydown', handleEscapeKey);
+        document.addEventListener('scroll', closeOnScroll, true);
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+            document.removeEventListener('keydown', handleEscapeKey);
+            document.removeEventListener('scroll', closeOnScroll, true);
+        };
+    }, [isOpen]);
+
+    const selectedOption = options.find((option) => option.value === value);
+
+    return (
+        <div className="elicitation-dropdown" ref={containerRef}>
+            <button
+                id={triggerId}
+                type="button"
+                className="elicitation-dropdown-trigger"
+                disabled={disabled}
+                aria-haspopup="listbox"
+                aria-expanded={isOpen}
+                onClick={() => setIsOpen((previousIsOpen) => !previousIsOpen)}
+            >
+                <span className={selectedOption ? '' : 'elicitation-dropdown-placeholder'}>
+                    {selectedOption ? selectedOption.label : 'Select an option…'}
+                </span>
+                <svg
+                    className={`elicitation-dropdown-chevron ${isOpen ? 'elicitation-dropdown-chevron-open' : ''}`}
+                    xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none"
+                >
+                    <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+
+            {isOpen && panelPosition && createPortal(
+                <ul
+                    ref={panelRef}
+                    className="elicitation-dropdown-panel"
+                    role="listbox"
+                    aria-labelledby={triggerId}
+                    style={{
+                        top: `${panelPosition.top}px`,
+                        left: `${panelPosition.left}px`,
+                        width: `${panelPosition.width}px`,
+                    }}
+                >
+                    {options.map((option) => {
+                        const isSelected = option.value === value;
+                        return (
+                            <li
+                                key={option.value}
+                                role="option"
+                                aria-selected={isSelected}
+                                className={`elicitation-dropdown-option ${isSelected ? 'elicitation-dropdown-option-selected' : ''}`}
+                                onClick={() => {
+                                    onChange(option.value);
+                                    setIsOpen(false);
+                                }}
+                            >
+                                <span>{option.label}</span>
+                                {isSelected && (
+                                    <svg className="elicitation-dropdown-check" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+                                        <path d="M4 10.5L8 14.5L16 6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>,
+                document.body
+            )}
+        </div>
+    );
+};
 
 function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting }) {
     if (!elicitation) {
@@ -52,6 +155,13 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
 
     const actionField = nonMetaPropertyEntries.length === 1 ? nonMetaPropertyEntries[0][1] : null;
     const isSingleActionField = Boolean(actionField?.enum || actionField?.oneOf);
+    const singleActionEnumOptions = isSingleActionField ? getEnumOptions(actionField) : null;
+    const singleActionAutoSubmits = Boolean(singleActionEnumOptions && singleActionEnumOptions.length <= 3);
+
+    const hasExplicitCancelOption = nonMetaPropertyEntries.some(([, propertyDef]) => {
+        const options = getEnumOptions(propertyDef);
+        return options?.some((option) => option.value.toLowerCase() === 'cancel');
+    });
 
     const fieldControl = (propertyName, propertyDef) => {
         const currentValue = values[propertyName] ?? '';
@@ -64,19 +174,14 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                 [...enumOptions].reverse().find((option) => PRIMARY_ACTION_KEYWORDS.has(option.value.toUpperCase()))?.value
                 ?? enumOptions[enumOptions.length - 1]?.value;
 
-            if (enumOptions.length > 5) {
+            if (enumOptions.length > 3) {
                 return (
-                    <select
-                        className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    <Dropdown
+                        options={enumOptions}
                         value={currentValue}
-                        onChange={(event) => onChange(propertyName, event.target.value)}
+                        onChange={(selectedValue) => onChange(propertyName, selectedValue)}
                         disabled={submitting || isReadOnlyField}
-                    >
-                        <option value="" disabled>Select an option…</option>
-                        {enumOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                    </select>
+                    />
                 );
             }
 
@@ -187,17 +292,31 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                     </div>
                 ))}
             </div>
-            {!isSingleActionField && (
+            {(!singleActionAutoSubmits || !hasExplicitCancelOption) && (
                 <div className="mt-3 flex items-center gap-3">
-                    <button
-                        type="button"
-                        className="elicitation-button-primary"
-                        onClick={() => onSubmit()}
-                        disabled={submitting}
-                    >
-                        Submit
-                    </button>
-                    {submitting && <SpinnerLabel />}
+                    {!singleActionAutoSubmits && (
+                        <button
+                            type="button"
+                            className="elicitation-button-primary"
+                            onClick={() => onSubmit()}
+                            disabled={submitting}
+                        >
+                            Submit
+                        </button>
+                    )}
+
+                    {!hasExplicitCancelOption && (
+                        <button
+                            type="button"
+                            className="elicitation-button-secondary"
+                            onClick={() => onSubmit({ action: 'cancel' })}
+                            disabled={submitting}
+                        >
+                            Cancel
+                        </button>
+                    )}
+
+                    {submitting && !singleActionAutoSubmits && <SpinnerLabel />}
                 </div>
             )}
         </div>

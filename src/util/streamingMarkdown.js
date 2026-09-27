@@ -106,7 +106,7 @@ export function buildStreamingMarkdownDisplay(raw, { isFinal = false } = {}) {
 
         if (/^\s*(?:[-*]|\d+\.)\s*$/.test(line)) {
             // Convert bare marker to marker + NBSP (non-breaking space)
-            lines[lineIndex] = line.replace(/\s*$/, ' \u00A0');
+            lines[lineIndex] = line.replace(/\s*$/, '  ');
         }
     }
     text = lines.join('\n');

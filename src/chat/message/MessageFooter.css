@@ -1,0 +1,24 @@
+/*
+ * Horizontal padding matches .message's own 16px so the model name lines up with the bubble's
+ * text rather than the bubble's outer (unpadded) edge.
+ */
+.message-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 4px 16px 0;
+}
+
+.message-model-name {
+    font-size: 12px;
+    opacity: 0.55;
+    margin-right: auto;
+}
+
+@media (max-width: 768px) {
+    .message-actions {
+        padding: 4px 12px 0;
+    }
+}

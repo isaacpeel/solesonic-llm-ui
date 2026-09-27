@@ -1,13 +1,16 @@
 import {useEffect} from 'react';
-import {ArrowUpIcon} from '@heroicons/react/20/solid';
+import {ArrowUpIcon, StopIcon} from '@heroicons/react/20/solid';
 import './ChatInput.css';
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
-import {ACCEPTED_IMAGE_CONTENT_TYPES} from '../../util/imageValidation.js';
+import {ACCEPTED_ATTACHMENT_CONTENT_TYPES} from '../../util/imageValidation.js';
+import useIsMobile from '../../hooks/useIsMobile.js';
 
 function ChatInput({
     loading,
+    streamActive,
+    onStopChat,
     inputValue,
     handleInputChange,
     handleSubmit,
@@ -15,6 +18,8 @@ function ChatInput({
     commandCandidates,
     selectedIndex,
     selectedCommand,
+    isPinned,
+    onTogglePin,
     onCommandSelect,
     onArrowUp,
     onArrowDown,
@@ -27,6 +32,7 @@ function ChatInput({
     setEntryCaption,
     trayError,
     onCaptionOpenChange,
+    composerContainerRef,
 }) {
     useEffect(() => {
         const adjustInputHeight = () => {
@@ -43,6 +49,7 @@ function ChatInput({
         }
     }, [chatInputRef, inputValue]);
 
+    const isMobile = useIsMobile();
     const hasCandidates = commandCandidates.length > 0;
 
     /* Mirrors the guard in useChatStream.handleSubmit — attachments alone are not a message. */
@@ -54,14 +61,17 @@ function ChatInput({
                 chatInputRef.current.style.height = "auto";
             }
 
-            onDeselect();
+            /* A pinned command stays selected so it is resent on the next turn too. */
+            if (!isPinned) {
+                onDeselect();
+            }
         });
     };
 
     /*
      * Pasting is the primary attach path, and it is the one handler that cannot move into
      * ComposerAttachments — the paste target has to be the textarea itself. A paste
-     * carrying both text and an image keeps the text.
+     * carrying both text and a file keeps the text.
      */
     const handlePaste = (event) => {
         if (loading || !addFiles) {
@@ -69,12 +79,12 @@ function ChatInput({
         }
 
         const clipboardItems = Array.from(event.clipboardData?.items || []);
-        const imageFiles = clipboardItems
-            .filter((clipboardItem) => clipboardItem.kind === 'file' && ACCEPTED_IMAGE_CONTENT_TYPES.includes(clipboardItem.type))
+        const attachableFiles = clipboardItems
+            .filter((clipboardItem) => clipboardItem.kind === 'file' && ACCEPTED_ATTACHMENT_CONTENT_TYPES.includes(clipboardItem.type))
             .map((clipboardItem) => clipboardItem.getAsFile())
             .filter((clipboardFile) => !!clipboardFile);
 
-        if (imageFiles.length === 0) {
+        if (attachableFiles.length === 0) {
             return;
         }
 
@@ -84,11 +94,11 @@ function ChatInput({
             event.preventDefault();
         }
 
-        addFiles(imageFiles);
+        addFiles(attachableFiles);
     };
 
     return (
-        <div className="chat-input-container">
+        <div className="chat-input-container" ref={composerContainerRef}>
             <div className="textarea-parent">
                 {/*
                   * Both popovers live in one absolutely-positioned stack above the composer.
@@ -102,9 +112,11 @@ function ChatInput({
                         selectedIndex={selectedIndex}
                         onCommandSelect={onCommandSelect}
                     />
-                    {selectedCommand && !loading && (
+                    {selectedCommand && (!loading || isPinned) && (
                         <SelectedCommandChip
                             selectedCommand={selectedCommand}
+                            isPinned={isPinned}
+                            onTogglePin={onTogglePin}
                             onDeselect={onDeselect}
                         />
                     )}
@@ -168,13 +180,18 @@ function ChatInput({
                                     return;
                                 }
 
+                                /* On touch devices Enter has no Shift companion, so it inserts a newline; the send button submits. */
+                                if (isMobile) {
+                                    return;
+                                }
+
                                 event.preventDefault();
                                 submitMessage();
                             }
                         }}
                     />
 
-                    {loading && (
+                    {loading && !streamActive && (
                         <div className="dots-loader">
                             <div className="dot"></div>
                             <div className="dot"></div>
@@ -182,16 +199,28 @@ function ChatInput({
                         </div>
                     )}
 
-                    <button
-                        type="button"
-                        className="composer-send-button"
-                        onClick={submitMessage}
-                        disabled={!canSubmit}
-                        aria-label="Send message"
-                        title="Send message"
-                    >
-                        <ArrowUpIcon/>
-                    </button>
+                    {streamActive ? (
+                        <button
+                            type="button"
+                            className="composer-stop-button"
+                            onClick={onStopChat}
+                            aria-label="Stop response"
+                            title="Stop response"
+                        >
+                            <StopIcon/>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="composer-send-button"
+                            onClick={submitMessage}
+                            disabled={!canSubmit}
+                            aria-label="Send message"
+                            title="Send message"
+                        >
+                            <ArrowUpIcon/>
+                        </button>
+                    )}
                 </ComposerAttachments>
             </div>
         </div>

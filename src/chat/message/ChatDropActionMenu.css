@@ -1,0 +1,44 @@
+/*
+ * Only what this menu adds to the row menu's panel: the group picker. The panel itself — the fixed
+ * placement, the surface, the item rows — comes from ChatRowMenu.css, which both import.
+ */
+
+.chat-drop-action-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+}
+
+.chat-drop-action-field-label {
+    font-size: 0.8rem;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+/*
+ * A native select on purpose. On a phone it opens the platform's own picker, which is reachable,
+ * scrollable and familiar — none of which a hand-rolled listbox inside a popover would be without
+ * a great deal more code.
+ */
+.chat-drop-action-select {
+    width: 100%;
+    padding: 6px 8px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.chat-drop-action-select:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 1px;
+}
+
+/* A destination the conversation is already in — offered so the list reads whole, but inert. */
+.chat-drop-action-select option:disabled {
+    opacity: 0.5;
+}

@@ -1,0 +1,89 @@
+/*
+ * Above the drawer's own z-index (1000) and above the portalled row menu (2000), so the dialog is
+ * never rendered behind the list it was opened from.
+ */
+.delete-chat-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+.delete-chat-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+    padding: 20px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.delete-chat-dialog-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.delete-chat-dialog-body {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--text-color);
+}
+
+/*
+ * A conversation with no name is labelled by its first message, which can be arbitrarily long. Two
+ * lines and an ellipsis keeps the dialog a fixed size; the clamp needs a block box, so the label
+ * sits on its own line above the rest of the sentence.
+ */
+.delete-chat-dialog-label {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+.delete-chat-dialog-error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #e57373;
+}
+
+.delete-chat-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.delete-chat-dialog-actions button {
+    padding: 6px 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.delete-chat-dialog-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Destructive, and coloured as such — it is the one button here that cannot be taken back. */
+.delete-chat-dialog-confirm:not(:disabled) {
+    color: #ffffff;
+    background-color: #c62828;
+    border-color: #c62828;
+}

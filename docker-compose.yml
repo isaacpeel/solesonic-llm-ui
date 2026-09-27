@@ -13,6 +13,11 @@ services:
     volumes:
       - /var/log/solesonic-llm-ui-nginx:/var/log/nginx
 
+    # .env is the single source of truth for both phases: the Vite build reads the
+    # VITE_* vars from the build context, and the running container reads the same
+    # values here so docker/15-render-nginx-conf.sh can build the CSP connect-src
+    # allowlist from them. Dropping this env_file entry aborts container startup
+    # rather than serving a policy that silently breaks Keycloak login.
     env_file:
       - ./.env
     environment:

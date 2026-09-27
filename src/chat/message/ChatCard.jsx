@@ -3,10 +3,15 @@ import {useMemo} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+import {ExclamationTriangleIcon} from "@heroicons/react/20/solid";
 import {buildStreamingMarkdownDisplay} from "../../util/streamingMarkdown.js";
+import {renderLatexArrows} from "../../util/latexArrows.js";
+import MessageGeneratedImages from "./MessageGeneratedImages.jsx";
+import MessageFooter from "./MessageFooter.jsx";
+import {USER, AI, SYSTEM, ERROR} from "./ChatMessage.jsx";
 import "./ChatMessage.css";
 
-function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, isStreaming = false, showPlaceholder = false, className, children, footer}) {
+function ChatCard({message, children, onExpandImage}) {
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
@@ -19,7 +24,11 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
         code: ({node, className: codeClassName, children: codeChildren, ...props}) => (
             <code className={codeClassName} {...props}>{codeChildren}</code>
         ),
-        table: ({node, ...props}) => <table {...props} />,
+        table: ({node, ...props}) => (
+            <div className="table-scroll-wrapper">
+                <table {...props} />
+            </div>
+        ),
         thead: ({node, ...props}) => <thead {...props} />,
         tbody: ({node, ...props}) => <tbody {...props} />,
         tr: ({node, ...props}) => <tr {...props} />,
@@ -27,13 +36,40 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
         td: ({node, ...props}) => <td {...props} />,
     }), []);
 
+    const typeColors = useMemo(() => ({
+        [USER]: {bgColor: '#e0e0e0', textColor: '#000'},
+        [AI]: {bgColor: '#4a4a4a', textColor: '#dedede'},
+        [SYSTEM]: {bgColor: '#3b4d61', textColor: '#ffffff'},
+        [ERROR]: {bgColor: '#4a2323', textColor: '#ffd9d9'},
+    }), []);
+
+    const isElicitation = !!message.elicitationResponse;
+    const isError = message.type === ERROR || !!message.isError;
+    const isStreaming = !!message.isStreaming;
+    const isAIMessage = message.type === AI;
+    const notificationLog = Array.isArray(message.notifications) ? message.notifications : [];
+    const isAIorSystem = isAIMessage || message.type === SYSTEM;
+
+    const generatedImageList = Array.isArray(message.generatedImages) ? message.generatedImages : [];
+    const generatedImageFooter = isAIMessage && generatedImageList.length > 0 ? (
+        <MessageGeneratedImages images={generatedImageList} onExpand={onExpandImage}/>
+    ) : null;
+
+    const containerType = isElicitation ? SYSTEM : message.type;
+    const cardClassName = isElicitation ? `${containerType} elicitation-resolved` : containerType;
+    const isInfo = containerType === SYSTEM;
+    const colors = typeColors[containerType] || typeColors[SYSTEM];
+
+    const text = isElicitation ? '' : message.text;
     const hasText = text && text.trim() !== '';
+    const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
+    const showMessageFooter = isAIMessage && !isElicitation && hasText && !isStreaming && !message.ephemeral;
 
     const displayText = useMemo(() => {
         if (!hasText) {
             return null;
         }
-        const rawText = text.trimEnd();
+        const rawText = renderLatexArrows(text.trimEnd());
         const isFinal = !isStreaming;
         return buildStreamingMarkdownDisplay(rawText, {isFinal});
     }, [text, isStreaming, hasText]);
@@ -41,14 +77,22 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
     const cardRole = isError ? 'alert' : isInfo ? 'status' : undefined;
     const ariaLabel = isError ? 'Error message' : isInfo ? 'Information message' : undefined;
 
-    return (
+    const errorHeader = isError ? (
+        <div className="message-error-header">
+            <ExclamationTriangleIcon className="message-error-icon" aria-hidden="true"/>
+            <span>Error</span>
+        </div>
+    ) : null;
+
+    const card = (
         <div
-            className={`message${className ? ` ${className}` : ''}`}
-            style={{backgroundColor: bgColor, color: textColor}}
+            className={`message ${cardClassName}`}
+            style={{backgroundColor: colors.bgColor, color: colors.textColor}}
             role={cardRole}
             aria-label={ariaLabel}
         >
             <div className="message-text">
+                {errorHeader}
                 {children}
                 {(displayText || showPlaceholder) && (
                     <div className="markdown-body">
@@ -57,23 +101,27 @@ function ChatCard({text, bgColor, textColor, isError = false, isInfo = false, is
                         </ReactMarkdown>
                     </div>
                 )}
-                {footer}
+                {generatedImageFooter}
             </div>
+        </div>
+    );
+
+    if (!showMessageFooter) {
+        return card;
+    }
+
+    return (
+        <div className="message-with-actions">
+            {card}
+            <MessageFooter message={message}/>
         </div>
     );
 }
 
 ChatCard.propTypes = {
-    text: PropTypes.string,
-    bgColor: PropTypes.string,
-    textColor: PropTypes.string,
-    isError: PropTypes.bool,
-    isInfo: PropTypes.bool,
-    isStreaming: PropTypes.bool,
-    showPlaceholder: PropTypes.bool,
-    className: PropTypes.string,
+    message: PropTypes.object.isRequired,
     children: PropTypes.node,
-    footer: PropTypes.node,
+    onExpandImage: PropTypes.func,
 };
 
 export default ChatCard;

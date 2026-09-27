@@ -189,14 +189,25 @@ describe('isBlocked', () => {
         expect(authService.isBlocked()).toBe(false);
     });
 
-    it('returns true and removes AUTH_FAILURES_KEY when blockedUntil is in the future', () => {
+    it('returns true and keeps AUTH_FAILURES_KEY while blockedUntil is in the future', () => {
         localStorage.setItem('authBlockedUntil', (Date.now() + 60_000).toString());
         localStorage.setItem('authFailuresKey', JSON.stringify([Date.now()]));
 
         const result = authService.isBlocked();
 
         expect(result).toBe(true);
+        expect(localStorage.getItem('authFailuresKey')).toBe(JSON.stringify([Date.now()]));
+    });
+
+    it('clears block state and failure count when the block has expired', () => {
+        localStorage.setItem('authBlockedUntil', (Date.now() - 1000).toString());
+        localStorage.setItem('authFailuresKey', JSON.stringify([Date.now() - 1000]));
+
+        const result = authService.isBlocked();
+
+        expect(result).toBe(false);
         expect(localStorage.getItem('authFailuresKey')).toBeNull();
+        expect(localStorage.getItem('authBlockedUntil')).toBeNull();
     });
 
     it('returns true when localStorage.setItem throws (storage unavailable)', () => {

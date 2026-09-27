@@ -159,4 +159,11 @@ describe('downscaleImage', () => {
     it('returns a missing file unchanged', async () => {
         await expect(downscaleImage(null)).resolves.toBeNull();
     });
+
+    it('skips non-image files without touching the canvas', async () => {
+        const pdfFile = fakeFile({name: 'notes.pdf', type: 'application/pdf'});
+
+        await expect(downscaleImage(pdfFile)).resolves.toBe(pdfFile);
+        expect(document.createElement).not.toHaveBeenCalled();
+    });
 });
