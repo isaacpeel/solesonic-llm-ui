@@ -22,9 +22,18 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
             }
         };
 
-        document.addEventListener('mousedown', handleDocumentMouseDown);
+        /*
+         * Deferred so the mousedown that opened the picker (a tap on the /model row) has finished
+         * propagating; attached synchronously, that same event reaches document and closes it.
+         */
+        const listenerTimeoutId = setTimeout(() => {
+            document.addEventListener('mousedown', handleDocumentMouseDown);
+        }, 0);
 
-        return () => document.removeEventListener('mousedown', handleDocumentMouseDown);
+        return () => {
+            clearTimeout(listenerTimeoutId);
+            document.removeEventListener('mousedown', handleDocumentMouseDown);
+        };
     }, [onClose]);
 
     const models = options?.models ?? [];

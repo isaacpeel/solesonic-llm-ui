@@ -1,5 +1,7 @@
 import {describe, it, expect, vi, afterEach} from 'vitest';
-import {render, fireEvent, screen} from '@testing-library/react';
+import {useState} from 'react';
+import {flushSync} from 'react-dom';
+import {render, fireEvent, screen, act} from '@testing-library/react';
 import ModelPicker from '../../src/chat/command/ModelPicker.jsx';
 
 const modelOptions = {
@@ -43,6 +45,12 @@ function modelRows(container) {
 
 function rowFor(container, modelId) {
     return modelRows(container).find((row) => row.querySelector('.model-picker-item-name').textContent === modelId);
+}
+
+async function waitForOutsideListener() {
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 }
 
 afterEach(() => {
@@ -192,14 +200,66 @@ describe('ModelPicker filter and keyboard', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('closes on a mouse down outside it, but not inside it', () => {
+    it('closes on a mouse down outside it, but not inside it', async () => {
         const {container, onClose} = renderPicker();
+        await waitForOutsideListener();
 
         fireEvent.mouseDown(container.querySelector('.model-picker-filter'));
         expect(onClose).not.toHaveBeenCalled();
 
         fireEvent.mouseDown(document.body);
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not closed by the mouse down that opened it', async () => {
+        const onClose = vi.fn();
+
+        function OpenOnMouseDown() {
+            const [open, setOpen] = useState(false);
+
+            return (
+                <div>
+                    <button type="button" className="open-picker" onMouseDown={() => flushSync(() => setOpen(true))}>/model</button>
+                    {open && (
+                        <ModelPicker
+                            options={modelOptions}
+                            loading={false}
+                            saving={false}
+                            error={null}
+                            pendingModel={null}
+                            onChoose={vi.fn()}
+                            onResetToDefault={vi.fn()}
+                            onRetry={vi.fn()}
+                            onClose={onClose}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        const {container} = render(<OpenOnMouseDown/>);
+        const openButton = container.querySelector('.open-picker');
+
+        act(() => {
+            openButton.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+        });
+
+        expect(container.querySelector('.model-picker')).not.toBeNull();
+
+        await waitForOutsideListener();
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(container.querySelector('.model-picker')).not.toBeNull();
+    });
+
+    it('stops listening once it closes', async () => {
+        const {onClose, unmount} = renderPicker();
+        await waitForOutsideListener();
+
+        unmount();
+        fireEvent.mouseDown(document.body);
+
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('focuses the filter when it opens', () => {
