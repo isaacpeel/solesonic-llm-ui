@@ -5,6 +5,7 @@ import {
     PICKER_ERROR_UNAVAILABLE,
     PICKER_ERROR_UNKNOWN_MODEL,
 } from '../../hooks/useChatModel.js';
+import useIsMobile from '../../hooks/useIsMobile.js';
 
 const RESET_ROW = 'reset';
 const MODEL_ROW = 'model';
@@ -14,6 +15,13 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
     const [activeIndex, setActiveIndex] = useState(-1);
     const containerRef = useRef(null);
     const listId = useId();
+    const isMobile = useIsMobile();
+
+    useEffect(() => {
+        if (isMobile) {
+            document.activeElement?.blur?.();
+        }
+    }, [isMobile]);
 
     useEffect(() => {
         const handleDocumentMouseDown = (event) => {
@@ -176,7 +184,7 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
                 placeholder="Filter models…"
                 aria-label="Filter models"
                 aria-controls={listId}
-                autoFocus
+                autoFocus={!isMobile}
                 value={filterText}
                 onChange={handleFilterChange}
                 onKeyDown={handleFilterKeyDown}

@@ -1,4 +1,4 @@
-import {describe, it, expect, vi, afterEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {useState} from 'react';
 import {flushSync} from 'react-dom';
 import {render, fireEvent, screen, act} from '@testing-library/react';
@@ -303,5 +303,46 @@ describe('ModelPicker states', () => {
         const {container} = renderPicker({options: {...modelOptions, models: []}});
 
         expect(container.querySelector('.model-picker-message').textContent).toBe('No models are available.');
+    });
+});
+
+describe('ModelPicker on a phone', () => {
+    beforeEach(() => {
+        vi.stubGlobal('matchMedia', vi.fn((query) => ({
+            matches: true,
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        })));
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        document.body.innerHTML = '';
+    });
+
+    it('does not focus the filter, so the keyboard stays down', () => {
+        const {container} = renderPicker();
+
+        expect(document.activeElement).not.toBe(container.querySelector('.model-picker-filter'));
+    });
+
+    it('lets go of the composer focus when it opens', () => {
+        const composer = document.createElement('textarea');
+        document.body.appendChild(composer);
+        composer.focus();
+
+        renderPicker();
+
+        expect(document.activeElement).not.toBe(composer);
+    });
+
+    it('still filters once the user taps into the filter', () => {
+        const {container} = renderPicker();
+
+        fireEvent.change(container.querySelector('.model-picker-filter'), {target: {value: 'mini'}});
+
+        expect(modelRows(container).map((row) => row.querySelector('.model-picker-item-name').textContent))
+            .toEqual(['openai/gpt-4o-mini']);
     });
 });
