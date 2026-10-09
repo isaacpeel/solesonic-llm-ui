@@ -1,0 +1,119 @@
+.model-picker {
+    display: flex;
+    flex-direction: column;
+    margin: 0 0 2px 0;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+    color: var(--text-color);
+}
+
+.model-picker-filter {
+    margin: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    outline: none;
+}
+
+.model-picker-agent {
+    padding: 0 14px 8px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.model-picker-message {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    font-size: 13px;
+    opacity: 0.8;
+}
+
+.model-picker-message--error {
+    opacity: 1;
+    color: var(--error-color, #f87171);
+}
+
+.model-picker-retry {
+    padding: 2px 10px;
+    font-size: 12px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.model-picker-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border-color);
+}
+
+.model-picker-item {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+}
+
+.model-picker-item:last-child {
+    border-bottom: none;
+}
+
+.model-picker-item--active,
+.model-picker-item:hover {
+    background-color: var(--secondary-color);
+}
+
+.model-picker-item[aria-disabled="true"] {
+    cursor: progress;
+    opacity: 0.6;
+}
+
+.model-picker-item--reset .model-picker-item-name {
+    font-style: italic;
+}
+
+.model-picker-item-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.model-picker-item-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.model-picker-item-owner {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 2px;
+}
+
+.model-picker-badge {
+    padding: 0 6px;
+    font-size: 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.model-picker-badge--current {
+    background-color: var(--secondary-color);
+}
+
+.model-picker-badge--default {
+    opacity: 0.7;
+}

@@ -2,6 +2,7 @@ import "./ChatMessage.css";
 import ChatCard from "./ChatCard.jsx";
 import ChatNotifications from "./ChatNotifications.jsx";
 import MessageAttachments from "../attachment/MessageAttachments.jsx";
+import UserMessageCommandBadge from "../command/UserMessageCommandBadge.jsx";
 
 const POSITIVE_RESPONSE_KEYWORDS = new Set(['accept', 'yes', 'confirm', 'ok', 'approve']);
 const NEGATIVE_RESPONSE_KEYWORDS = new Set(['decline', 'no', 'reject', 'deny']);
@@ -43,6 +44,11 @@ function ChatMessage({message, onExpandImage}) {
         );
     })() : null;
 
+    const commandList = toArray(message.commands);
+    const commandBadgeChildren = message.type === USER && commandList.length > 0 ? (
+        <UserMessageCommandBadge command={commandList[0]}/>
+    ) : null;
+
     /*
      * USER messages only — attachments are not a thing on assistant messages today, and
      * ChatCard renders {children} above the markdown body, so the strip lands above the text
@@ -75,6 +81,7 @@ function ChatMessage({message, onExpandImage}) {
     return (
         <div className={`chat-message-container ${containerClass}`}>
             <ChatCard message={message} onExpandImage={onExpandImage}>
+                {commandBadgeChildren}
                 {attachmentChildren}
                 {elicitationChildren}
                 {notificationLogChildren}

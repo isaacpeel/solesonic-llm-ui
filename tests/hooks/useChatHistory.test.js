@@ -79,11 +79,33 @@ describe('useChatHistory', () => {
                     responseMetadataCalls: null,
                     messageId: 'msg-1',
                     attachments: [],
+                    commands: [],
                     generatedImages: [],
                     _key: 'msg-1'
                 },
             ]);
         });
+    });
+
+    it('keeps the commands a persisted turn was sent with', async () => {
+        sharedState.chatId = 'chat-1';
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'msg-1', messageType: 'USER', message: '', commands: ['summarize']},
+                {id: 'msg-2', messageType: AI, message: 'Here is the summary.', commands: ['summarize']},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => {
+            expect(sharedState.setChatHistory).toHaveBeenCalledTimes(1);
+        });
+
+        const mergedHistory = sharedState.setChatHistory.mock.calls[0][0]([]);
+        expect(mergedHistory).toHaveLength(2);
+        expect(mergedHistory[0]).toMatchObject({type: 'USER', text: '', commands: ['summarize']});
+        expect(mergedHistory[1]).toMatchObject({type: AI, commands: ['summarize']});
     });
 
     /*
@@ -228,6 +250,7 @@ describe('useChatHistory', () => {
                 responseMetadataCalls: null,
                 messageId: 'msg-1',
                 attachments: [],
+                commands: [],
                 generatedImages: [],
                 _key: 'msg-1'
             },
@@ -238,6 +261,7 @@ describe('useChatHistory', () => {
                 responseMetadataCalls: null,
                 messageId: 'msg-2',
                 attachments: [],
+                commands: [],
                 generatedImages: [],
                 _key: 'msg-2',
                 notifications: ['Jira workflow started'],
@@ -516,6 +540,7 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
                 responseMetadataCalls: null,
                 messageId: 'msg-1',
                 attachments: [],
+                commands: [],
                 generatedImages: [],
                 _key: 'msg-1'
             },

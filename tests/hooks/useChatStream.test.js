@@ -69,6 +69,7 @@ import streamService from '../../src/service/StreamService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
 import {isPageHidden, observePageHidden} from '../../src/util/pageLifecycle.js';
 import {toast} from 'react-toastify';
+import {ApiError} from '../../src/client/ApiClient.js';
 
 /*
  * A turn that hangs until its signal fires, so a test can hold a stream open and then abandon
@@ -348,6 +349,146 @@ describe('useChatStream', () => {
         const payload = chatService.chatStream.mock.calls[0][0];
         expect(payload).toEqual({chatMessage: 'hello'});
         expect(payload.commands).toBeUndefined();
+    });
+
+    it('sends a bare command with an empty message', async () => {
+        options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
+        const {result} = renderHook(() => useChatStream(options));
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+        expect(chatService.chatStream.mock.calls[0][0]).toEqual({chatMessage: '', commands: ['summarize']});
+
+        const nextHistory = setChatHistory.mock.calls[0][0];
+        expect(nextHistory[0]).toMatchObject({type: 'USER', text: '', commands: ['summarize']});
+    });
+
+    it('sends the command argument whole, without splitting on slashes', async () => {
+        options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: '  pricing/q3 2026  '}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(chatService.chatStream.mock.calls[0][0]).toEqual({chatMessage: 'pricing/q3 2026', commands: ['summarize']});
+    });
+
+    it('reports that nothing was sent when there is neither text nor a command', async () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        let submitted;
+        await act(async () => {
+            submitted = await result.current.handleSubmit();
+        });
+
+        expect(submitted).toBe(false);
+        expect(chatService.chatStream).not.toHaveBeenCalled();
+    });
+
+    it('reports that nothing was sent while an upload is still pending', async () => {
+        options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
+        options.attachmentTray = {hasPendingUploads: true};
+        const {result} = renderHook(() => useChatStream(options));
+
+        let submitted;
+        await act(async () => {
+            submitted = await result.current.handleSubmit();
+        });
+
+        expect(submitted).toBe(false);
+        expect(chatService.chatStream).not.toHaveBeenCalled();
+    });
+
+    it('reports a turn that was sent', async () => {
+        options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
+        const {result} = renderHook(() => useChatStream(options));
+
+        let submitted;
+        await act(async () => {
+            submitted = await result.current.handleSubmit();
+        });
+
+        expect(submitted).toBe(true);
+    });
+
+    it('keeps no command on a plain user message', async () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'hello'}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(setChatHistory.mock.calls[0][0][0].commands).toEqual([]);
+    });
+
+    it('sends a new chat pending model with its first message', async () => {
+        options.pendingModel = 'openai/gpt-4o';
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'hello'}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(chatService.chatStream.mock.calls[0][0]).toEqual({chatMessage: 'hello', model: 'openai/gpt-4o'});
+    });
+
+    it('never sends a model on an existing chat', async () => {
+        options.chatId = 'chat-1';
+        options.pendingModel = 'openai/gpt-4o';
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'hello'}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect('model' in chatService.chatStream.mock.calls[0][0]).toBe(false);
+    });
+
+    it('keeps the pending model separate from a selected command', async () => {
+        options.pendingModel = 'openai/gpt-4o';
+        options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
+        const {result} = renderHook(() => useChatStream(options));
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(chatService.chatStream.mock.calls[0][0]).toEqual({chatMessage: '', commands: ['summarize'], model: 'openai/gpt-4o'});
+    });
+
+    it('clears the model notice when a turn is sent', async () => {
+        options.clearModelNotice = vi.fn();
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'hello'}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+
+        expect(options.clearModelNotice).toHaveBeenCalledTimes(1);
     });
 
     it('handleStreamChunk', () => {
@@ -1273,5 +1414,139 @@ describe('stopping an active stream', () => {
         });
 
         expect(result.current.streamActive).toBe(false);
+    });
+});
+
+describe('a send rejected before the run starts', () => {
+    let options;
+    let setChatHistory;
+    let chatInputRef;
+
+    function rejectedOpen(status, code) {
+        return new ApiError({message: `Streaming failed: ${status}`, status, method: 'POST', uri: '/streaming/chats/users/user-1', code});
+    }
+
+    async function submitWith(result, messageText) {
+        act(() => {
+            result.current.handleInputChange({target: {value: messageText}});
+        });
+
+        await act(async () => {
+            await result.current.handleSubmit();
+        });
+    }
+
+    beforeEach(() => {
+        setChatHistory = vi.fn();
+        chatInputRef = {current: {style: {height: '20px'}, focus: vi.fn()}};
+        useSharedData.mockReturnValue({chatInputRef});
+
+        options = {
+            chatId: null,
+            chatHistory: [{type: 'ASSISTANT', text: 'welcome', _key: '1', ephemeral: true}],
+            setChatHistory,
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            adoptMessageIdForLastUserMessage: vi.fn(),
+            appendErrorMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+            attachmentTray: makeAttachmentTray(),
+            pendingModel: 'gone-model',
+            rejectPendingModel: vi.fn(),
+            clearModelNotice: vi.fn(),
+        };
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('restores the composer and reopens the picker when the picked model is unknown', async () => {
+        const settledEntries = [readyEntry()];
+        options.attachmentTray = makeAttachmentTray({commitCaptions: vi.fn().mockResolvedValue(settledEntries)});
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(400, 'UNKNOWN_MODEL'));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        const restoredHistory = setChatHistory.mock.calls[setChatHistory.mock.calls.length - 1][0];
+        expect(restoredHistory).toEqual([]);
+        expect(result.current.inputValue).toBe('hello there');
+        expect(options.attachmentTray.restoreTray).toHaveBeenCalledWith(settledEntries);
+        expect(options.attachmentTray.clearTray).not.toHaveBeenCalled();
+        expect(options.appendErrorMessage).toHaveBeenCalledWith('The model you picked is no longer available. Pick another and send again.');
+        expect(options.rejectPendingModel).toHaveBeenCalledTimes(1);
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('restores the composer and keeps the pick when the model list cannot be checked', async () => {
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(503, 'MODEL_LIST_UNAVAILABLE'));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(result.current.inputValue).toBe('hello there');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith('The model list could not be checked, so your message was not sent. Please try again.');
+        expect(options.rejectPendingModel).not.toHaveBeenCalled();
+        expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('restores the composer for any other client error before the run starts', async () => {
+        options.chatId = 'chat-1';
+        options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(400));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(result.current.inputValue).toBe('hello there');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('re-select the command'));
+        expect(options.rejectPendingModel).not.toHaveBeenCalled();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('restores the composer with the generic copy for a 400 without a code', async () => {
+        options.chatId = 'chat-1';
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(400));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(result.current.inputValue).toBe('hello there');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith('Your message could not be sent. Your text has been restored — please try again.');
+        expect(options.rejectPendingModel).not.toHaveBeenCalled();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('leaves a server failure to the generic stream error path', async () => {
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(500));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(streamService.handleStreamError).toHaveBeenCalledTimes(1);
+        expect(result.current.inputValue).toBe('');
+    });
+
+    it('leaves a client error after the run started to the generic stream error path', async () => {
+        chatService.chatStream.mockImplementationOnce(async (payload, chatId, chunkOptions) => {
+            chunkOptions.onChunk(runStartedFrame());
+            throw rejectedOpen(400, 'UNKNOWN_MODEL');
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(streamService.handleStreamError).toHaveBeenCalledTimes(1);
+        expect(options.rejectPendingModel).not.toHaveBeenCalled();
     });
 });

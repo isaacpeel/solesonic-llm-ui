@@ -22,7 +22,8 @@ import chatService, {
 } from '../src/service/ChatService.js';
 import authClient from "../src/service/AuthService.js";
 
-vi.mock('../src/client/ApiClient.js', () => ({
+vi.mock('../src/client/ApiClient.js', async (importOriginal) => ({
+    ...(await importOriginal()),
     default: {
         get: vi.fn().mockResolvedValue({chatDetails: {}}),
         post: vi.fn().mockResolvedValue({success: true}),
@@ -43,7 +44,7 @@ vi.mock('../src/client/parseSseStream.js', () => ({
     parseSseStream: vi.fn(),
 }));
 
-import apiClient from '../src/client/ApiClient.js';
+import apiClient, {ApiError} from '../src/client/ApiClient.js';
 import { parseSseStream } from '../src/client/parseSseStream.js';
 
 beforeEach(() => {
@@ -729,6 +730,33 @@ describe('chatStream', () => {
         vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
 
         await expect(chatService.chatStream('hello', null, {})).rejects.toThrow('Streaming failed: 500');
+    });
+
+    it('rejected open — throws an ApiError carrying the status and the code from the JSON body', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            json: () => Promise.resolve({code: 'UNKNOWN_MODEL', message: 'Unknown model'}),
+        });
+
+        const error = await chatService.chatStream({chatMessage: 'hi', model: 'nope'}, null, {}).catch((caughtError) => caughtError);
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(400);
+        expect(error.code).toBe('UNKNOWN_MODEL');
+        expect(error.method).toBe('POST');
+        expect(parseSseStream).not.toHaveBeenCalled();
+    });
+
+    it('rejected open without a JSON body — still an ApiError, with no code', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503, statusText: 'Service Unavailable' });
+
+        const error = await chatService.chatStream('hello', null, {}).catch((caughtError) => caughtError);
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(503);
+        expect(error.code).toBeUndefined();
     });
 
     it('AbortError from fetch — propagates to caller', async () => {

@@ -554,6 +554,7 @@ async function fetchFormattedChatMessages(chatId) {
             /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
             timestamp: message.timestamp,
             attachments: Array.isArray(message.attachments) ? message.attachments : [],
+            commands: Array.isArray(message.commands) ? message.commands : [],
             /*
              * Only the reference is ever persisted (plan §5), so a reloaded turn
              * re-renders the stored image rather than regenerating it.

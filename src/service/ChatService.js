@@ -1,4 +1,4 @@
-import apiClient from '../client/ApiClient.js';
+import apiClient, {ApiError, readApiErrorBody} from '../client/ApiClient.js';
 import { parseSseStream } from '../client/parseSseStream.js';
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
@@ -350,7 +350,15 @@ const chatService = {
         });
 
         if (!response.ok) {
-            throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
+            const errorBody = await readApiErrorBody(response);
+
+            throw new ApiError({
+                message: `Streaming failed: ${response.status} ${errorBody.message || response.statusText}`,
+                status: response.status,
+                method,
+                uri,
+                code: errorBody.code,
+            });
         }
 
         for await (const event of parseSseStream(response.body)) {

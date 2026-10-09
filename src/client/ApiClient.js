@@ -1,12 +1,23 @@
 import authService from '../service/AuthService.js';
 
 export class ApiError extends Error {
-    constructor({ message, status, method, uri }) {
+    constructor({ message, status, method, uri, code }) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.method = method;
         this.uri = uri;
+        this.code = code;
+    }
+}
+
+export async function readApiErrorBody(response) {
+    try {
+        const errorBody = await response.json();
+
+        return {message: errorBody?.message, code: errorBody?.code};
+    } catch {
+        return {message: undefined, code: undefined};
     }
 }
 
@@ -44,19 +55,14 @@ async function request(method, uri, { body, headers = {}, noOp = false, response
             return null;
         }
 
-        let errorMessage = response.statusText;
-        try {
-            const errorBody = await response.json();
-            errorMessage = errorBody.message || response.statusText;
-        } catch {
-            // keep statusText fallback
-        }
+        const errorBody = await readApiErrorBody(response);
 
         throw new ApiError({
-            message: `${response.status}: ${method} - ${uri} ${errorMessage}`,
+            message: `${response.status}: ${method} - ${uri} ${errorBody.message || response.statusText}`,
             status: response.status,
             method,
             uri,
+            code: errorBody.code,
         });
     }
 

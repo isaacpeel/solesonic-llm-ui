@@ -3,6 +3,7 @@ import {ArrowUpIcon, StopIcon} from '@heroicons/react/20/solid';
 import './ChatInput.css';
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
+import ModelPicker from '../command/ModelPicker.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
 import {ACCEPTED_ATTACHMENT_CONTENT_TYPES} from '../../util/imageValidation.js';
 import useIsMobile from '../../hooks/useIsMobile.js';
@@ -33,7 +34,10 @@ function ChatInput({
     trayError,
     onCaptionOpenChange,
     composerContainerRef,
+    modelPicker,
 }) {
+    const pickerOpen = !!modelPicker?.pickerOpen;
+
     useEffect(() => {
         const adjustInputHeight = () => {
             if (chatInputRef.current) {
@@ -44,19 +48,30 @@ function ChatInput({
 
         adjustInputHeight();
 
-        if (chatInputRef.current) {
+        if (chatInputRef.current && !pickerOpen) {
             chatInputRef.current.focus();
         }
-    }, [chatInputRef, inputValue]);
+    }, [chatInputRef, inputValue, pickerOpen]);
 
     const isMobile = useIsMobile();
     const hasCandidates = commandCandidates.length > 0;
 
-    /* Mirrors the guard in useChatStream.handleSubmit — attachments alone are not a message. */
-    const canSubmit = !loading && inputValue.trim().length > 0;
+    /*
+     * Attachments alone are not a message; a freshly selected command is. A pinned one still needs
+     * an argument, or a stray Enter after every reply would resend the bare command.
+     */
+    const canSubmit = !loading && !pickerOpen && (inputValue.trim().length > 0 || (!!selectedCommand && !isPinned));
 
     const submitMessage = () => {
-        handleSubmit().then(() => {
+        if (!canSubmit) {
+            return;
+        }
+
+        handleSubmit().then((submitted) => {
+            if (!submitted) {
+                return;
+            }
+
             if (chatInputRef.current) {
                 chatInputRef.current.style.height = "auto";
             }
@@ -112,6 +127,19 @@ function ChatInput({
                         selectedIndex={selectedIndex}
                         onCommandSelect={onCommandSelect}
                     />
+                    {pickerOpen && (
+                        <ModelPicker
+                            options={modelPicker.options}
+                            loading={modelPicker.loadingOptions}
+                            saving={modelPicker.savingModel}
+                            error={modelPicker.pickerError}
+                            pendingModel={modelPicker.pendingModel}
+                            onChoose={modelPicker.choose}
+                            onResetToDefault={modelPicker.resetToDefault}
+                            onRetry={modelPicker.openPicker}
+                            onClose={modelPicker.closePicker}
+                        />
+                    )}
                     {selectedCommand && (!loading || isPinned) && (
                         <SelectedCommandChip
                             selectedCommand={selectedCommand}

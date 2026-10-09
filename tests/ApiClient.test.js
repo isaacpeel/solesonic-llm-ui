@@ -94,6 +94,31 @@ describe('ApiClient', () => {
         });
     });
 
+    it('carries the error code from the error body', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(400, {code: 'UNKNOWN_MODEL', message: 'Unknown model'}));
+
+        const error = await apiClient.put('/api/chats/chat-1/model', {model: 'nope'}).catch((caughtError) => caughtError);
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(400);
+        expect(error.code).toBe('UNKNOWN_MODEL');
+    });
+
+    it('leaves the error code undefined when the error body is not JSON', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: false,
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: {get: () => 'text/html'},
+            json: () => Promise.reject(new SyntaxError('bad json')),
+        });
+
+        const error = await apiClient.get('/api/chats/models').catch((caughtError) => caughtError);
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.code).toBeUndefined();
+    });
+
     it('200 returns parsed JSON', async () => {
         vi.mocked(fetch).mockResolvedValue(makeResponse(200, { id: 1 }));
 

@@ -8,6 +8,8 @@ import chatService, {
     findRunStartedUserMessageId,
 } from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
+import {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatModelService.js';
+import {ApiError} from '../client/ApiClient.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
 import {isPageHidden, observePageHidden} from '../util/pageLifecycle.js';
@@ -20,6 +22,25 @@ import useStreamRecovery from './useStreamRecovery.js';
  */
 const VISION_WARMUP_NOTICE_DELAY_MILLISECONDS = 20000;
 const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the model may be warming up…';
+
+function isRejectedBeforeRunStarted(caughtError) {
+    return caughtError instanceof ApiError
+        && (caughtError.status < 500 || caughtError.code === MODEL_LIST_UNAVAILABLE_CODE);
+}
+
+function describeRejectedSend(caughtError, selectedCommand) {
+    if (caughtError.code === UNKNOWN_MODEL_CODE) {
+        return 'The model you picked is no longer available. Pick another and send again.';
+    }
+
+    if (caughtError.code === MODEL_LIST_UNAVAILABLE_CODE) {
+        return 'The model list could not be checked, so your message was not sent. Please try again.';
+    }
+
+    return selectedCommand
+        ? 'Your message could not be sent. Your text has been restored — please re-select the command and try again.'
+        : 'Your message could not be sent. Your text has been restored — please try again.';
+}
 
 function useChatStream({
     chatId,
@@ -44,6 +65,9 @@ function useChatStream({
     getSelectedCommandRef,
     getMessageTextRef,
     attachmentTray,
+    pendingModel,
+    rejectPendingModel,
+    clearModelNotice,
 }) {
     const {chatInputRef} = useSharedData();
 
@@ -177,23 +201,31 @@ function useChatStream({
         handleStreamChunkRef.current(rawEvent);
     }, []);
 
+    /* Resolves false when nothing went out, so the composer keeps a selected command for the retry. */
     const handleSubmit = async () => {
         if (loading) {
-            return;
+            return false;
         }
 
         /* An id that is still uploading cannot be sent; block rather than send a partial set. */
         if (attachmentTray?.hasPendingUploads) {
-            return;
+            return false;
         }
 
         const submittedInputValue = inputValue;
         const selectedCommand = getSelectedCommandRef?.current?.() || null;
         const submittedMessageText = getMessageTextRef?.current?.() || submittedInputValue.trim();
 
-        if (!submittedMessageText) {
-            return;
+        if (!submittedMessageText && !selectedCommand) {
+            return false;
         }
+
+        await sendTurn(selectedCommand, submittedMessageText);
+
+        return true;
+    };
+
+    const sendTurn = async (selectedCommand, submittedMessageText) => {
 
         /* Never rejects; a failed caption keeps the original id rather than blocking the send. */
         const settledEntries = attachmentTray ? await attachmentTray.commitCaptions() : [];
@@ -219,6 +251,7 @@ function useChatStream({
             type: USER,
             text: submittedMessageText,
             attachments: optimisticAttachments,
+            commands: selectedCommand ? [selectedCommand] : [],
             _key: generateMessageKey('user'),
         };
         /*
@@ -248,6 +281,7 @@ function useChatStream({
         }
 
         setAttachmentNotice(null);
+        clearModelNotice?.();
 
         /* A new turn supersedes any recovery still waiting on the previous one. */
         cancelActiveRecovery();
@@ -295,6 +329,17 @@ function useChatStream({
             pageWasHiddenDuringStreamRef.current = true;
         });
 
+        const restoreComposer = (errorMessage) => {
+            setChatHistory(updatedHistory);
+            setInputValue(submittedMessageText);
+
+            if (settledEntries.length > 0) {
+                attachmentTray?.restoreTray(settledEntries);
+            }
+
+            appendErrorMessage(errorMessage);
+        };
+
         try {
             controller.current?.abort();
             controller.current = new AbortController();
@@ -313,6 +358,10 @@ function useChatStream({
 
             if (attachmentIds.length > 0) {
                 payload.attachmentIds = attachmentIds;
+            }
+
+            if (!chatId && pendingModel) {
+                payload.model = pendingModel;
             }
 
             await chatService.chatStream(payload, chatId, {
@@ -356,10 +405,7 @@ function useChatStream({
              * bound — the staged ids are still good and the composer must come back intact.
              */
             if (attachmentIds.length > 0 && !sawRunStarted) {
-                setChatHistory(updatedHistory);
-                setInputValue(submittedMessageText);
-                attachmentTray?.restoreTray(settledEntries);
-                appendErrorMessage(
+                restoreComposer(
                     selectedCommand
                         ? 'Your message could not be sent. Your text and attachments have been restored — please re-select the command and try again.'
                         : 'Your message could not be sent. Your text and attachments have been restored — please try again.'
@@ -412,6 +458,20 @@ function useChatStream({
 
                     return newHistory;
                 });
+                return;
+            }
+
+            /*
+             * Rejected before the SSE response started (the model check runs first), so no chat or
+             * message was created and the attachment ids are unspent — the composer comes back whole.
+             */
+            if (!sawRunStarted && isRejectedBeforeRunStarted(caughtError)) {
+                restoreComposer(describeRejectedSend(caughtError, selectedCommand));
+
+                if (caughtError.code === UNKNOWN_MODEL_CODE) {
+                    rejectPendingModel?.();
+                }
+
                 return;
             }
 

@@ -201,6 +201,7 @@ See the dedicated doc: [docs/ELICITATION.md](docs/ELICITATION.md).
 Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:
 
 - `chatsUri = ${VITE_API_BASE_URI}/chats` — Chat history and metadata
+- `chatModelsUri = ${VITE_API_BASE_URI}/chats/models` — Models a chat can use, with its current and default model
 - `streamingChatsUri = ${VITE_API_BASE_URI}/streaming/chats` — Streaming chat and elicitation responses
 - `usersUri = ${VITE_API_BASE_URI}/users` — User profile and preferences
 - `ollamaUri = ${VITE_API_BASE_URI}/ollama` — Model management and configuration
@@ -241,6 +242,18 @@ Example elicitation answer (`content` is a JSON string; only `action` reaches th
 ### SlashCommandService
 
 - `fetchCommands(command)` — fetches available slash command suggestions, optionally filtered by partial command text
+
+The catalog includes built-ins alongside MCP-sourced commands. A selected command is sent as `commands: ["<name>"]` with the text after it as `chatMessage`, which may be empty, and its user bubble renders a `/<name>` badge both live and after a reload.
+
+`/model` is the exception: its `commandType` is `model`, which `src/chat/command/settingCommands.js` treats as a *setting* command. Selecting it never becomes a chip or a send — it opens `ModelPicker` above the composer (state in `src/hooks/useChatModel.js`). In an existing chat a pick is applied at once; in a new chat it is held and sent as `model` on the first message only. Nothing about `/model` is added to the transcript; a status line under it confirms the change.
+
+### ChatModelService
+
+- `options(chatId)` — `GET /chats/models[?chatId=]`: `{models: [{id, ownedBy}], defaultModel, selectedModel, activeAgent}`
+- `select(chatId, model)` — `PUT /chats/{chatId}/model`
+- `reset(chatId)` — `DELETE /chats/{chatId}/model`, back to the default
+
+Errors carry the server's `code` on `ApiError.code` (`UNKNOWN_MODEL`, `MODEL_LIST_UNAVAILABLE`). A first message whose `model` is rejected before the stream starts restores the composer, and an unknown model reopens the picker.
 
 ### OllamaService
 

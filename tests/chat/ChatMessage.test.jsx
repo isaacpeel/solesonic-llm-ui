@@ -323,6 +323,49 @@ describe('ChatMessage', () => {
         });
     });
 
+    describe('slash command badge', () => {
+        it('renders only the badge for a bare command with no argument', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: '',
+                commands: ['summarize'],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge').textContent).toBe('/summarize');
+            expect(container.querySelector('.markdown-body')).toBeNull();
+        });
+
+        it('renders the badge above the command argument', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'pricing/q3',
+                commands: ['summarize'],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge').textContent).toBe('/summarize');
+            expect(screen.getByText('pricing/q3')).toBeTruthy();
+        });
+
+        it('renders no badge on a USER message without commands', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'hello',
+                commands: [],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge')).toBeNull();
+        });
+
+        it('renders no badge on an ASSISTANT message carrying commands', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'Here is the summary.',
+                commands: ['summarize'],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge')).toBeNull();
+        });
+    });
+
     describe('copy button', () => {
         let writeText;
         let originalClipboardDescriptor;

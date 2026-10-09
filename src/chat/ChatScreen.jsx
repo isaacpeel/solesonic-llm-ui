@@ -15,6 +15,7 @@ import useChatStream from '../hooks/useChatStream.js';
 import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
+import useChatModel from '../hooks/useChatModel.js';
 import useAttachmentTray from '../hooks/useAttachmentTray.js';
 import useScrollToBottom from '../hooks/useScrollToBottom.js';
 import useKeyboardInset from '../hooks/useKeyboardInset.js';
@@ -84,6 +85,7 @@ function ChatScreen() {
     const lightboxInvokerRef = useRef(null);
 
     const attachmentTray = useAttachmentTray({chatId});
+    const chatModel = useChatModel({chatId, onChatNotFound: handleChatNotFound});
 
     /*
      * State is hoisted here, so the single lightbox instance cannot know which thumbnail
@@ -123,6 +125,9 @@ function ChatScreen() {
         getSelectedCommandRef,
         getMessageTextRef,
         attachmentTray,
+        pendingModel: chatModel.pendingModel,
+        rejectPendingModel: chatModel.rejectPendingModel,
+        clearModelNotice: chatModel.clearModelNotice,
     });
 
     /*
@@ -147,6 +152,7 @@ function ChatScreen() {
     const {selectedIndex, selectedCommand, isPinned, handleArrowDown, handleArrowUp, handleCommandSelect, handleDismiss, handlePinToggle} = useSlashCommandSelection({
         commandCandidates,
         setInputValue,
+        onSettingCommandSelect: chatModel.openPicker,
     });
 
     getSelectedCommandRef.current = () => selectedCommand?.command || null;
@@ -180,6 +186,10 @@ function ChatScreen() {
 
                 {attachmentNotice && (
                     <div className="chat-attachment-notice" role="status">{attachmentNotice}</div>
+                )}
+
+                {chatModel.modelNotice && (
+                    <div className="chat-attachment-notice chat-model-notice" role="status">{chatModel.modelNotice}</div>
                 )}
 
                 {recoveryFailed && (
@@ -234,6 +244,7 @@ function ChatScreen() {
                     trayError={attachmentTray.trayError}
                     onCaptionOpenChange={setIsCaptionRowOpen}
                     composerContainerRef={composerRef}
+                    modelPicker={chatModel}
                 />
             </div>
 
