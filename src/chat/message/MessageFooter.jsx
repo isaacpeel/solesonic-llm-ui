@@ -11,10 +11,7 @@ function MessageFooter({message}) {
     return (
         <div className="message-actions">
             <span className="message-model-name">{modelName}</span>
-            <MessageResponseMetadata
-                responseMetadata={message.responseMetadata}
-                responseMetadataCalls={message.responseMetadataCalls}
-            />
+            <MessageResponseMetadata responseMetadata={message.responseMetadata}/>
             <MessageCopyButton text={message.text}/>
         </div>
     );

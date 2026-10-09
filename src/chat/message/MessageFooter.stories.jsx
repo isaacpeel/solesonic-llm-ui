@@ -11,7 +11,7 @@ export const WithMetadata = {
             type: 'ASSISTANT',
             text: 'Here is the answer.',
             model: 'qwen3.5-9b',
-            responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            responseMetadata: {tokensPerSecond: 222.23},
         },
     },
 };

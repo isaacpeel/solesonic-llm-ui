@@ -39,7 +39,21 @@ export const AssistantWithMetadata = {
             model: 'qwen3.5-9b',
             isStreaming: false,
             notifications: [],
-            responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            responseMetadata: {tokensPerSecond: 222.23},
+        },
+    },
+};
+
+export const AssistantWithoutTokensPerSecond = {
+    args: {
+        message: {
+            _key: 'msg-assistant-no-rate',
+            type: 'ASSISTANT',
+            text: 'This turn was not routed through LiteLLM, so the API reported no rate.',
+            model: 'qwen3.5-9b',
+            isStreaming: false,
+            notifications: [],
+            responseMetadata: {completionTokens: 18},
         },
     },
 };
