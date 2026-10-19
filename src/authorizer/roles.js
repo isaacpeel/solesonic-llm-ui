@@ -4,3 +4,7 @@ export const ROLES = {
     RAG_ADMIN: 'rag-admin',
     IMAGE_ADMIN: 'image-admin'
 };
+
+export const GROUPS = {
+    IZZY_BOT_ADMIN: 'izzy-bot-admin'
+};

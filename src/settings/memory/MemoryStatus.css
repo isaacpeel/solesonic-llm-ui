@@ -1,0 +1,126 @@
+.memory-status {
+    display: flex;
+    flex-direction: column;
+}
+
+.memory-status-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.memory-status-toolbar .memory-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.memory-status-as-of {
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+.memory-status-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-bottom: 26px;
+}
+
+.memory-status-card {
+    padding: 14px;
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius, 8px);
+}
+
+.memory-status-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.memory-status-card-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.memory-status-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+}
+
+.memory-status-stat {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.memory-status-stat-label {
+    color: var(--settings-muted);
+}
+
+.memory-status-stat-value {
+    margin: 0;
+    color: var(--text-color);
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.memory-status-users-title {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.memory-status-table-wrapper {
+    overflow-x: auto;
+}
+
+.memory-status-users {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.memory-status-users th,
+.memory-status-users td {
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.memory-status-users th {
+    font-weight: 600;
+    color: var(--settings-muted);
+}
+
+.memory-status-users td {
+    color: var(--text-color);
+}
+
+.memory-status-users a {
+    color: var(--settings-accent);
+    text-decoration: none;
+}
+
+.memory-status-users a:hover {
+    text-decoration: underline;
+}
+
+.memory-status-users .memory-status-failed-link {
+    color: #f85149;
+    font-weight: 600;
+}

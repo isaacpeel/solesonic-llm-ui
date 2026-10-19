@@ -1,0 +1,19 @@
+.forget-all-memories-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.forget-all-memories-input {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.forget-all-memories-input:focus {
+    outline: none;
+    border-color: #c62828;
+}

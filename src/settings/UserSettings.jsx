@@ -4,6 +4,7 @@ import {
     UserCircleIcon,
     ArrowsRightLeftIcon,
     CubeTransparentIcon,
+    LightBulbIcon,
     PhotoIcon
 } from "@heroicons/react/24/solid";
 
@@ -26,7 +27,8 @@ const SETTINGS_NAV_GROUPS = [
         label: "Data",
         items: [
             {to: "/settings/rag", label: "RAG", Icon: CubeTransparentIcon},
-            {to: "/settings/images", label: "Images", Icon: PhotoIcon}
+            {to: "/settings/images", label: "Images", Icon: PhotoIcon},
+            {to: "/settings/memory", label: "Memory", Icon: LightBulbIcon}
         ]
     }
 ];

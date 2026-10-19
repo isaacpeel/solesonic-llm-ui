@@ -1,0 +1,77 @@
+.my-memories {
+    display: flex;
+    flex-direction: column;
+}
+
+.my-memories-explainer {
+    max-width: 620px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--settings-muted);
+}
+
+.my-memories-explainer p {
+    margin: 0 0 6px;
+}
+
+.my-memories-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.my-memories-origin-chip {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--settings-muted);
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.my-memories-origin-chip[aria-pressed="true"] {
+    color: var(--settings-accent);
+    border-color: var(--settings-accent);
+    background-color: rgba(0, 116, 217, 0.1);
+}
+
+.my-memories-section {
+    margin-bottom: 22px;
+}
+
+.my-memories-section-heading {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--settings-muted);
+}
+
+.my-memories-danger-zone {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.my-memories-forget-button {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ff5252;
+    background: none;
+    border: 1px solid #ff5252;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.my-memories-forget-button:hover {
+    background-color: rgba(255, 0, 0, 0.08);
+}

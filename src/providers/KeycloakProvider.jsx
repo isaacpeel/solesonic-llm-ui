@@ -173,6 +173,8 @@ export const KeycloakProvider = ({children}) => {
 
     const hasRole = (roleName) => user?.roles?.includes(roleName) ?? false;
 
+    const hasGroup = (groupName) => keycloak?.tokenParsed?.groups?.includes(groupName) ?? false;
+
     const contextValue = {
         keycloak,
         authenticated,
@@ -182,6 +184,7 @@ export const KeycloakProvider = ({children}) => {
         logout,
         getToken,
         hasRole,
+        hasGroup,
     };
 
     return (

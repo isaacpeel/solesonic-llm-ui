@@ -20,11 +20,16 @@ vi.mock('../src/chat/ChatScreen.jsx', () => ({
 }));
 
 vi.mock('../src/common/Header.jsx', () => ({default: () => <div data-testid="header"/>}));
-vi.mock('../src/settings/UserSettings.jsx', () => ({default: () => <div/>}));
+vi.mock('../src/settings/UserSettings.jsx', async () => {
+    const {Outlet} = await import('react-router');
+
+    return {default: () => <Outlet/>};
+});
 vi.mock('../src/settings/GeneralUserSettings.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/connections/ConnectionsSettings.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/rag/RagManagement.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/images/GeneratedImageManagement.jsx', () => ({default: () => <div/>}));
+vi.mock('../src/settings/memory/MemoryManagement.jsx', () => ({default: () => <div data-testid="memory-management"/>}));
 vi.mock('../src/settings/connections/GoogleAuthCallback.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/connections/AtlassianAuthCallback.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/context/SharedDataContext.jsx', () => ({
@@ -110,5 +115,14 @@ describe('App routes', () => {
         expect(indexRoute).toBeDefined();
         expect(chatUrlRoute).toBeDefined();
         expect(chatUrlRoute.element.type).toBe(indexRoute.element.type);
+    });
+
+    it('redirects the memory settings root to the own-memories level', async () => {
+        const router = createMemoryRouter(routes, {initialEntries: ['/settings/memory']});
+
+        const {findByTestId} = render(<RouterProvider router={router}/>);
+
+        expect(await findByTestId('memory-management')).not.toBeNull();
+        expect(router.state.location.pathname).toBe('/settings/memory/mine');
     });
 });

@@ -1,0 +1,67 @@
+.memory-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.memory-editor-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.memory-editor-content,
+.memory-editor-kind {
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text-color);
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.memory-editor-content {
+    resize: vertical;
+}
+
+.memory-editor-kind {
+    align-self: flex-start;
+}
+
+.memory-editor-content:focus,
+.memory-editor-kind:focus {
+    outline: none;
+    border-color: var(--settings-accent, #0074d9);
+}
+
+.memory-editor-note,
+.memory-editor-warning,
+.memory-editor-error {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.memory-editor-note {
+    color: var(--settings-muted, #b0b0b0);
+}
+
+.memory-editor-warning {
+    color: #d29922;
+}
+
+.memory-editor-error {
+    color: #f85149;
+}
+
+.memory-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.memory-editor-save:not(:disabled) {
+    border-color: var(--settings-accent, #0074d9);
+    color: var(--settings-accent, #0074d9);
+}

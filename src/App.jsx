@@ -9,6 +9,8 @@ import RagManagement from "./settings/rag/RagManagement.jsx";
 import {DEFAULT_RAG_LEVEL} from "./settings/rag/ragLevels.js";
 import GeneratedImageManagement from "./settings/images/GeneratedImageManagement.jsx";
 import {DEFAULT_IMAGE_LEVEL} from "./settings/images/imageLevels.js";
+import MemoryManagement from "./settings/memory/MemoryManagement.jsx";
+import {DEFAULT_MEMORY_LEVEL} from "./settings/memory/memoryLevels.js";
 import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./settings/connections/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
@@ -48,6 +50,8 @@ export const routes = [
                     {path: "rag/:level", element: <RagManagement/>},
                     {path: "images", element: <Navigate to={DEFAULT_IMAGE_LEVEL} replace/>},
                     {path: "images/:level", element: <GeneratedImageManagement/>},
+                    {path: "memory", element: <Navigate to={DEFAULT_MEMORY_LEVEL} replace/>},
+                    {path: "memory/:level", element: <MemoryManagement/>},
                 ]
             },
             {path: "google/auth/callback", element: <GoogleAuthCallback/>},
