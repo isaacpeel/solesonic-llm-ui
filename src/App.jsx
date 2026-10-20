@@ -11,11 +11,14 @@ import GeneratedImageManagement from "./settings/images/GeneratedImageManagement
 import {DEFAULT_IMAGE_LEVEL} from "./settings/images/imageLevels.js";
 import MemoryManagement from "./settings/memory/MemoryManagement.jsx";
 import {DEFAULT_MEMORY_LEVEL} from "./settings/memory/memoryLevels.js";
+import NotificationSettings from "./settings/notifications/NotificationSettings.jsx";
 import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./settings/connections/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
 import {SharedDataProvider} from "./context/SharedDataContext.jsx";
 import AuthenticationWrapper from "./authorizer/AuthenticationWrapper.jsx";
+import PushSubscriptionSync from "./push/PushSubscriptionSync.jsx";
+import usePushNavigation from "./push/usePushNavigation.js";
 
 const Layout = () => (
     <div>
@@ -45,6 +48,7 @@ export const routes = [
                 children: [
                     {index: true, element: <Navigate to="general" replace/>},
                     {path: "general", element: <GeneralUserSettings/>},
+                    {path: "notifications", element: <NotificationSettings/>},
                     {path: "connections", element: <ConnectionsSettings/>},
                     {path: "rag", element: <Navigate to={DEFAULT_RAG_LEVEL} replace/>},
                     {path: "rag/:level", element: <RagManagement/>},
@@ -62,9 +66,14 @@ export const routes = [
 
 const router = createBrowserRouter(routes);
 
+const navigateToPushTarget = (url) => router.navigate(url);
+
 const App = () => {
+    usePushNavigation(navigateToPushTarget);
+
     return (
         <AuthenticationWrapper>
+            <PushSubscriptionSync/>
             <SharedDataProvider>
                 <RouterProvider router={router}/>
             </SharedDataProvider>

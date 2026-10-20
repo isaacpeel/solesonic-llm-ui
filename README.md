@@ -196,6 +196,12 @@ High-level steps:
 
 See the dedicated doc: [docs/ELICITATION.md](docs/ELICITATION.md).
 
+## Push Notifications
+
+Chrome Web Push tells a user when a turn finished or a tool is waiting for their answer, even with the app closed. It is turned on per device under Settings → Notifications. The service worker is `public/service-worker.js`, and the client is `src/service/PushSubscriptionService.js`.
+
+See the dedicated doc: [docs/PUSH_NOTIFICATIONS.md](docs/PUSH_NOTIFICATIONS.md).
+
 ## API & Services
 
 Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:

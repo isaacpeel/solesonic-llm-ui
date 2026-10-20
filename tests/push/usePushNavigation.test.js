@@ -1,0 +1,75 @@
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {renderHook} from '@testing-library/react';
+import usePushNavigation from '../../src/push/usePushNavigation.js';
+
+let messageListeners;
+
+function postFromWorker(data) {
+    messageListeners.forEach((listener) => listener({data}));
+}
+
+beforeEach(() => {
+    messageListeners = new Set();
+
+    vi.stubGlobal('navigator', {
+        serviceWorker: {
+            addEventListener: vi.fn((type, listener) => {
+                if (type === 'message') {
+                    messageListeners.add(listener);
+                }
+            }),
+            removeEventListener: vi.fn((type, listener) => {
+                messageListeners.delete(listener);
+            }),
+        },
+    });
+});
+
+afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+});
+
+describe('usePushNavigation', () => {
+    it('navigates to the path a notification click asks for', () => {
+        const navigate = vi.fn();
+        renderHook(() => usePushNavigation(navigate));
+
+        postFromWorker({type: 'push:navigate', url: '/chat/chat-1'});
+
+        expect(navigate).toHaveBeenCalledWith('/chat/chat-1');
+    });
+
+    it.each(['https://evil.example/x', '//evil.example', 'javascript:alert(1)', 42])('ignores the unsafe url %s', (url) => {
+        const navigate = vi.fn();
+        renderHook(() => usePushNavigation(navigate));
+
+        postFromWorker({type: 'push:navigate', url});
+
+        expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('ignores other messages', () => {
+        const navigate = vi.fn();
+        renderHook(() => usePushNavigation(navigate));
+
+        postFromWorker({type: 'something-else', url: '/chat/chat-1'});
+        postFromWorker(null);
+
+        expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('removes its listener on unmount', () => {
+        const {unmount} = renderHook(() => usePushNavigation(vi.fn()));
+
+        unmount();
+
+        expect(messageListeners.size).toBe(0);
+    });
+
+    it('does nothing where service workers are unavailable', () => {
+        vi.stubGlobal('navigator', {});
+
+        expect(() => renderHook(() => usePushNavigation(vi.fn()))).not.toThrow();
+    });
+});

@@ -30,6 +30,7 @@ vi.mock('../src/settings/connections/ConnectionsSettings.jsx', () => ({default: 
 vi.mock('../src/settings/rag/RagManagement.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/images/GeneratedImageManagement.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/memory/MemoryManagement.jsx', () => ({default: () => <div data-testid="memory-management"/>}));
+vi.mock('../src/settings/notifications/NotificationSettings.jsx', () => ({default: () => <div data-testid="notification-settings"/>}));
 vi.mock('../src/settings/connections/GoogleAuthCallback.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/connections/AtlassianAuthCallback.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/context/SharedDataContext.jsx', () => ({
@@ -124,5 +125,13 @@ describe('App routes', () => {
 
         expect(await findByTestId('memory-management')).not.toBeNull();
         expect(router.state.location.pathname).toBe('/settings/memory/mine');
+    });
+
+    it('renders the notification settings under settings', async () => {
+        const router = createMemoryRouter(routes, {initialEntries: ['/settings/notifications']});
+
+        const {findByTestId} = render(<RouterProvider router={router}/>);
+
+        expect(await findByTestId('notification-settings')).not.toBeNull();
     });
 });

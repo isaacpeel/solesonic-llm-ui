@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import log from 'loglevel';
 import {toast} from 'react-toastify';
 import authService from '../service/AuthService.js';
+import pushSubscriptionService from '../service/PushSubscriptionService.js';
 import {observePageResumed} from '../util/pageLifecycle.js';
 
 // Create Keycloak context
@@ -158,12 +159,20 @@ export const KeycloakProvider = ({children}) => {
     };
 
     // Logout method
-    const logout = () => {
-        if (keycloak) {
-            keycloak.logout({
-                redirectUri: window.location.origin,
-            });
+    const logout = async () => {
+        if (!keycloak) {
+            return;
         }
+
+        try {
+            await pushSubscriptionService.releaseOnLogout();
+        } catch (releaseError) {
+            log.warn('[KeycloakProvider] Push release failed; signing out anyway', releaseError);
+        }
+
+        keycloak.logout({
+            redirectUri: window.location.origin,
+        });
     };
 
     // Get current access token

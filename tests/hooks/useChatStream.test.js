@@ -67,7 +67,7 @@ vi.mock('../../src/util/pageLifecycle.js', () => ({
 import chatService from '../../src/service/ChatService.js';
 import streamService from '../../src/service/StreamService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
-import {isPageHidden, observePageHidden} from '../../src/util/pageLifecycle.js';
+import {isPageHidden, observePageHidden, observePageResumed} from '../../src/util/pageLifecycle.js';
 import {toast} from 'react-toastify';
 import {ApiError} from '../../src/client/ApiClient.js';
 
@@ -1548,5 +1548,183 @@ describe('a send rejected before the run starts', () => {
 
         expect(streamService.handleStreamError).toHaveBeenCalledTimes(1);
         expect(options.rejectPendingModel).not.toHaveBeenCalled();
+    });
+});
+
+describe('releasing the stream while the page is hidden', () => {
+    let options;
+    let notifyPageHidden;
+    let notifyPageResumed;
+
+    function hangingStreamAfter(frames) {
+        let capturedSignal = null;
+
+        chatService.chatStream.mockImplementationOnce((payload, chatId, chunkOptions) => {
+            capturedSignal = chunkOptions.signal;
+            frames.forEach((frame) => chunkOptions.onChunk(frame));
+
+            return new Promise((_resolve, reject) => {
+                chunkOptions.signal.addEventListener('abort', () => {
+                    reject(Object.assign(new Error('aborted'), {name: 'AbortError'}));
+                });
+            });
+        });
+
+        return () => capturedSignal;
+    }
+
+    async function submitTurn(result) {
+        act(() => {
+            result.current.handleInputChange({target: {value: 'a long question'}});
+        });
+
+        await act(async () => {
+            void result.current.handleSubmit();
+        });
+    }
+
+    function hidePage() {
+        isPageHidden.mockReturnValue(true);
+
+        act(() => {
+            notifyPageHidden?.();
+        });
+    }
+
+    function resumePage() {
+        isPageHidden.mockReturnValue(false);
+
+        act(() => {
+            notifyPageResumed?.();
+        });
+    }
+
+    async function advanceBy(milliseconds) {
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(milliseconds);
+        });
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        useSharedData.mockReturnValue({chatInputRef: {current: {style: {height: '20px'}, focus: vi.fn()}}});
+
+        notifyPageHidden = null;
+        notifyPageResumed = null;
+        isPageHidden.mockReturnValue(false);
+        observePageHidden.mockImplementation((callback) => {
+            notifyPageHidden = callback;
+
+            return () => {
+                notifyPageHidden = null;
+            };
+        });
+        observePageResumed.mockImplementation((callback) => {
+            notifyPageResumed = callback;
+
+            return () => {};
+        });
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+        chatService.chatStreamResume.mockResolvedValue('unavailable');
+
+        options = {
+            chatId: null,
+            chatHistory: [],
+            setChatHistory: vi.fn(),
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            reloadChatHistory: vi.fn().mockResolvedValue(undefined),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            adoptMessageIdForLastUserMessage: vi.fn(),
+            appendErrorMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+            attachmentTray: makeAttachmentTray(),
+        };
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.clearAllMocks();
+        observePageResumed.mockImplementation(() => () => {});
+    });
+
+    it('lets go of the stream after five hidden seconds and recovers it', async () => {
+        const readSignal = hangingStreamAfter([runStartedFrame()]);
+        const {result} = renderHook(() => useChatStream(options));
+
+        await submitTurn(result);
+        hidePage();
+        await advanceBy(4999);
+
+        expect(readSignal().aborted).toBe(false);
+
+        await advanceBy(1);
+
+        expect(readSignal().aborted).toBe(true);
+        expect(result.current.recovering).toBe(true);
+        expect(options.attachmentTray.clearTray).toHaveBeenCalled();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it('also releases when the page was already hidden as the run started', async () => {
+        isPageHidden.mockReturnValue(true);
+        const readSignal = hangingStreamAfter([runStartedFrame()]);
+        const {result} = renderHook(() => useChatStream(options));
+
+        await submitTurn(result);
+        await advanceBy(5000);
+
+        expect(readSignal().aborted).toBe(true);
+        expect(result.current.recovering).toBe(true);
+    });
+
+    it('keeps the stream when the page comes back within five seconds', async () => {
+        const readSignal = hangingStreamAfter([runStartedFrame()]);
+        const {result} = renderHook(() => useChatStream(options));
+
+        await submitTurn(result);
+        hidePage();
+        await advanceBy(3000);
+        resumePage();
+        await advanceBy(5000);
+
+        expect(readSignal().aborted).toBe(false);
+        expect(result.current.recovering).toBe(false);
+    });
+
+    it('never releases before RUN_STARTED', async () => {
+        const readSignal = hangingStreamAfter([]);
+        const {result} = renderHook(() => useChatStream(options));
+
+        await submitTurn(result);
+        hidePage();
+        await advanceBy(10000);
+
+        expect(readSignal().aborted).toBe(false);
+        expect(result.current.recovering).toBe(false);
+    });
+
+    it('does not recover a stream the user aborted', async () => {
+        const readSignal = hangingStreamAfter([runStartedFrame()]);
+        const {result} = renderHook(() => useChatStream(options));
+
+        await submitTurn(result);
+        hidePage();
+
+        await act(async () => {
+            result.current.abortActiveStream();
+        });
+        await advanceBy(5000);
+
+        expect(readSignal().aborted).toBe(true);
+        expect(result.current.recovering).toBe(false);
+        expect(chatService.chatStreamResume).not.toHaveBeenCalled();
     });
 });

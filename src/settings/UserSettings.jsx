@@ -2,6 +2,7 @@ import {NavLink, Outlet} from "react-router";
 import {
     ChevronLeftIcon,
     UserCircleIcon,
+    BellIcon,
     ArrowsRightLeftIcon,
     CubeTransparentIcon,
     LightBulbIcon,
@@ -14,7 +15,8 @@ const SETTINGS_NAV_GROUPS = [
     {
         label: "Account",
         items: [
-            {to: "/settings/general", label: "General", Icon: UserCircleIcon}
+            {to: "/settings/general", label: "General", Icon: UserCircleIcon},
+            {to: "/settings/notifications", label: "Notifications", Icon: BellIcon}
         ]
     },
     {

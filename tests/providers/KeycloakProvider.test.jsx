@@ -16,6 +16,10 @@ vi.mock('react-toastify', () => ({
     toast: {error: vi.fn()},
 }));
 
+vi.mock('../../src/service/PushSubscriptionService.js', () => ({
+    default: {releaseOnLogout: vi.fn()},
+}));
+
 let lastKeycloakInstance;
 let mockInit;
 let mockTokenParsed;
@@ -42,6 +46,7 @@ vi.mock('../../src/util/pageLifecycle.js', () => ({
 }));
 
 import {observePageResumed} from '../../src/util/pageLifecycle.js';
+import pushSubscriptionService from '../../src/service/PushSubscriptionService.js';
 
 const Consumer = () => {
     const {authenticated, loading, keycloak, login} = useKeycloak();
@@ -257,5 +262,81 @@ describe('KeycloakProvider hasGroup', () => {
         mockTokenParsed = {sub: 'user-1', groups: ['/izzy-bot-admin']};
 
         expect(await renderGroupConsumer('izzy-bot-admin')).toBe('false');
+    });
+});
+
+const LogoutConsumer = () => {
+    const {authenticated, logout} = useKeycloak();
+
+    return (
+        <div>
+            <span data-testid="authenticated">{String(authenticated)}</span>
+            <button onClick={logout}>logout</button>
+        </div>
+    );
+};
+
+const renderAndLogOut = async () => {
+    render(
+        <KeycloakProvider>
+            <LogoutConsumer/>
+        </KeycloakProvider>
+    );
+
+    await waitFor(() => {
+        expect(screen.getByTestId('authenticated').textContent).toBe('true');
+    });
+
+    await act(async () => {
+        screen.getByText('logout').click();
+    });
+};
+
+describe('KeycloakProvider logout', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        observePageResumed.mockImplementation(() => () => {});
+        mockInit = vi.fn().mockResolvedValue(true);
+        mockTokenParsed = undefined;
+        mockUserInfo = undefined;
+    });
+
+    test('releases this device before signing out', async () => {
+        pushSubscriptionService.releaseOnLogout.mockResolvedValue(undefined);
+
+        await renderAndLogOut();
+
+        await waitFor(() => {
+            expect(lastKeycloakInstance.logout).toHaveBeenCalledWith({redirectUri: window.location.origin});
+        });
+        expect(pushSubscriptionService.releaseOnLogout.mock.invocationCallOrder[0])
+            .toBeLessThan(lastKeycloakInstance.logout.mock.invocationCallOrder[0]);
+    });
+
+    test('waits for the release to settle before signing out', async () => {
+        let finishRelease;
+        pushSubscriptionService.releaseOnLogout.mockReturnValue(new Promise((resolve) => {
+            finishRelease = resolve;
+        }));
+
+        await renderAndLogOut();
+
+        expect(lastKeycloakInstance.logout).not.toHaveBeenCalled();
+
+        await act(async () => {
+            finishRelease();
+        });
+
+        expect(lastKeycloakInstance.logout).toHaveBeenCalledTimes(1);
+    });
+
+    test('still signs out when the release rejects', async () => {
+        pushSubscriptionService.releaseOnLogout.mockRejectedValue(new Error('network down'));
+
+        await renderAndLogOut();
+
+        await waitFor(() => {
+            expect(lastKeycloakInstance.logout).toHaveBeenCalledTimes(1);
+        });
     });
 });

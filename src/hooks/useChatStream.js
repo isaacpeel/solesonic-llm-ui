@@ -12,7 +12,7 @@ import {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatMo
 import {ApiError} from '../client/ApiClient.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
-import {isPageHidden, observePageHidden} from '../util/pageLifecycle.js';
+import {isPageHidden, observePageHidden, observePageResumed} from '../util/pageLifecycle.js';
 import useStreamRecovery from './useStreamRecovery.js';
 
 /*
@@ -22,6 +22,9 @@ import useStreamRecovery from './useStreamRecovery.js';
  */
 const VISION_WARMUP_NOTICE_DELAY_MILLISECONDS = 20000;
 const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the model may be warming up…';
+
+/* The server only sends a push notification when no stream is open, so a hidden page lets go of its stream. */
+const BACKGROUND_STREAM_RELEASE_DELAY_MILLISECONDS = 5000;
 
 function isRejectedBeforeRunStarted(caughtError) {
     return caughtError instanceof ApiError
@@ -290,6 +293,9 @@ function useChatStream({
         let sawRunStarted = false;
         let sawTerminalFrame = false;
         let visionWarmupTimeoutId = null;
+        let releaseTimeoutId = null;
+        let releasedForBackground = false;
+        let turnController = null;
         let resolvedChatId = chatId;
         let resolvedUserMessageId = null;
 
@@ -325,9 +331,38 @@ function useChatStream({
         };
 
         pageWasHiddenDuringStreamRef.current = isPageHidden();
+
+        const shouldReleaseForBackground = () => isPageHidden() && sawRunStarted && !sawTerminalFrame;
+
+        const clearReleaseTimer = () => {
+            if (releaseTimeoutId) {
+                clearTimeout(releaseTimeoutId);
+                releaseTimeoutId = null;
+            }
+        };
+
+        const armReleaseTimer = () => {
+            if (releaseTimeoutId || !shouldReleaseForBackground()) {
+                return;
+            }
+
+            releaseTimeoutId = setTimeout(() => {
+                releaseTimeoutId = null;
+
+                if (!shouldReleaseForBackground()) {
+                    return;
+                }
+
+                releasedForBackground = true;
+                turnController?.abort();
+            }, BACKGROUND_STREAM_RELEASE_DELAY_MILLISECONDS);
+        };
+
         const unsubscribePageHidden = observePageHidden(() => {
             pageWasHiddenDuringStreamRef.current = true;
+            armReleaseTimer();
         });
+        const unsubscribePageResumed = observePageResumed(clearReleaseTimer);
 
         const restoreComposer = (errorMessage) => {
             setChatHistory(updatedHistory);
@@ -343,6 +378,7 @@ function useChatStream({
         try {
             controller.current?.abort();
             controller.current = new AbortController();
+            turnController = controller.current;
 
             if (attachmentIds.length > 0) {
                 visionWarmupTimeoutId = setTimeout(() => {
@@ -383,6 +419,7 @@ function useChatStream({
                         resolvedUserMessageId = runStartedIdentifiers.userMessageId ?? resolvedUserMessageId;
                         activeChatIdRef.current = resolvedChatId;
                         setStreamActive(true);
+                        armReleaseTimer();
                     }
 
                     /*
@@ -392,6 +429,7 @@ function useChatStream({
                      */
                     if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
                         sawTerminalFrame = true;
+                        clearReleaseTimer();
                     }
 
                     handleStreamChunk(rawEvent);
@@ -447,6 +485,20 @@ function useChatStream({
             }
         } catch (caughtError) {
             if (caughtError.name === 'AbortError') {
+                if (releasedForBackground) {
+                    attachmentTray?.clearTray();
+
+                    if (attemptStreamRecovery()) {
+                        log.info('[ChatScreen] Stream released while backgrounded; recovering.');
+                        return;
+                    }
+
+                    stopStreamingLastAIMessage?.();
+                    appendErrorMessage('The response stopped before it finished. Your message was sent — ask again to see the rest.');
+
+                    return;
+                }
+
                 log.info('[ChatScreen] Stream aborted.');
                 setChatHistory((previousHistory) => {
                     const newHistory = [...previousHistory];
@@ -490,6 +542,8 @@ function useChatStream({
             streamService.handleStreamError(caughtError, appendErrorMessage, setChatHistory);
         } finally {
             unsubscribePageHidden();
+            unsubscribePageResumed();
+            clearReleaseTimer();
 
             if (visionWarmupTimeoutId) {
                 clearTimeout(visionWarmupTimeoutId);
