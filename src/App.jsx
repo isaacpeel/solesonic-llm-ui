@@ -18,6 +18,7 @@ import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./settings/connections/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
 import {SharedDataProvider} from "./context/SharedDataContext.jsx";
+import {ChatTurnProvider} from "./context/ChatTurnContext.jsx";
 import AuthenticationWrapper from "./authorizer/AuthenticationWrapper.jsx";
 import PushSubscriptionSync from "./push/PushSubscriptionSync.jsx";
 import usePushNavigation from "./push/usePushNavigation.js";
@@ -79,7 +80,9 @@ const App = () => {
         <AuthenticationWrapper>
             <PushSubscriptionSync/>
             <SharedDataProvider>
-                <RouterProvider router={router}/>
+                <ChatTurnProvider>
+                    <RouterProvider router={router}/>
+                </ChatTurnProvider>
             </SharedDataProvider>
         </AuthenticationWrapper>
     );

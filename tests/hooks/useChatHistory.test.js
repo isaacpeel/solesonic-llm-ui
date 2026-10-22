@@ -20,6 +20,70 @@ import chatService from '../../src/service/ChatService.js';
 import {useSharedData} from '../../src/context/useSharedData.jsx';
 import {AI, ERROR, SYSTEM} from '../../src/chat/message/ChatMessage.jsx';
 
+describe('reporting a hydrated chat', () => {
+    let sharedState;
+
+    beforeEach(() => {
+        sharedState = {
+            chatId: 'chat-1',
+            setChatId: vi.fn(),
+            chatHistory: [],
+            setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
+        };
+        useSharedData.mockReturnValue(sharedState);
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('hands the fetched chat to onHydrated so an in-flight turn can be picked up', async () => {
+        const chatDetails = {chatMessages: [{id: 'user-1', messageType: 'USER', message: 'draw a lighthouse'}]};
+        chatService.findChatDetails.mockResolvedValue(chatDetails);
+        const onHydrated = vi.fn();
+
+        renderHook(() => useChatHistory({onHydrated}));
+
+        await waitFor(() => {
+            expect(onHydrated).toHaveBeenCalledWith('chat-1', chatDetails);
+        });
+    });
+
+    it('does not report the chat its own stream just adopted', async () => {
+        sharedState.adoptedChatIdRef.current = 'chat-1';
+        const onHydrated = vi.fn();
+
+        renderHook(() => useChatHistory({onHydrated}));
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+        expect(onHydrated).not.toHaveBeenCalled();
+    });
+
+    it('keeps the elicitation id on an answered question', async () => {
+        chatService.findChatDetails.mockResolvedValue({
+            chatMessages: [
+                {id: 'user-1', messageType: 'USER', message: 'assign it'},
+                {id: 'system-1', messageType: 'SYSTEM', message: 'Pick an assignee', elicitationId: 'elicitation-1', elicitationResponse: {summary: 'Isaac', action: 'accept'}},
+            ],
+        });
+
+        renderHook(() => useChatHistory());
+
+        await waitFor(() => {
+            expect(sharedState.setChatHistory.mock.calls.some(([argument]) => typeof argument === 'function')).toBe(true);
+        });
+
+        const mergeIntoHistory = sharedState.setChatHistory.mock.calls.find(([argument]) => typeof argument === 'function')[0];
+        const mergedHistory = mergeIntoHistory([]);
+
+        expect(mergedHistory[1].elicitationId).toBe('elicitation-1');
+        expect(mergedHistory[1].elicitationResponse).toBe('Isaac');
+    });
+});
+
 describe('useChatHistory', () => {
     let sharedState;
 
@@ -29,6 +93,7 @@ describe('useChatHistory', () => {
             setChatId: vi.fn(),
             chatHistory: [{type: AI, text: 'existing', _key: 'existing'}],
             setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
         };
         useSharedData.mockReturnValue(sharedState);
         chatService.findChatDetails.mockResolvedValue({chatMessages: []});
@@ -379,6 +444,7 @@ describe('appendNotificationToLastAIMessage', () => {
             setChatId: vi.fn(),
             chatHistory: [{type: AI, text: 'seed', _key: 'seed'}],
             setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
         };
         useSharedData.mockReturnValue(sharedState);
         chatService.findChatDetails.mockResolvedValue({chatMessages: []});
@@ -477,6 +543,7 @@ describe('mergeFetchedChatHistoryWithLocalNotifications', () => {
             setChatId: vi.fn(),
             chatHistory: [],
             setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
         };
         useSharedData.mockReturnValue(sharedState);
     });
@@ -634,6 +701,7 @@ describe('hydration on chatId change', () => {
             setChatId: vi.fn(),
             chatHistory: [{type: AI, text: 'seed', _key: 'seed'}],
             setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
         };
         useSharedData.mockReturnValue(sharedState);
         chatService.findChatDetails.mockResolvedValue({chatMessages: []});
@@ -699,6 +767,7 @@ describe('attachment-aware chat history', () => {
             setChatId: vi.fn(),
             chatHistory: [{type: AI, text: 'existing', _key: 'existing'}],
             setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
         };
         useSharedData.mockReturnValue(sharedState);
         chatService.findChatDetails.mockResolvedValue({chatMessages: []});
@@ -1238,6 +1307,7 @@ describe('chat history support for stream recovery', () => {
             setChatId: vi.fn(),
             chatHistory: [{type: AI, text: 'existing', _key: 'existing'}],
             setChatHistory: vi.fn(),
+            adoptedChatIdRef: {current: null},
         };
         useSharedData.mockReturnValue(sharedState);
         chatService.findChatDetails.mockResolvedValue({chatMessages: []});

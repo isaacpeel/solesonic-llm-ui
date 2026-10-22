@@ -13,6 +13,8 @@ import {TERMINAL_RUN_EVENTS} from './ChatService.js';
 const TRANSIENT_DISCONNECT_MESSAGE_PATTERN =
     /failed to fetch|load failed|network ?error|network connection|connection (lost|closed|reset|aborted)/i;
 
+const STREAM_STALLED_ERROR_NAME = 'StreamStalledError';
+
 /* Turns a caught transport failure into a sentence readable in the transcript, not a raw Error. */
 function describeStreamError(error) {
     if (streamService.isTransientStreamDisconnect(error)) {
@@ -30,6 +32,10 @@ const streamService = {
     isTransientStreamDisconnect: (error) => {
         if (!error || error.name === 'AbortError') {
             return false;
+        }
+
+        if (error.name === STREAM_STALLED_ERROR_NAME) {
+            return true;
         }
 
         if (error.name === 'TypeError') {

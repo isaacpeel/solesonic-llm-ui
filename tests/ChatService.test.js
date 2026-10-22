@@ -12,6 +12,8 @@ import chatService, {
     RUN_ERROR,
     RUN_FINISHED,
     RUN_STARTED,
+    STREAM_IDLE_TIMEOUT_MILLISECONDS,
+    StreamStalledError,
     TEXT_MESSAGE_CONTENT,
     TEXT_MESSAGE_END,
     TEXT_MESSAGE_START,
@@ -946,5 +948,128 @@ describe('chatStreamResume', () => {
         fetch.mockResolvedValue(makeResponse(500, {body: null}));
 
         await expect(chatService.chatStreamResume('chat-1', 'x', {})).rejects.toThrow('Stream resume failed');
+    });
+
+    it('retries once with a refreshed token when the resume is unauthorized', async () => {
+        authClient.getAccessToken = vi.fn()
+            .mockResolvedValueOnce('expired-token')
+            .mockResolvedValueOnce('refreshed-token');
+        parseSseStream.mockImplementation(async function* () {
+            yield {event: RUN_FINISHED, id: '1754062831270-0', data: '{}'};
+        });
+        fetch
+            .mockResolvedValueOnce(makeResponse(401, {body: null}))
+            .mockResolvedValueOnce(makeResponse(200));
+
+        const outcome = await chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk: vi.fn()});
+
+        expect(outcome).toBe(RESUME_STREAMED);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(authClient.getAccessToken).toHaveBeenLastCalledWith({forceRefresh: true});
+        expect(fetch.mock.calls[1][1].headers.Authorization).toBe('Bearer refreshed-token');
+        expect(fetch.mock.calls[1][1].headers['Last-Event-ID']).toBe('1754062831251-1');
+    });
+
+    it('reports a second unauthorized response as rejected', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        fetch.mockResolvedValue(makeResponse(401, {body: null}));
+
+        await expect(chatService.chatStreamResume('chat-1', 'x', {})).resolves.toBe(RESUME_REJECTED);
+        expect(fetch).toHaveBeenCalledTimes(2);
+
+        consoleErrorSpy.mockRestore();
+    });
+});
+
+describe('stream idle watchdog', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    /* Stands in for a reader parked on a half-open connection: it only ever ends when its fetch is aborted. */
+    function stallAfter(framesBeforeStall) {
+        return async function* (responseBody, {onActivity} = {}) {
+            for (const frame of framesBeforeStall) {
+                onActivity?.();
+                yield frame;
+            }
+
+            const fetchCalls = vi.mocked(fetch).mock.calls;
+            const requestSignal = fetchCalls[fetchCalls.length - 1][1].signal;
+
+            await new Promise((resolve, reject) => {
+                requestSignal.addEventListener('abort', () => {
+                    reject(Object.assign(new Error('The operation was aborted.'), {name: 'AbortError'}));
+                });
+            });
+        };
+    }
+
+    it('aborts a turn whose stream goes silent and reports it as stalled', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, body: {}});
+        parseSseStream.mockImplementation(stallAfter([runStartedFrame()]));
+        const onChunk = vi.fn();
+
+        const streamOutcome = chatService.chatStream('hello', 'chat-1', {onChunk}).catch((caughtError) => caughtError);
+        await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MILLISECONDS + 1);
+        const caughtError = await streamOutcome;
+
+        expect(caughtError).toBeInstanceOf(StreamStalledError);
+        expect(caughtError.name).toBe('StreamStalledError');
+        expect(onChunk).toHaveBeenCalledTimes(1);
+    });
+
+    it('keepalives alone hold the stream open', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, body: {}});
+        parseSseStream.mockImplementation(async function* (responseBody, {onActivity} = {}) {
+            for (let keepaliveIndex = 0; keepaliveIndex < 6; keepaliveIndex += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 15000));
+                onActivity?.();
+            }
+
+            yield runFinishedFrame({id: 'chat-1'});
+        });
+        const onChunk = vi.fn();
+
+        const streamOutcome = chatService.chatStream('hello', 'chat-1', {onChunk});
+        await vi.advanceTimersByTimeAsync(6 * 15000);
+        await streamOutcome;
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
+        expect(onChunk.mock.calls[0][0].event).toBe(RUN_FINISHED);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('lets the caller abort win over the watchdog', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, body: {}});
+        parseSseStream.mockImplementation(stallAfter([runStartedFrame()]));
+        const callerController = new AbortController();
+
+        const streamOutcome = chatService.chatStream('hello', 'chat-1', {signal: callerController.signal})
+            .catch((caughtError) => caughtError);
+        await vi.advanceTimersByTimeAsync(1000);
+        callerController.abort();
+        const caughtError = await streamOutcome;
+
+        expect(caughtError.name).toBe('AbortError');
+        expect(caughtError).not.toBeInstanceOf(StreamStalledError);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('aborts a silent resume and reports it as stalled', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, statusText: 'OK', body: {}});
+        parseSseStream.mockImplementation(stallAfter([]));
+
+        const resumeOutcome = chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk: vi.fn()})
+            .catch((caughtError) => caughtError);
+        await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MILLISECONDS + 1);
+
+        expect(await resumeOutcome).toBeInstanceOf(StreamStalledError);
     });
 });

@@ -37,6 +37,16 @@ export const RESUME_REJECTED = "rejected";
  */
 const RESUME_FROM_BEGINNING = "0";
 
+/* Three keepalive intervals: one missed comment is jitter, three is a connection that is gone. */
+export const STREAM_IDLE_TIMEOUT_MILLISECONDS = 45000;
+
+export class StreamStalledError extends Error {
+    constructor() {
+        super('The stream stopped sending data.');
+        this.name = 'StreamStalledError';
+    }
+}
+
 /* One drawer-height of rows plus enough slack that the sentinel starts below the fold. */
 export const DEFAULT_CHAT_HISTORY_PAGE_SIZE = 20;
 
@@ -112,6 +122,56 @@ export function findRunStartedUserMessageId(runStartedData) {
     }
 
     return null;
+}
+
+/*
+ * A half-open connection neither delivers bytes nor errors, so a reader parked on one waits
+ * forever. The server writes a keepalive whenever it is otherwise silent, which makes silence
+ * itself the signal that the connection is gone.
+ */
+function createIdleWatchdog(callerSignal) {
+    const watchdogController = new AbortController();
+    let idleTimeoutId = null;
+    let stalled = false;
+
+    const abortOnCallerAbort = () => watchdogController.abort(callerSignal.reason);
+
+    if (callerSignal?.aborted) {
+        watchdogController.abort(callerSignal.reason);
+    } else {
+        callerSignal?.addEventListener('abort', abortOnCallerAbort);
+    }
+
+    const rearm = () => {
+        clearTimeout(idleTimeoutId);
+        idleTimeoutId = setTimeout(() => {
+            stalled = true;
+            watchdogController.abort();
+        }, STREAM_IDLE_TIMEOUT_MILLISECONDS);
+    };
+
+    return {
+        signal: watchdogController.signal,
+        rearm,
+        translate: (caughtError) => (stalled ? new StreamStalledError() : caughtError),
+        dispose: () => {
+            clearTimeout(idleTimeoutId);
+            callerSignal?.removeEventListener('abort', abortOnCallerAbort);
+        },
+    };
+}
+
+async function withIdleWatchdog(callerSignal, streamOperation) {
+    const idleWatchdog = createIdleWatchdog(callerSignal);
+    idleWatchdog.rearm();
+
+    try {
+        return await streamOperation(idleWatchdog);
+    } catch (caughtError) {
+        throw idleWatchdog.translate(caughtError);
+    } finally {
+        idleWatchdog.dispose();
+    }
 }
 
 const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
@@ -342,32 +402,34 @@ const chatService = {
             requestHeaders.Authorization = `Bearer ${token}`;
         }
 
-        const response = await fetch(uri, {
-            method,
-            body: JSON.stringify(normalizePayload(payload)),
-            signal,
-            headers: requestHeaders,
-        });
-
-        if (!response.ok) {
-            const errorBody = await readApiErrorBody(response);
-
-            throw new ApiError({
-                message: `Streaming failed: ${response.status} ${errorBody.message || response.statusText}`,
-                status: response.status,
+        await withIdleWatchdog(signal, async (idleWatchdog) => {
+            const response = await fetch(uri, {
                 method,
-                uri,
-                code: errorBody.code,
+                body: JSON.stringify(normalizePayload(payload)),
+                signal: idleWatchdog.signal,
+                headers: requestHeaders,
             });
-        }
 
-        for await (const event of parseSseStream(response.body)) {
-            onChunk?.(event);
+            if (!response.ok) {
+                const errorBody = await readApiErrorBody(response);
 
-            if (TERMINAL_RUN_EVENTS.includes(event.event)) {
-                break;
+                throw new ApiError({
+                    message: `Streaming failed: ${response.status} ${errorBody.message || response.statusText}`,
+                    status: response.status,
+                    method,
+                    uri,
+                    code: errorBody.code,
+                });
             }
-        }
+
+            for await (const event of parseSseStream(response.body, {onActivity: idleWatchdog.rearm})) {
+                onChunk?.(event);
+
+                if (TERMINAL_RUN_EVENTS.includes(event.event)) {
+                    break;
+                }
+            }
+        });
     },
 
     /*
@@ -377,60 +439,66 @@ const chatService = {
      * emitted in the same millisecond onto one cursor and lose a frame on replay.
      */
     async chatStreamResume(chatId, lastEventId, { onChunk, signal } = {}) {
-        const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
         const uri = `${config.streamingChatsUri}/${encodeURIComponent(chatId)}/users/${userId}/stream`;
+        return await withIdleWatchdog(signal, async (idleWatchdog) => {
+            const requestResume = async ({forceRefresh = false} = {}) => {
+                const token = await authService.getAccessToken({forceRefresh});
 
-        const requestHeaders = {
-            Accept: 'text/event-stream',
-            'Last-Event-ID': lastEventId || RESUME_FROM_BEGINNING,
-        };
+                return await fetch(uri, {
+                    method: 'GET',
+                    signal: idleWatchdog.signal,
+                    headers: buildResumeHeaders(token, lastEventId),
+                });
+            };
 
-        if (token) {
-            requestHeaders.Authorization = `Bearer ${token}`;
-        }
+            let response = await requestResume();
 
-        const response = await fetch(uri, {
-            method: 'GET',
-            signal,
-            headers: requestHeaders,
-        });
-
-        /* The turn finished and we already hold every frame, the terminal one included. */
-        if (response.status === 204) {
-            return RESUME_ALREADY_COMPLETE;
-        }
-
-        /* Our cursor was not something the server ever sent — recoverable, but log it as our bug. */
-        if (response.status === 400) {
-            console.error('[ChatService] Stream resume rejected an invalid cursor:', lastEventId);
-            return RESUME_UNAVAILABLE;
-        }
-
-        /* Not our chat. Reconciling against it would fail the same way. */
-        if (response.status === 403) {
-            console.error('[ChatService] Stream resume forbidden for chat:', chatId);
-            return RESUME_REJECTED;
-        }
-
-        /* Buffer aged out, cursor trimmed away, or no such chat — reconcile from history instead. */
-        if (response.status === 404 || response.status === 410) {
-            return RESUME_UNAVAILABLE;
-        }
-
-        if (!response.ok) {
-            throw new Error(`Stream resume failed: ${response.status} ${response.statusText}`);
-        }
-
-        for await (const event of parseSseStream(response.body)) {
-            onChunk?.(event);
-
-            if (TERMINAL_RUN_EVENTS.includes(event.event)) {
-                break;
+            if (response.status === 401) {
+                response = await requestResume({forceRefresh: true});
             }
-        }
 
-        return RESUME_STREAMED;
+            if (response.status === 401) {
+                console.error('[ChatService] Stream resume unauthorized for chat:', chatId);
+                return RESUME_REJECTED;
+            }
+
+            /* The turn finished and we already hold every frame, the terminal one included. */
+            if (response.status === 204) {
+                return RESUME_ALREADY_COMPLETE;
+            }
+
+            /* Our cursor was not something the server ever sent — recoverable, but log it as our bug. */
+            if (response.status === 400) {
+                console.error('[ChatService] Stream resume rejected an invalid cursor:', lastEventId);
+                return RESUME_UNAVAILABLE;
+            }
+
+            /* Not our chat. Reconciling against it would fail the same way. */
+            if (response.status === 403) {
+                console.error('[ChatService] Stream resume forbidden for chat:', chatId);
+                return RESUME_REJECTED;
+            }
+
+            /* Buffer aged out, cursor trimmed away, or no such chat — reconcile from history instead. */
+            if (response.status === 404 || response.status === 410) {
+                return RESUME_UNAVAILABLE;
+            }
+
+            if (!response.ok) {
+                throw new Error(`Stream resume failed: ${response.status} ${response.statusText}`);
+            }
+
+            for await (const event of parseSseStream(response.body, {onActivity: idleWatchdog.rearm})) {
+                onChunk?.(event);
+
+                if (TERMINAL_RUN_EVENTS.includes(event.event)) {
+                    break;
+                }
+            }
+
+            return RESUME_STREAMED;
+        });
     },
 
     findChatDetails: async (chatId) => {
@@ -494,6 +562,19 @@ function buildStreamingRequest(chatId, userId, baseUri) {
     return chatId
         ? {uri: `${baseUri}/${encodeURIComponent(chatId)}/users/${userId}`, method: 'PUT'}
         : {uri: `${baseUri}/users/${userId}`, method: 'POST'};
+}
+
+function buildResumeHeaders(token, lastEventId) {
+    const requestHeaders = {
+        Accept: 'text/event-stream',
+        'Last-Event-ID': lastEventId || RESUME_FROM_BEGINNING,
+    };
+
+    if (token) {
+        requestHeaders.Authorization = `Bearer ${token}`;
+    }
+
+    return requestHeaders;
 }
 
 function normalizePayload(input) {

@@ -288,6 +288,13 @@ describe('isTransientStreamDisconnect', () => {
         expect(streamService.isTransientStreamDisconnect(abortError)).toBe(false);
     });
 
+    it('recognizes a stream the idle watchdog gave up on', () => {
+        const stalledError = new Error('The stream stopped sending data.');
+        stalledError.name = 'StreamStalledError';
+
+        expect(streamService.isTransientStreamDisconnect(stalledError)).toBe(true);
+    });
+
     it('is false for a server-side failure', () => {
         expect(streamService.isTransientStreamDisconnect(new Error('Streaming failed: 500 Internal Server Error'))).toBe(false);
     });

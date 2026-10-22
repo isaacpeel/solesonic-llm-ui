@@ -15,7 +15,7 @@ import NewsUpdateBanner from "../interests/NewsUpdateBanner.jsx";
 import useInterestUpdate from '../hooks/useInterestUpdate.js';
 import useChatHistory from '../hooks/useChatHistory.js';
 import useChatUrlSync from '../hooks/useChatUrlSync.js';
-import useChatStream from '../hooks/useChatStream.js';
+import {useChatTurn} from '../context/useChatTurn.jsx';
 import useElicitation from '../hooks/useElicitation.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
@@ -26,7 +26,7 @@ import useKeyboardInset from '../hooks/useKeyboardInset.js';
 
 
 function ChatScreen() {
-    const {chatInputRef, setStreamingChatId} = useSharedData();
+    const {chatInputRef} = useSharedData();
 
     useEffect(() => {
         const handleCopy = (event) => {
@@ -47,7 +47,6 @@ function ChatScreen() {
         return () => document.removeEventListener('copy', handleCopy);
     }, []);
     const chatSwitchResetRef = useRef(null);
-    const abortActiveStreamRef = useRef(null);
 
     /*
      * Called before useChatHistory so its effect runs first: on a bookmarked `/chat/{id}` the
@@ -65,25 +64,15 @@ function ChatScreen() {
         toast.error('That conversation no longer exists.');
     }, [clearOpenChat]);
 
-    const {chatId, chatHistory, setChatHistory, appendToLastAIMessage, appendNotificationToLastAIMessage, updateSeededNotificationText, attachGeneratedImagesToLastAIMessage, stopStreamingLastAIMessage, appendSystemMessage, appendErrorMessage, reloadChatHistory, finalizeLastAIMessage, ensureChatIdFromResponse, adoptMessageIdForLastUserMessage, updateAttachmentStatus} = useChatHistory({
+    const chatTurn = useChatTurn();
+
+    const {chatId, chatHistory, setChatHistory, appendErrorMessage} = useChatHistory({
         onChatIdChangedExternally: () => {
-            /*
-             * The conversation on screen is being replaced — a sidebar pick, New Chat, a delete,
-             * or a back navigation. Nothing cancels the turn server-side, but its remaining
-             * frames would land on whatever bubble now ends the new transcript, so this client
-             * lets go of the stream before that can happen. Suppressed by `adoptedChatIdRef` for
-             * a new chat learning its own id, which must not abort the stream that issued it.
-             */
-            abortActiveStreamRef.current?.();
             chatSwitchResetRef.current?.();
         },
         onChatNotFound: handleChatNotFound,
+        onHydrated: chatTurn.attachIfInFlight,
     });
-    const [activeElicitation, setActiveElicitation] = useState(null);
-    const [elicitationValues, setElicitationValues] = useState({});
-    const [elicitationSubmitting, setElicitationSubmitting] = useState(false);
-    const getSelectedCommandRef = useRef(null);
-    const getMessageTextRef = useRef(null);
     const [isCaptionRowOpen, setIsCaptionRowOpen] = useState(false);
     const [lightboxAttachment, setLightboxAttachment] = useState(null);
     const lightboxInvokerRef = useRef(null);
@@ -107,46 +96,33 @@ function ChatScreen() {
         lightboxInvokerRef.current = null;
     }, []);
 
-    const {loading, inputValue, setInputValue, handleInputChange, handleSubmit, handleStreamChunk, abortActiveStream, attachmentNotice, recoveryFailed, retryRecovery, streamActive, stopChat} = useChatStream({
-        chatId,
-        chatHistory,
-        setChatHistory,
-        appendToLastAIMessage,
-        appendNotificationToLastAIMessage,
-        updateSeededNotificationText,
-        attachGeneratedImagesToLastAIMessage,
-        stopStreamingLastAIMessage,
-        appendSystemMessage,
-        appendErrorMessage,
-        reloadChatHistory,
-        finalizeLastAIMessage,
-        ensureChatIdFromResponse,
-        adoptMessageIdForLastUserMessage,
-        updateAttachmentStatus,
+    const {
+        turnInProgress: loading,
+        inputValue,
+        setInputValue,
+        handleInputChange,
+        handleStreamChunk,
+        attachmentNotice,
+        recoveryFailed,
+        retryRecovery,
+        streamActive,
+        stopChat,
         activeElicitation,
         setActiveElicitation,
-        setElicitationSubmitting,
+        elicitationValues,
         setElicitationValues,
+        elicitationSubmitting,
+        setElicitationSubmitting,
         getSelectedCommandRef,
         getMessageTextRef,
+    } = chatTurn;
+
+    const handleSubmit = () => chatTurn.handleSubmit({
         attachmentTray,
         pendingModel: chatModel.pendingModel,
         rejectPendingModel: chatModel.rejectPendingModel,
         clearModelNotice: chatModel.clearModelNotice,
     });
-
-    /*
-     * Publishes which conversation is mid-turn, so the history drawer can refuse to delete it — the
-     * backend runs an in-flight turn to completion and would write its message onto a conversation
-     * that no longer exists.
-     *
-     * Derived from `loading` rather than set once when the turn starts: on a new chat the id only
-     * arrives with the RUN_STARTED frame, and `loading` going false is what RUN_FINISHED and
-     * RUN_ERROR both amount to here.
-     */
-    useEffect(() => {
-        setStreamingChatId(loading ? chatId : null);
-    }, [loading, chatId, setStreamingChatId]);
 
     const composerRef = useRef(null);
     const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
@@ -163,7 +139,6 @@ function ChatScreen() {
     getSelectedCommandRef.current = () => selectedCommand?.command || null;
     getMessageTextRef.current = () => inputValue.trim();
     chatSwitchResetRef.current = handleDismiss;
-    abortActiveStreamRef.current = abortActiveStream;
 
     const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
         chatHistory,

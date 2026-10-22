@@ -6,15 +6,18 @@ import {ArrowRightEndOnRectangleIcon, ArrowLeftEndOnRectangleIcon} from "@heroic
 import {PencilSquareIcon} from "@heroicons/react/24/solid/index.js";
 import ChatHistory from "../chat/message/ChatHistory.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
+import {useChatTurn} from "../context/useChatTurn.jsx";
 
 const Header = () => {
     const {setChatHistory} = useSharedData();
     const {setChatId} = useSharedData();
     const {drawerOpen, setDrawerOpen} = useSharedData();
     const sharedRef = useSharedData(SharedDataContext);
+    const chatTurn = useChatTurn();
     const navigate = useNavigate();
 
     const handleNewChat = () => {
+        chatTurn?.releaseTurn();
         setChatHistory([]);
         setChatId(null);
 

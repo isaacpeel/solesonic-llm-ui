@@ -6,11 +6,11 @@ import {
     appendProgressNotificationText,
     formatProgressNotificationText
 } from '../service/ProgressNotificationService.js';
-import {AI, ERROR, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
-import {generateMessageKey} from '../util/keys.js';
+import {AI, SYSTEM} from '../chat/message/ChatMessage.jsx';
+import useChatHistoryMutations from './useChatHistoryMutations.js';
 
-function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
-    const {chatId, setChatId, chatHistory, setChatHistory} = useSharedData();
+function useChatHistory({onChatIdChangedExternally, onChatNotFound, onHydrated} = {}) {
+    const {chatId, setChatId, chatHistory, setChatHistory, adoptedChatIdRef} = useSharedData();
 
     /*
      * Held in a ref rather than listed as a dependency of the hydration effect below. That
@@ -23,12 +23,11 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         onChatNotFoundRef.current = onChatNotFound;
     }, [onChatNotFound]);
 
-    /*
-     * Holds an id this client adopted from its own in-flight stream, so hydration can tell
-     * that case apart from the user picking a chat out of the sidebar — both are a bare
-     * setChatId and are otherwise indistinguishable.
-     */
-    const adoptedChatIdRef = useRef(null);
+    const onHydratedRef = useRef(onHydrated);
+
+    useEffect(() => {
+        onHydratedRef.current = onHydrated;
+    }, [onHydrated]);
 
     /*
      * Reused by conversation-scoped UI state (e.g. a pinned slash command) that must reset on a
@@ -67,44 +66,16 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
      * `adoptedChatIdRef` guard would suppress the effect anyway. Rejects on failure; the effect
      * catches, recovery decides for itself.
      */
-    const reloadChatHistory = useCallback(async () => {
-        if (!chatId) {
+    const reloadChatHistory = useCallback(async (targetChatId = chatId) => {
+        if (!targetChatId) {
             return;
         }
 
-        const formattedMessages = await fetchFormattedChatMessages(chatId);
-
-        setChatHistory((previousHistory) => {
-            return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
-        });
+        return await reloadChatHistoryInto(targetChatId, setChatHistory);
     }, [chatId, setChatHistory]);
 
-    /*
-     * Appends a standalone ERROR bubble — every stream/turn failure lands here rather than in a
-     * page-level banner, so it reads inline at the point it happened. Purely client-side and
-     * ephemeral like the welcome message: the backend never persists an ERROR messageType, so
-     * this never comes back from `fetchFormattedChatMessages` on reload.
-     *
-     * Declared here, ahead of the hydration effect below that lists it as a dependency — a
-     * `useEffect` dependency array is evaluated immediately during render, unlike a reference
-     * inside an async callback, so this must exist before that point or the render throws a TDZ
-     * ReferenceError.
-     */
-    const appendErrorMessage = useCallback((text) => {
-        if (!text || typeof text !== 'string') {
-            return;
-        }
-
-        setChatHistory((previousHistory) => [
-            ...previousHistory,
-            {
-                type: ERROR,
-                text,
-                _key: generateMessageKey('error'),
-                timestamp: new Date().toISOString(),
-            },
-        ]);
-    }, [setChatHistory]);
+    const historyMutations = useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef});
+    const {appendErrorMessage} = historyMutations;
 
     useEffect(() => {
         if (!chatId) {
@@ -138,6 +109,11 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         let supersededByLaterChat = false;
 
         reloadChatHistory()
+            .then((chatDetails) => {
+                if (!supersededByLaterChat) {
+                    onHydratedRef.current?.(requestedChatId, chatDetails);
+                }
+            })
             .catch((error) => {
                 if (supersededByLaterChat) {
                     return;
@@ -163,366 +139,30 @@ function useChatHistory({onChatIdChangedExternally, onChatNotFound} = {}) {
         };
     }, [chatId, reloadChatHistory, appendErrorMessage]);
 
-    const appendToLastAIMessage = useCallback((textToAppend) => {
-        setChatHistory((previousHistory) => {
-            const lastIndex = previousHistory.length - 1;
-
-            if (lastIndex < 0) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            const lastChatMessage = newHistory[lastIndex];
-
-            if (lastChatMessage.type === AI) {
-                const joinedMessage = `${lastChatMessage.text}${textToAppend}`;
-
-                newHistory[lastIndex] = {
-                    ...lastChatMessage,
-                    text: joinedMessage,
-                };
-            }
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    const finalizeLastAIMessage = useCallback((response) => {
-        setChatHistory((previousHistory) => {
-            const newHistory = [...previousHistory];
-            const lastIndex = newHistory.length - 1;
-
-            if (lastIndex >= 0 && newHistory[lastIndex].type === AI) {
-                let finalText = response?.message?.message ?? newHistory[lastIndex].text;
-
-                if (typeof finalText === 'string') {
-                    finalText = finalText
-                        .replace(/\r\n/g, '\n')
-                        .replace(/\n{3,}/g, '\n\n');
-                }
-
-                /*
-                 * The backend emits a progress frame for every image it describes, so a seed
-                 * still standing at RUN_FINISHED means no image was read. Rendering it as a completed
-                 * step would put a green checkmark claiming the image was read directly above an
-                 * assistant asking for one — drop it and flag the turn instead.
-                 *
-                 * Errs towards silence: any progress frame at all clears the seed, so an MCP tool
-                 * step arriving first hides a genuine vision failure. A missed warning is a far
-                 * better failure than one fired on a healthy turn.
-                 */
-                const seedWasNeverFulfilled = !!newHistory[lastIndex].hasSeededNotification;
-
-                newHistory[lastIndex] = {
-                    ...newHistory[lastIndex],
-                    text: finalText,
-                    /*
-                     * Lives on `message`, next to `model` and `generatedImages` — not a sibling
-                     * of `message` on the envelope. `null` on a cancelled turn (the whole object,
-                     * not just its fields) — kept as-is rather than falling back, since a
-                     * cancelled turn has nothing meaningful to report and MessageResponseMetadata
-                     * already renders nothing for a null value.
-                     */
-                    responseMetadata: response?.message?.responseMetadata ?? null,
-                    /* Sibling of responseMetadata on the envelope's message; carries the per-call speed stats. */
-                    responseMetadataCalls: response?.message?.responseMetadataCalls ?? null,
-                    /*
-                     * The turn is only stamped here, not when the placeholder is pushed — a long
-                     * answer would otherwise land already reading "2 minutes ago". Prefers the
-                     * server's own stamp so a reload does not shift the label.
-                     */
-                    timestamp: response?.message?.timestamp ?? newHistory[lastIndex].timestamp ?? new Date().toISOString(),
-                    isStreaming: false,
-                    notifications: seedWasNeverFulfilled ? [] : newHistory[lastIndex].notifications,
-                    hasSeededNotification: false,
-                    visionStepUnconfirmed: seedWasNeverFulfilled,
-                };
-            }
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    /*
-     * Rewrites the seeded placeholder in place. `hasSeededNotification` deliberately stays set,
-     * so a real progress frame still replaces the text and `finalizeLastAIMessage` can still tell
-     * that none ever arrived.
-     */
-    const updateSeededNotificationText = useCallback((notificationMessageText) => {
-        setChatHistory((previousHistory) => {
-            const lastIndex = previousHistory.length - 1;
-
-            if (lastIndex < 0) {
-                return previousHistory;
-            }
-
-            const lastMessage = previousHistory[lastIndex];
-
-            if (lastMessage.type !== AI || !lastMessage.hasSeededNotification) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            newHistory[lastIndex] = {
-                ...lastMessage,
-                notifications: [notificationMessageText],
-            };
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    const attachGeneratedImagesToLastAIMessage = useCallback((generatedImages) => {
-        if (!Array.isArray(generatedImages) || generatedImages.length === 0) {
-            return;
-        }
-
-        setChatHistory((previousHistory) => {
-            const lastIndex = previousHistory.length - 1;
-
-            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
-                return previousHistory;
-            }
-
-            const lastMessage = previousHistory[lastIndex];
-            const existingImages = Array.isArray(lastMessage.generatedImages) ? lastMessage.generatedImages : [];
-            const knownImageIds = new Set(existingImages.map((existingImage) => existingImage.imageId));
-
-            /* RUN_FINISHED can repeat what an earlier `image` CUSTOM event already delivered. */
-            const newImages = generatedImages.filter((generatedImage) => !knownImageIds.has(generatedImage.imageId));
-
-            if (newImages.length === 0) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            newHistory[lastIndex] = {
-                ...lastMessage,
-                generatedImages: [...existingImages, ...newImages],
-            };
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    /*
-     * Only RUN_FINISHED clears the streaming flag on the normal path, so a stream that ends without it
-     * would otherwise spin forever. Callers use this when they have decided the turn is over.
-     */
-    const stopStreamingLastAIMessage = useCallback(() => {
-        setChatHistory((previousHistory) => {
-            const lastIndex = previousHistory.length - 1;
-
-            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
-                return previousHistory;
-            }
-
-            const newHistory = [...previousHistory];
-            /*
-             * Clears the seed too. `finalizeLastAIMessage` infers a failed vision pass from a
-             * seed still standing at RUN_FINISHED, but that inference is only valid when RUN_FINISHED
-             * actually arrived — on every path that ends here it did not, so the turn is left
-             * unflagged rather than accused.
-             */
-            newHistory[lastIndex] = {
-                ...newHistory[lastIndex],
-                isStreaming: false,
-                hasSeededNotification: false,
-            };
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
-    /*
-     * Appends a standalone SYSTEM bubble — the way a cancelled turn's "Chat canceled." notice
-     * reaches the transcript, since the backend does not persist the partial answer under it and
-     * `finalizeLastAIMessage` must not overwrite what the user already watched stream in.
-     */
-    const appendSystemMessage = useCallback((text) => {
-        if (!text || typeof text !== 'string') {
-            return;
-        }
-
-        setChatHistory((previousHistory) => [
-            ...previousHistory,
-            {
-                type: SYSTEM,
-                text,
-                _key: generateMessageKey('system'),
-                timestamp: new Date().toISOString(),
-            },
-        ]);
-    }, [setChatHistory]);
-
-    /*
-     * RUN_STARTED hands over the chat id as `chatId` (from its `threadId`); RUN_FINISHED's result
-     * carries it as `id`. Accept both — missing one means a new chat never adopts an id and every
-     * follow-up turn silently starts a fresh chat.
-     */
-    const ensureChatIdFromResponse = useCallback((response) => {
-        const resolvedChatId = response?.id ?? response?.chatId;
-
-        if (resolvedChatId) {
-            /* Marked before the state change so hydration sees it on the resulting effect run. */
-            adoptedChatIdRef.current = resolvedChatId;
-
-            setChatId((currentChatId) => {
-                if (!currentChatId) {
-                    return resolvedChatId;
-                }
-
-                return currentChatId;
-            });
-        }
-    }, [setChatId]);
-
-    /*
-     * Walks back to the last USER entry and records the server's message id on it. Must not
-     * touch `_key` — React would remount the bubble and the thumbnails would flicker.
-     */
-    const adoptMessageIdForLastUserMessage = useCallback((messageId) => {
-        if (!messageId) {
-            return;
-        }
-
-        setChatHistory((previousHistory) => {
-            for (let messageIndex = previousHistory.length - 1; messageIndex >= 0; messageIndex -= 1) {
-                if (previousHistory[messageIndex].type === USER) {
-                    const newHistory = [...previousHistory];
-                    newHistory[messageIndex] = {...newHistory[messageIndex], messageId};
-
-                    return newHistory;
-                }
-            }
-
-            return previousHistory;
-        });
-    }, [setChatHistory]);
-
-    /*
-     * The `attachment` CUSTOM event reports a vision/extraction outcome for one attachment on the
-     * turn's USER message after the fact — it can arrive well after that message was appended,
-     * so this walks back to find it by attachment id rather than assuming it is the very last
-     * entry. Merges rather than replaces, since the frame may carry only the fields that changed.
-     */
-    const updateAttachmentStatus = useCallback((attachmentUpdate) => {
-        const attachmentId = attachmentUpdate?.attachmentId;
-
-        if (!attachmentId) {
-            return;
-        }
-
-        setChatHistory((previousHistory) => {
-            for (let messageIndex = previousHistory.length - 1; messageIndex >= 0; messageIndex -= 1) {
-                const candidateMessage = previousHistory[messageIndex];
-
-                if (candidateMessage.type !== USER || !Array.isArray(candidateMessage.attachments)) {
-                    continue;
-                }
-
-                const attachmentIndex = candidateMessage.attachments.findIndex(
-                    (attachment) => attachment.id === attachmentId,
-                );
-
-                if (attachmentIndex === -1) {
-                    continue;
-                }
-
-                const newAttachments = [...candidateMessage.attachments];
-                newAttachments[attachmentIndex] = {
-                    ...newAttachments[attachmentIndex],
-                    ...attachmentUpdate,
-                };
-
-                const newHistory = [...previousHistory];
-                newHistory[messageIndex] = {...candidateMessage, attachments: newAttachments};
-
-                return newHistory;
-            }
-
-            return previousHistory;
-        });
-    }, [setChatHistory]);
-
-    const appendNotificationToLastAIMessage = useCallback((notificationMessageText) => {
-        if (!notificationMessageText || typeof notificationMessageText !== 'string') {
-            return;
-        }
-
-        const trimmedNotificationMessageText = notificationMessageText.trim();
-
-        if (!trimmedNotificationMessageText) {
-            return;
-        }
-
-        setChatHistory((previousHistory) => {
-            const newHistory = [...previousHistory];
-            const lastMessageIndex = newHistory.length - 1;
-
-            if (lastMessageIndex < 0) {
-                return previousHistory;
-            }
-
-            const lastMessage = newHistory[lastMessageIndex];
-
-            if (lastMessage.type !== AI) {
-                return previousHistory;
-            }
-
-            const existingNotifications = Array.isArray(lastMessage.notifications)
-                ? lastMessage.notifications
-                : [];
-
-            /*
-             * A seeded step is a local placeholder covering the silent gap before the first
-             * real progress frame. The first real frame replaces it rather than stacking on
-             * top, so the finished log contains only steps the backend actually reported.
-             */
-            if (lastMessage.hasSeededNotification) {
-                newHistory[lastMessageIndex] = {
-                    ...lastMessage,
-                    notifications: [trimmedNotificationMessageText],
-                    hasSeededNotification: false,
-                };
-
-                return newHistory;
-            }
-
-            newHistory[lastMessageIndex] = {
-                ...lastMessage,
-                notifications: appendProgressNotificationText(existingNotifications, trimmedNotificationMessageText),
-            };
-
-            return newHistory;
-        });
-    }, [setChatHistory]);
-
     return {
         chatId,
         chatHistory,
         setChatHistory,
         setChatId,
-        appendToLastAIMessage,
-        appendNotificationToLastAIMessage,
-        updateSeededNotificationText,
-        attachGeneratedImagesToLastAIMessage,
-        stopStreamingLastAIMessage,
-        appendSystemMessage,
-        appendErrorMessage,
-        finalizeLastAIMessage,
-        ensureChatIdFromResponse,
-        adoptMessageIdForLastUserMessage,
-        updateAttachmentStatus,
+        ...historyMutations,
         reloadChatHistory,
     };
 }
 
 export default useChatHistory;
 
-async function fetchFormattedChatMessages(chatId) {
-    const response = await chatService.findChatDetails(chatId);
+export async function reloadChatHistoryInto(chatId, setChatHistory) {
+    const chatDetails = await chatService.findChatDetails(chatId);
+    const formattedMessages = formatChatMessages(chatId, chatDetails);
 
+    setChatHistory((previousHistory) => {
+        return mergeFetchedChatHistoryWithLocalNotifications(formattedMessages, previousHistory);
+    });
+
+    return chatDetails;
+}
+
+function formatChatMessages(chatId, response) {
     const formattedMessages = [];
     let pendingProgressNotifications = [];
 
@@ -566,6 +206,8 @@ async function fetchFormattedChatMessages(chatId) {
         };
 
         if (message.messageType === SYSTEM && message.elicitationId && message.elicitationResponse) {
+            base.elicitationId = message.elicitationId;
+
             /*
              * `summary` is the resolved, human-readable answer (e.g. "isaac" for an assignee
              * picker) — preferred whenever the backend supplies it. `action` alone survives for

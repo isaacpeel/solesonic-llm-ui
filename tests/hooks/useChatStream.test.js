@@ -70,6 +70,7 @@ import {useSharedData} from '../../src/context/useSharedData.jsx';
 import {isPageHidden, observePageHidden, observePageResumed} from '../../src/util/pageLifecycle.js';
 import {toast} from 'react-toastify';
 import {ApiError} from '../../src/client/ApiClient.js';
+import activeTurnRegistry from '../../src/util/activeTurnRegistry.js';
 
 /*
  * A turn that hangs until its signal fires, so a test can hold a stream open and then abandon
@@ -685,7 +686,7 @@ describe('useChatStream with attachments', () => {
         expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
-    it('reports a stream that dies after init, without offering the spent ids for retry', async () => {
+    it('resumes a stream that dies after init, without offering the spent ids for retry', async () => {
         options.attachmentTray = makeAttachmentTray({
             commitCaptions: vi.fn().mockResolvedValue([readyEntry()]),
         });
@@ -697,17 +698,17 @@ describe('useChatStream with attachments', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'look at this');
 
-        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('stopped before it finished'));
-        expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
         expect(options.attachmentTray.restoreTray).not.toHaveBeenCalled();
         expect(options.attachmentTray.clearTray).toHaveBeenCalledTimes(1);
     });
 
     /*
      * The answer's POST has no body — the rest of the turn can only arrive on this connection, so
-     * losing it while a question is open is a truncated turn like any other.
+     * losing it while a question is open is a truncated turn like any other, and is resumed like one.
      */
-    it('reports a stream that drops while an elicitation is still open', async () => {
+    it('resumes a stream that drops while an elicitation is still open', async () => {
         chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
             emitInit(chunkOptions);
             chunkOptions.onChunk({event: 'TOOL_CALL_START', data: '{"toolCallId":"elicitation-1","toolCallName":"elicitation"}'});
@@ -723,8 +724,8 @@ describe('useChatStream with attachments', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'plain message');
 
-        expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('stopped before it finished'));
-        expect(options.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
     it('escalates the seeded step to warm-up copy while the vision pass is silent', async () => {
@@ -1004,7 +1005,7 @@ describe('backgrounded disconnect recovery', () => {
         expect(options.appendErrorMessage).not.toHaveBeenCalled();
     });
 
-    it('still reports a genuine network failure when the page was never backgrounded', async () => {
+    it('recovers from a network failure while the page stayed in view', async () => {
         streamService.isTransientStreamDisconnect.mockReturnValue(true);
         chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
             emitInit(chunkOptions);
@@ -1014,6 +1015,58 @@ describe('backgrounded disconnect recovery', () => {
         const {result} = renderHook(() => useChatStream(options));
         await submitWith(result, 'tell me about the thing');
 
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
+    });
+
+    it('recovers a stream the idle watchdog gave up on', async () => {
+        streamService.isTransientStreamDisconnect.mockReturnValue(true);
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+            throw Object.assign(new Error('The stream stopped sending data.'), {name: 'StreamStalledError'});
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'draw a lighthouse');
+
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
+    });
+
+    it('resumes a stream that ended early while the page stayed in view', async () => {
+        chatService.chatStream.mockImplementation(async (payload, chatId, chunkOptions) => {
+            emitInit(chunkOptions);
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
+        expect(chatService.chatStreamResume).toHaveBeenCalled();
+    });
+
+    it('still reports a stream that ended before the turn was bound to a chat', async () => {
+        chatService.chatStream.mockImplementation(async () => {});
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(chatService.chatStreamResume).not.toHaveBeenCalled();
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(
+            'The response stopped before it finished. Your message was sent — ask again to see the rest.',
+        );
+    });
+
+    it('does not resume an existing chat whose send failed before RUN_STARTED', async () => {
+        options.chatId = 'chat-existing';
+        streamService.isTransientStreamDisconnect.mockReturnValue(true);
+        chatService.chatStream.mockRejectedValue(new TypeError('Failed to fetch'));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'tell me about the thing');
+
+        expect(chatService.chatStreamResume).not.toHaveBeenCalled();
         expect(streamService.handleStreamError).toHaveBeenCalled();
     });
 
@@ -1726,5 +1779,302 @@ describe('releasing the stream while the page is hidden', () => {
         expect(readSignal().aborted).toBe(true);
         expect(result.current.recovering).toBe(false);
         expect(chatService.chatStreamResume).not.toHaveBeenCalled();
+    });
+});
+
+describe('attaching to a turn already in flight', () => {
+    let options;
+
+    function frame(event, fields = {}, id) {
+        return {event, ...(id ? {id} : {}), data: JSON.stringify({type: event, ...fields})};
+    }
+
+    function chatAwaitingReply(extraMessages = []) {
+        return {
+            chatMessages: [
+                {id: 'user-0', messageType: 'USER', message: 'earlier question'},
+                {id: 'ai-0', messageType: 'ASSISTANT', message: 'earlier answer'},
+                {id: 'user-1', messageType: 'USER', message: 'draw a lighthouse'},
+                ...extraMessages,
+            ],
+        };
+    }
+
+    function routedEvents() {
+        return chatService.handleStreamChunk.mock.calls.map(([rawEvent]) => rawEvent);
+    }
+
+    beforeEach(() => {
+        useSharedData.mockReturnValue({chatInputRef: {current: null}});
+        isPageHidden.mockReturnValue(false);
+        observePageHidden.mockImplementation(() => () => {});
+        chatService.findChatDetails.mockResolvedValue({chatMessages: []});
+        chatService.chatStreamResume.mockResolvedValue('unavailable');
+        activeTurnRegistry.forget('chat-1');
+
+        options = {
+            chatId: 'chat-1',
+            chatHistory: [],
+            setChatHistory: vi.fn(),
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            reloadChatHistory: vi.fn().mockResolvedValue(undefined),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            adoptMessageIdForLastUserMessage: vi.fn(),
+            appendErrorMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+            attachmentTray: makeAttachmentTray(),
+        };
+    });
+
+    afterEach(() => {
+        activeTurnRegistry.forget('chat-1');
+        vi.clearAllMocks();
+    });
+
+    it('resumes a turn the server is still running and shows it in a streaming bubble', async () => {
+        chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+            onChunk(frame('RUN_STARTED', {threadId: 'chat-1', input: {messages: [{id: 'user-1', role: 'user'}]}}, '20-0'));
+            onChunk(frame('TEXT_MESSAGE_CONTENT', {delta: 'Here it is'}, '21-0'));
+            onChunk(frame('RUN_FINISHED', {threadId: 'chat-1', result: {id: 'chat-1'}}, '22-0'));
+
+            return 'streamed';
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply());
+        });
+
+        expect(result.current.turnInProgress).toBe(true);
+
+        await waitFor(() => {
+            expect(result.current.turnInProgress).toBe(false);
+        });
+
+        expect(chatService.chatStreamResume.mock.calls[0][0]).toBe('chat-1');
+        expect(chatService.chatStreamResume.mock.calls[0][1]).toBeNull();
+
+        const appendPlaceholder = options.setChatHistory.mock.calls[0][0];
+        const historyWithPlaceholder = appendPlaceholder([{type: 'USER', text: 'draw a lighthouse', _key: 'user-1'}]);
+        expect(historyWithPlaceholder[1]).toMatchObject({type: 'ASSISTANT', text: '', isStreaming: true});
+
+        expect(routedEvents().map((rawEvent) => rawEvent.event)).toEqual(['RUN_STARTED', 'TEXT_MESSAGE_CONTENT', 'RUN_FINISHED']);
+    });
+
+    it('skips the frames of an earlier turn still in the buffer', async () => {
+        chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+            onChunk(frame('RUN_STARTED', {threadId: 'chat-1', input: {messages: [{id: 'user-0', role: 'user'}]}}, '10-0'));
+            onChunk(frame('TEXT_MESSAGE_CONTENT', {delta: 'earlier answer'}, '11-0'));
+            onChunk(frame('RUN_FINISHED', {threadId: 'chat-1', result: {id: 'chat-1'}}, '12-0'));
+            onChunk(frame('RUN_STARTED', {threadId: 'chat-1', input: {messages: [{id: 'user-1', role: 'user'}]}}, '20-0'));
+            onChunk(frame('TEXT_MESSAGE_CONTENT', {delta: 'Here it is'}, '21-0'));
+            onChunk(frame('RUN_FINISHED', {threadId: 'chat-1', result: {id: 'chat-1'}}, '22-0'));
+
+            return 'streamed';
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply());
+        });
+
+        await waitFor(() => {
+            expect(result.current.turnInProgress).toBe(false);
+        });
+
+        expect(routedEvents().map((rawEvent) => rawEvent.id)).toEqual(['20-0', '21-0', '22-0']);
+    });
+
+    it('resumes from the run start this tab saw, when it has one', async () => {
+        activeTurnRegistry.remember('chat-1', {runStartedEventId: '20-0', userMessageId: 'user-1'});
+        chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+            onChunk(frame('TEXT_MESSAGE_CONTENT', {delta: 'Here it is'}, '21-0'));
+            onChunk(frame('RUN_FINISHED', {threadId: 'chat-1', result: {id: 'chat-1'}}, '22-0'));
+
+            return 'streamed';
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply());
+        });
+
+        await waitFor(() => {
+            expect(result.current.turnInProgress).toBe(false);
+        });
+
+        expect(chatService.chatStreamResume.mock.calls[0][1]).toBe('20-0');
+        expect(routedEvents().map((rawEvent) => rawEvent.id)).toEqual(['21-0', '22-0']);
+        expect(activeTurnRegistry.read('chat-1')).toBeNull();
+    });
+
+    it('leaves a chat whose last turn has settled alone', () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', {
+                chatMessages: [
+                    {id: 'user-1', messageType: 'USER', message: 'draw a lighthouse'},
+                    {id: 'ai-1', messageType: 'ASSISTANT', message: '', generatedImages: [{imageId: 'image-1'}]},
+                ],
+            });
+        });
+
+        expect(chatService.chatStreamResume).not.toHaveBeenCalled();
+        expect(options.setChatHistory).not.toHaveBeenCalled();
+        expect(result.current.turnInProgress).toBe(false);
+    });
+
+    it('does not reopen a question that was already answered', async () => {
+        chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+            onChunk(frame('RUN_STARTED', {threadId: 'chat-1', input: {messages: [{id: 'user-1', role: 'user'}]}}, '20-0'));
+            onChunk(frame('TOOL_CALL_ARGS', {toolCallId: 'elicitation-1', delta: JSON.stringify({elicitationId: 'elicitation-1'})}, '21-0'));
+            onChunk(frame('TEXT_MESSAGE_CONTENT', {delta: 'Assigned.'}, '23-0'));
+            onChunk(frame('RUN_FINISHED', {threadId: 'chat-1', result: {id: 'chat-1'}}, '24-0'));
+
+            return 'streamed';
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply([
+                {id: 'system-1', messageType: 'SYSTEM', message: 'Pick an assignee', elicitationId: 'elicitation-1', elicitationResponse: {action: 'accept'}},
+            ]));
+        });
+
+        await waitFor(() => {
+            expect(result.current.turnInProgress).toBe(false);
+        });
+
+        expect(routedEvents().map((rawEvent) => rawEvent.event)).toEqual(['RUN_STARTED', 'TEXT_MESSAGE_CONTENT', 'RUN_FINISHED']);
+    });
+
+    it('does not attach to a chat whose own turn this tab is already streaming', async () => {
+        const readSignal = hangingStreamUntilAborted();
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.setInputValue('draw a lighthouse');
+        });
+
+        act(() => {
+            void result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(readSignal()).not.toBeNull());
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply());
+        });
+
+        expect(chatService.chatStreamResume).not.toHaveBeenCalled();
+
+        act(() => {
+            result.current.abortActiveStream();
+        });
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+    });
+
+    it('stays quiet when the server no longer holds the turn', async () => {
+        chatService.chatStreamResume.mockResolvedValue('unavailable');
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply());
+        });
+
+        await waitFor(() => {
+            expect(result.current.turnInProgress).toBe(false);
+        });
+
+        expect(options.reloadChatHistory).toHaveBeenCalled();
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+        expect(result.current.recoveryFailed).toBe(false);
+        expect(options.appendErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps Stop available on an attached turn when the cancel request fails', async () => {
+        chatService.chatStreamResume.mockImplementation(() => new Promise(() => {}));
+        chatService.cancelStream.mockRejectedValueOnce(new Error('network'));
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.attachIfInFlight('chat-1', chatAwaitingReply());
+        });
+
+        await waitFor(() => expect(result.current.streamActive).toBe(true));
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(chatService.cancelStream).toHaveBeenCalledWith('chat-1');
+        expect(result.current.streamActive).toBe(true);
+
+        chatService.cancelStream.mockResolvedValueOnce(null);
+
+        await act(async () => {
+            await result.current.stopChat();
+        });
+
+        expect(chatService.cancelStream).toHaveBeenCalledTimes(2);
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('remembers the run start of its own turn until the turn ends', async () => {
+        let capturedChunkOptions = null;
+        let finishStream = null;
+
+        chatService.chatStream.mockImplementationOnce((payload, chatId, chunkOptions) => {
+            capturedChunkOptions = chunkOptions;
+
+            return new Promise((resolve) => {
+                finishStream = resolve;
+            });
+        });
+
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.setInputValue('draw a lighthouse');
+        });
+
+        let submitPromise = null;
+
+        act(() => {
+            submitPromise = result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(capturedChunkOptions).not.toBeNull());
+
+        act(() => {
+            capturedChunkOptions.onChunk(runStartedFrame({userMessageId: 'user-1', id: '20-0'}));
+        });
+
+        expect(activeTurnRegistry.read('chat-1')).toMatchObject({runStartedEventId: '20-0', userMessageId: 'user-1'});
+
+        await act(async () => {
+            capturedChunkOptions.onChunk(runFinishedFrame());
+            finishStream();
+            await submitPromise;
+        });
+
+        expect(activeTurnRegistry.read('chat-1')).toBeNull();
     });
 });

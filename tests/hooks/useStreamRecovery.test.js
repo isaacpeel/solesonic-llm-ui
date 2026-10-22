@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import useStreamRecovery, {hasCompletedAssistantReply} from '../../src/hooks/useStreamRecovery.js';
+import useStreamRecovery, {hasSettledTurn} from '../../src/hooks/useStreamRecovery.js';
 
 vi.mock('../../src/service/AuthService.js', () => ({
     default: {},
@@ -44,13 +44,13 @@ function chatWithoutReply() {
     };
 }
 
-describe('hasCompletedAssistantReply', () => {
+describe('hasSettledTurn', () => {
     it('is true for an assistant reply after the anchored user message', () => {
-        expect(hasCompletedAssistantReply(chatWithReply(), 'user-1')).toBe(true);
+        expect(hasSettledTurn(chatWithReply(), 'user-1')).toBe(true);
     });
 
     it('is false when the turn is still generating', () => {
-        expect(hasCompletedAssistantReply(chatWithoutReply(), 'user-1')).toBe(false);
+        expect(hasSettledTurn(chatWithoutReply(), 'user-1')).toBe(false);
     });
 
     it('ignores an assistant reply that precedes this turn', () => {
@@ -62,12 +62,12 @@ describe('hasCompletedAssistantReply', () => {
             ],
         };
 
-        expect(hasCompletedAssistantReply(chatDetails, 'user-1')).toBe(false);
+        expect(hasSettledTurn(chatDetails, 'user-1')).toBe(false);
     });
 
     it('falls back to the last user message when no id was adopted', () => {
-        expect(hasCompletedAssistantReply(chatWithReply(), null)).toBe(true);
-        expect(hasCompletedAssistantReply(chatWithoutReply(), null)).toBe(false);
+        expect(hasSettledTurn(chatWithReply(), null)).toBe(true);
+        expect(hasSettledTurn(chatWithoutReply(), null)).toBe(false);
     });
 
     it('does not count a progress row as the reply', () => {
@@ -78,7 +78,7 @@ describe('hasCompletedAssistantReply', () => {
             ],
         };
 
-        expect(hasCompletedAssistantReply(chatDetails, 'user-1')).toBe(false);
+        expect(hasSettledTurn(chatDetails, 'user-1')).toBe(false);
     });
 
     it('does not count an empty reply', () => {
@@ -89,12 +89,45 @@ describe('hasCompletedAssistantReply', () => {
             ],
         };
 
-        expect(hasCompletedAssistantReply(chatDetails, 'user-1')).toBe(false);
+        expect(hasSettledTurn(chatDetails, 'user-1')).toBe(false);
+    });
+
+    it('counts a reply that carries only a generated image', () => {
+        const chatDetails = {
+            chatMessages: [
+                {id: 'user-1', messageType: 'USER', message: '/generate_image a lighthouse'},
+                {id: 'ai-1', messageType: 'ASSISTANT', message: '', generatedImages: [{imageId: 'image-1'}]},
+            ],
+        };
+
+        expect(hasSettledTurn(chatDetails, 'user-1')).toBe(true);
+    });
+
+    it('counts the system message a cancelled turn writes', () => {
+        const chatDetails = {
+            chatMessages: [
+                {id: 'user-1', messageType: 'USER', message: 'question'},
+                {id: 'system-1', messageType: 'SYSTEM', message: 'Chat canceled.'},
+            ],
+        };
+
+        expect(hasSettledTurn(chatDetails, 'user-1')).toBe(true);
+    });
+
+    it('does not count an answered elicitation, which lands mid-turn', () => {
+        const chatDetails = {
+            chatMessages: [
+                {id: 'user-1', messageType: 'USER', message: 'assign it'},
+                {id: 'system-1', messageType: 'SYSTEM', message: '', elicitationId: 'elicitation-1', elicitationResponse: {action: 'accept'}},
+            ],
+        };
+
+        expect(hasSettledTurn(chatDetails, 'user-1')).toBe(false);
     });
 
     it('is false for an empty or malformed response', () => {
-        expect(hasCompletedAssistantReply(null, 'user-1')).toBe(false);
-        expect(hasCompletedAssistantReply({chatMessages: []}, 'user-1')).toBe(false);
+        expect(hasSettledTurn(null, 'user-1')).toBe(false);
+        expect(hasSettledTurn({chatMessages: []}, 'user-1')).toBe(false);
     });
 });
 
@@ -393,34 +426,178 @@ describe('resuming a dropped stream', () => {
         expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
     });
 
-    it('reconciles from history when the resume request itself fails', async () => {
-        chatService.chatStreamResume.mockRejectedValue(new TypeError('Load failed'));
+    it('retries a resume request that fails outright', async () => {
+        chatService.chatStreamResume
+            .mockRejectedValueOnce(new TypeError('Load failed'))
+            .mockImplementationOnce(async (chatId, lastEventId, {onChunk}) => {
+                onChunk({event: 'RUN_FINISHED', id: '1754062831270-0', data: '{}'});
+
+                return 'streamed';
+            });
 
         const {result} = renderHook(() => useStreamRecovery(options));
         beginResume(result);
 
         await waitFor(() => {
-            expect(options.reloadChatHistory).toHaveBeenCalled();
+            expect(result.current.recovering).toBe(false);
+        }, {timeout: 5000});
+
+        expect(chatService.chatStreamResume).toHaveBeenCalledTimes(2);
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+        expect(result.current.recoveryFailed).toBe(false);
+    }, 10000);
+
+    it('resumes again from the advanced cursor when the resumed stream dies early', async () => {
+        chatService.chatStreamResume
+            .mockImplementationOnce(async (chatId, lastEventId, {onChunk}) => {
+                onChunk({event: 'TEXT_MESSAGE_CONTENT', id: '1754062831260-0', data: '{"delta":"partial"}'});
+
+                return 'streamed';
+            })
+            .mockImplementationOnce(async (chatId, lastEventId, {onChunk}) => {
+                onChunk({event: 'RUN_FINISHED', id: '1754062831270-0', data: '{}'});
+
+                return 'streamed';
+            });
+
+        const {result} = renderHook(() => useStreamRecovery(options));
+        beginResume(result);
+
+        await waitFor(() => {
+            expect(result.current.recovering).toBe(false);
         });
 
-        expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+        expect(chatService.chatStreamResume).toHaveBeenCalledTimes(2);
+        expect(chatService.chatStreamResume.mock.calls[1][1]).toBe('1754062831260-0');
+        expect(onResumeChunk).toHaveBeenCalledTimes(2);
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
     });
 
-    it('reconciles when the resumed stream dies again before a terminal frame', async () => {
-        chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
-            onChunk({event: 'TEXT_MESSAGE_CONTENT', id: '1754062831260-0', data: '{"delta":"partial"}'});
+    it('reconciles from history once resuming keeps failing', async () => {
+        vi.useFakeTimers();
 
-            return 'streamed';
+        try {
+            chatService.chatStreamResume.mockRejectedValue(new TypeError('Load failed'));
+
+            const {result} = renderHook(() => useStreamRecovery(options));
+            beginResume(result);
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+            });
+
+            expect(chatService.chatStreamResume.mock.calls.length).toBeGreaterThan(1);
+            expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+            expect(options.reloadChatHistory).toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('aborts the resume request it has open when recovery is cancelled', async () => {
+        let resumeSignal = null;
+        chatService.chatStreamResume.mockImplementation((chatId, lastEventId, {signal}) => {
+            resumeSignal = signal;
+
+            return new Promise(() => {});
         });
 
         const {result} = renderHook(() => useStreamRecovery(options));
         beginResume(result);
 
         await waitFor(() => {
+            expect(resumeSignal).not.toBeNull();
+        });
+
+        expect(resumeSignal.aborted).toBe(false);
+
+        act(() => {
+            result.current.cancelActiveRecovery();
+        });
+
+        expect(resumeSignal.aborted).toBe(true);
+    });
+
+    it('backs off when frames arrive without moving the cursor', async () => {
+        vi.useFakeTimers();
+
+        try {
+            chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+                onChunk({event: 'CUSTOM', data: '{}'});
+
+                return 'streamed';
+            });
+
+            const {result} = renderHook(() => useStreamRecovery(options));
+            beginResume(result);
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+            });
+
+            expect(chatService.chatStreamResume.mock.calls.length).toBeLessThanOrEqual(10);
+            expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('stays quiet when entering a chat whose turn the server no longer has', async () => {
+        chatService.chatStreamResume.mockResolvedValue('unavailable');
+
+        const {result} = renderHook(() => useStreamRecovery(options));
+        beginResume(result, {quietWhenUnavailable: true});
+
+        await waitFor(() => {
             expect(options.reloadChatHistory).toHaveBeenCalled();
         });
 
-        expect(chatService.findChatDetails).toHaveBeenCalledWith('chat-1');
+        expect(chatService.findChatDetails).not.toHaveBeenCalled();
+        expect(options.stopStreamingLastAIMessage).toHaveBeenCalled();
+        expect(result.current.recoveryFailed).toBe(false);
+    });
+
+    it('stays quiet when entering a chat the resume refuses', async () => {
+        chatService.chatStreamResume.mockResolvedValue('rejected');
+
+        const {result} = renderHook(() => useStreamRecovery(options));
+        beginResume(result, {quietWhenUnavailable: true});
+
+        await waitFor(() => {
+            expect(options.reloadChatHistory).toHaveBeenCalled();
+        });
+
+        expect(result.current.recoveryFailed).toBe(false);
+    });
+
+    it('waits for the network to come back before resuming', async () => {
+        vi.stubGlobal('navigator', {onLine: false});
+
+        try {
+            chatService.chatStreamResume.mockImplementation(async (chatId, lastEventId, {onChunk}) => {
+                onChunk({event: 'RUN_FINISHED', id: '1754062831270-0', data: '{}'});
+
+                return 'streamed';
+            });
+
+            const {result} = renderHook(() => useStreamRecovery(options));
+            beginResume(result);
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            expect(chatService.chatStreamResume).not.toHaveBeenCalled();
+
+            vi.stubGlobal('navigator', {onLine: true});
+
+            await act(async () => {
+                window.dispatchEvent(new Event('online'));
+            });
+
+            await waitFor(() => {
+                expect(chatService.chatStreamResume).toHaveBeenCalledTimes(1);
+            });
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 
     it('treats a replayed RUN_ERROR as terminal rather than reconciling', async () => {

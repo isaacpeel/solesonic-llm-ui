@@ -21,7 +21,7 @@ const authService = {
     /**
      * Retrieves the access token from Keycloak.
      */
-    getAccessToken: async () => {
+    getAccessToken: async ({forceRefresh = false} = {}) => {
         if (!keycloakInstance) {
             log.error('Keycloak instance not initialized');
             return null;
@@ -29,7 +29,7 @@ const authService = {
         
         // Ensure the token is fresh
         try {
-            await keycloakInstance.updateToken(5);
+            await keycloakInstance.updateToken(forceRefresh ? -1 : 5);
             return keycloakInstance.token;
         } catch (error) {
             log.error('Failed to refresh token:', error);

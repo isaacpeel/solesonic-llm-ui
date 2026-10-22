@@ -149,6 +149,33 @@ The UI communicates with the Solesonic backend using REST and SSE streaming. Aut
   - `RUN_FINISHED` — terminal; `result` is the structured chat response
   - `RUN_ERROR` — terminal; `message` is user-facing, and no `RUN_FINISHED` follows
 
+#### Staying connected
+
+The turn in flight is owned by `ChatTurnProvider` (`src/context/ChatTurnContext.jsx`), which sits
+above the router, so leaving the chat for Settings neither stops the stream nor loses an
+elicitation that arrives meanwhile. Only opening another conversation or starting a new chat
+lets go of it.
+
+A turn runs to completion server-side whatever happens to the connection, and
+`GET /streaming/chats/{chatId}/users/{userId}/stream` replays it by `Last-Event-ID`
+(`ChatService.chatStreamResume`). The UI uses that in three places:
+
+- **A dropped stream.** Any stream that ends after `RUN_STARTED` without a terminal frame is
+  resumed from the last event id it saw, whether or not the page was in view
+  (`useStreamRecovery`). A resume that drops again is resumed again from where it got to; after
+  ten attempts that make no progress it falls back to polling `GET /chats/{chatId}`. It waits
+  for the network and the page to come back rather than spending attempts.
+- **A stalled stream.** The server writes a keepalive every 15 seconds while it is silent, so
+  `chatStream` and `chatStreamResume` abort a connection that delivers nothing for 45 seconds
+  (`StreamStalledError`) and it is resumed like any other drop.
+- **Opening a chat with a turn still running** — after a reload, a push, or coming back from
+  another chat. `useChatHistory` hands the fetched chat to `attachIfInFlight`; if its last user
+  message has no reply yet, the turn is replayed into a fresh streaming bubble from its own
+  `RUN_STARTED`. The id of that frame is kept per chat in `sessionStorage`
+  (`src/util/activeTurnRegistry.js`); without it the whole buffer is replayed and earlier turns
+  in it are skipped. A question that was already answered is not reopened, and a turn the
+  server no longer holds is left as the history shows it.
+
 ### Attachments
 
 Users can attach up to four files per message by pasting into the composer, dropping onto it,
@@ -224,7 +251,8 @@ Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:
 
 ### ChatService
 
-- `chatStream(message, chatId, { onChunk, onDone, signal })` — initiates or continues a chat stream via SSE
+- `chatStream(message, chatId, { onChunk, signal })` — initiates or continues a chat stream via SSE
+- `chatStreamResume(chatId, lastEventId, { onChunk, signal })` — replays a turn after the cursor and follows it live to its terminal frame; retries once with a refreshed token on `401`
 - `handleStreamChunk(event, handlers)` — routes AG-UI events: `RUN_STARTED`, `TEXT_MESSAGE_CONTENT`, `TOOL_CALL_ARGS`, `CUSTOM`, `RUN_FINISHED`, and `RUN_ERROR`
 - `findChatDetails(chatId)` — retrieves chat metadata
 - `findChatHistory({ page, size })` — fetches one page of the authenticated user's chats (newest first) from the Spring `Pageable` endpoint, flattened to `{ chats, page, last, totalPages, totalElements }`. The history drawer pages through it with `usePagedChatHistory`, which loads the next page as an infinite-scroll sentinel comes into view.

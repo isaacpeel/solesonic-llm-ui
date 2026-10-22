@@ -6,9 +6,14 @@ import UserSettings from '../../src/settings/UserSettings.jsx';
 import GeneralUserSettings from '../../src/settings/GeneralUserSettings.jsx';
 import ConnectionsSettings from '../../src/settings/connections/ConnectionsSettings.jsx';
 import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
+import {useSharedData} from '../../src/context/useSharedData.jsx';
 
 vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({
     useKeycloak: vi.fn(),
+}));
+
+vi.mock('../../src/context/useSharedData.jsx', () => ({
+    useSharedData: vi.fn(() => ({chatId: null})),
 }));
 
 vi.mock('../../src/service/AtlassianAuthService.js', () => ({
@@ -81,6 +86,7 @@ const navLabels = () => Array.from(document.querySelectorAll('.settings-nav-row'
 describe('UserSettings navigation', () => {
     beforeEach(() => {
         useKeycloak.mockReturnValue(keycloakMock({roles: ['rag-admin']}));
+        useSharedData.mockReturnValue({chatId: null});
     });
 
     afterEach(() => {
@@ -108,11 +114,20 @@ describe('UserSettings navigation', () => {
         expect(navLabels()).toEqual(['General', 'Notifications', 'Connections', 'RAG', 'Images', 'Memory', 'Interests']);
     });
 
-    it('renders a back link to the chat', () => {
+    it('renders a back link to a new chat when none is open', () => {
         renderSettings('/settings/general');
 
         const backLink = document.querySelector('.settings-back-link');
         expect(backLink.getAttribute('href')).toBe('/');
+    });
+
+    it('links back to the conversation that is open, so its turn is still on screen', () => {
+        useSharedData.mockReturnValue({chatId: 'chat-1'});
+
+        renderSettings('/settings/general');
+
+        const backLink = document.querySelector('.settings-back-link');
+        expect(backLink.getAttribute('href')).toBe('/chat/chat-1');
     });
 
     it('is not rendered as a fixed overlay', () => {

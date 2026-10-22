@@ -24,6 +24,7 @@ export function SharedDataProvider({children}) {
             reloadHistoryTrigger, setReloadHistoryTrigger,
             streamingChatId, setStreamingChatId,
             chatInputRef: useRef(),
+            adoptedChatIdRef: useRef(null),
         }}>
             {children}
         </SharedDataContext.Provider>

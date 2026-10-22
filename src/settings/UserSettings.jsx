@@ -9,6 +9,7 @@ import {
     NewspaperIcon,
     PhotoIcon
 } from "@heroicons/react/24/solid";
+import {useSharedData} from "../context/useSharedData.jsx";
 
 import "./UserSettings.css";
 
@@ -38,10 +39,12 @@ const SETTINGS_NAV_GROUPS = [
 ];
 
 const UserSettings = () => {
+    const {chatId} = useSharedData();
+
     return (
         <div className="settings-page">
             <div className="settings-scroll">
-                <NavLink to="/" className="settings-back-link">
+                <NavLink to={chatId ? `/chat/${chatId}` : "/"} className="settings-back-link">
                     <ChevronLeftIcon className="settings-back-icon"/>
                     Back to Chat
                 </NavLink>
