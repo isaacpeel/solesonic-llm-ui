@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import {isSafeAppPath} from '../util/safeAppPath.js';
 
 export const PUSH_NAVIGATE_MESSAGE = 'push:navigate';
+export const PUSH_NAVIGATED_EVENT = 'push:navigated';
 
 function usePushNavigation(navigate) {
     useEffect(() => {
@@ -17,6 +18,7 @@ function usePushNavigation(navigate) {
             }
 
             navigate(message.url);
+            window.dispatchEvent(new CustomEvent(PUSH_NAVIGATED_EVENT, {detail: {url: message.url}}));
         };
 
         const serviceWorkerContainer = navigator.serviceWorker;

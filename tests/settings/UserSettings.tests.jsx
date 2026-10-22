@@ -105,7 +105,7 @@ describe('UserSettings navigation', () => {
     it('offers one merged Connections entry rather than per-provider entries', () => {
         renderSettings('/settings/general');
 
-        expect(navLabels()).toEqual(['General', 'Connections', 'RAG', 'Images', 'Memory']);
+        expect(navLabels()).toEqual(['General', 'Notifications', 'Connections', 'RAG', 'Images', 'Memory', 'Interests']);
     });
 
     it('renders a back link to the chat', () => {

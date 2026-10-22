@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {renderHook} from '@testing-library/react';
-import usePushNavigation from '../../src/push/usePushNavigation.js';
+import usePushNavigation, {PUSH_NAVIGATED_EVENT} from '../../src/push/usePushNavigation.js';
 
 let messageListeners;
 
@@ -47,6 +47,32 @@ describe('usePushNavigation', () => {
         postFromWorker({type: 'push:navigate', url});
 
         expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('announces the navigation after making it', () => {
+        const navigate = vi.fn();
+        const navigatedListener = vi.fn();
+        window.addEventListener(PUSH_NAVIGATED_EVENT, navigatedListener);
+        renderHook(() => usePushNavigation(navigate));
+
+        postFromWorker({type: 'push:navigate', url: '/chat/chat-9'});
+
+        window.removeEventListener(PUSH_NAVIGATED_EVENT, navigatedListener);
+        expect(PUSH_NAVIGATED_EVENT).toBe('push:navigated');
+        expect(navigatedListener).toHaveBeenCalledTimes(1);
+        expect(navigatedListener.mock.calls[0][0].detail).toEqual({url: '/chat/chat-9'});
+        expect(navigate.mock.invocationCallOrder[0]).toBeLessThan(navigatedListener.mock.invocationCallOrder[0]);
+    });
+
+    it('announces nothing for an unsafe url', () => {
+        const navigatedListener = vi.fn();
+        window.addEventListener(PUSH_NAVIGATED_EVENT, navigatedListener);
+        renderHook(() => usePushNavigation(vi.fn()));
+
+        postFromWorker({type: 'push:navigate', url: '//evil.example'});
+
+        window.removeEventListener(PUSH_NAVIGATED_EVENT, navigatedListener);
+        expect(navigatedListener).not.toHaveBeenCalled();
     });
 
     it('ignores other messages', () => {

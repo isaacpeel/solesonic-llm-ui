@@ -591,8 +591,17 @@ function useChatGroupSections({
         loadGroupChats(createdGroup.id);
     };
 
+    const reloadGroupsAndLoadedChats = () => {
+        reloadGroups();
+
+        for (const chatGroupId of Object.keys(chatsByGroupId)) {
+            reloadGroupChats(chatGroupId);
+        }
+    };
+
     return {
         groups,
+        reloadGroupsAndLoadedChats,
         chatGroupSections,
         toggleChatGroup,
         loadMoreGroupChats,

@@ -31,6 +31,8 @@ vi.mock('../src/settings/rag/RagManagement.jsx', () => ({default: () => <div/>})
 vi.mock('../src/settings/images/GeneratedImageManagement.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/memory/MemoryManagement.jsx', () => ({default: () => <div data-testid="memory-management"/>}));
 vi.mock('../src/settings/notifications/NotificationSettings.jsx', () => ({default: () => <div data-testid="notification-settings"/>}));
+vi.mock('../src/interests/InterestOfferScreen.jsx', () => ({default: () => <div data-testid="interest-offer-screen"/>}));
+vi.mock('../src/settings/interests/InterestSettings.jsx', () => ({default: () => <div data-testid="interest-settings"/>}));
 vi.mock('../src/settings/connections/GoogleAuthCallback.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/connections/AtlassianAuthCallback.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/context/SharedDataContext.jsx', () => ({
@@ -133,5 +135,23 @@ describe('App routes', () => {
         const {findByTestId} = render(<RouterProvider router={router}/>);
 
         expect(await findByTestId('notification-settings')).not.toBeNull();
+    });
+
+    it('renders the offer screen as a sibling of the chat routes', async () => {
+        const router = createMemoryRouter(routes, {initialEntries: ['/interests/offers/offer-1?intent=accept']});
+
+        const {findByTestId} = render(<RouterProvider router={router}/>);
+
+        expect(await findByTestId('interest-offer-screen')).not.toBeNull();
+        expect(routes[0].children.some((route) => route.path === 'interests/offers/:offerId')).toBe(true);
+        expect(chatPageMountCount).toBe(0);
+    });
+
+    it('renders the interest settings under settings', async () => {
+        const router = createMemoryRouter(routes, {initialEntries: ['/settings/interests']});
+
+        const {findByTestId} = render(<RouterProvider router={router}/>);
+
+        expect(await findByTestId('interest-settings')).not.toBeNull();
     });
 });

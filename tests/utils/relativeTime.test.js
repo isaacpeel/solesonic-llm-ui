@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {formatRelativeTime} from '../../src/util/relativeTime.js';
+import {formatRelativeTime, formatTimeUntil} from '../../src/util/relativeTime.js';
 
 const NOW = new Date('2026-08-04T12:00:00.000Z').getTime();
 
@@ -52,5 +52,26 @@ describe('formatRelativeTime', () => {
         expect(formatRelativeTime(null, NOW)).toBeNull();
         expect(formatRelativeTime(new Date('nonsense'), NOW)).toBeNull();
         expect(formatRelativeTime('2026-08-04T12:00:00Z', NOW)).toBeNull();
+    });
+});
+
+describe('formatTimeUntil', () => {
+    const inThe = (milliseconds) => new Date(NOW + milliseconds);
+
+    it('reports anything under a minute away, or already past, as "soon"', () => {
+        expect(formatTimeUntil(inThe(30 * SECOND), NOW)).toBe('soon');
+        expect(formatTimeUntil(inThe(-HOUR), NOW)).toBe('soon');
+    });
+
+    it('counts forward through minutes, hours and days', () => {
+        expect(formatTimeUntil(inThe(5 * MINUTE), NOW)).toBe('in 5 minutes');
+        expect(formatTimeUntil(inThe(3 * HOUR), NOW)).toBe('in 3 hours');
+        expect(formatTimeUntil(inThe(2 * DAY), NOW)).toBe('in 2 days');
+        expect(formatTimeUntil(inThe(14 * DAY), NOW)).toBe('in 2 weeks');
+    });
+
+    it('returns null for anything that is not a usable date', () => {
+        expect(formatTimeUntil(null, NOW)).toBeNull();
+        expect(formatTimeUntil(new Date('nonsense'), NOW)).toBeNull();
     });
 });

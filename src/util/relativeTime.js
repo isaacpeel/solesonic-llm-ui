@@ -49,3 +49,25 @@ export function formatRelativeTime(date, nowMilliseconds = Date.now()) {
 
     return relativeTimeFormat.format(-Math.floor(elapsedMilliseconds / YEAR_MILLISECONDS), 'year');
 }
+
+const SOON_LABEL = 'soon';
+
+export function formatTimeUntil(date, nowMilliseconds = Date.now()) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    const remainingMilliseconds = date.getTime() - nowMilliseconds;
+
+    if (remainingMilliseconds < MINUTE_MILLISECONDS) {
+        return SOON_LABEL;
+    }
+
+    for (const {limit, unit, unitMilliseconds} of UNIT_THRESHOLDS) {
+        if (remainingMilliseconds < limit) {
+            return relativeTimeFormat.format(Math.floor(remainingMilliseconds / unitMilliseconds), unit);
+        }
+    }
+
+    return relativeTimeFormat.format(Math.floor(remainingMilliseconds / YEAR_MILLISECONDS), 'year');
+}

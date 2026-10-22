@@ -2306,3 +2306,52 @@ describe('ChatHistory paging past filtered-out pages', () => {
         await waitFor(() => expect(loadMore).not.toHaveBeenCalled());
     });
 });
+
+describe('ChatHistory after a push navigation', () => {
+    const pushNavigatedTo = (url) => {
+        fireEvent(window, new CustomEvent('push:navigated', {detail: {url}}));
+    };
+
+    it('reloads the list and the groups when a push opens a chat', () => {
+        const {setReloadHistoryTrigger, reloadGroups} = renderChatHistory({chats: chatsOf(2), hasMore: false});
+
+        pushNavigatedTo('/chat/chat-news');
+
+        expect(setReloadHistoryTrigger).toHaveBeenCalledTimes(1);
+        expect(setReloadHistoryTrigger.mock.calls[0][0](4)).toBe(5);
+        expect(reloadGroups).toHaveBeenCalledTimes(1);
+    });
+
+    it('also refetches every group whose conversations are already loaded', () => {
+        const {reloadGroupChats} = renderChatHistory({
+            chats: chatsOf(2),
+            hasMore: false,
+            groups: [{id: 'group-news', name: 'News: Formula 1'}],
+            chatsByGroupId: {'group-news': groupChatsOf([])},
+        });
+
+        pushNavigatedTo('/chat/chat-news-2');
+
+        expect(reloadGroupChats).toHaveBeenCalledWith('group-news');
+    });
+
+    it('leaves the sidebar alone for any other destination', () => {
+        const {setReloadHistoryTrigger, reloadGroups} = renderChatHistory({chats: chatsOf(2), hasMore: false});
+
+        pushNavigatedTo('/settings/notifications');
+        pushNavigatedTo('/interests/offers/offer-1');
+        fireEvent(window, new CustomEvent('push:navigated'));
+
+        expect(setReloadHistoryTrigger).not.toHaveBeenCalled();
+        expect(reloadGroups).not.toHaveBeenCalled();
+    });
+
+    it('stops listening once unmounted', () => {
+        const {setReloadHistoryTrigger, unmount} = renderChatHistory({chats: chatsOf(2), hasMore: false});
+
+        unmount();
+        pushNavigatedTo('/chat/chat-news');
+
+        expect(setReloadHistoryTrigger).not.toHaveBeenCalled();
+    });
+});

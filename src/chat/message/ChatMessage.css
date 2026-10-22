@@ -246,6 +246,13 @@
     text-decoration-color: rgba(19, 71, 204, 0.7);
 }
 
+.message-text .markdown-body a.citation-link {
+    font-size: 0.75em;
+    vertical-align: super;
+    line-height: 0;
+    text-decoration: none;
+}
+
 .message-text .markdown-body p {
     margin: 0.5rem 0; /* Paragraph spacing */
 }

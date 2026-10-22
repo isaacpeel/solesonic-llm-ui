@@ -339,8 +339,18 @@ const pushSubscriptionService = {
         return await apiClient.get(await preferencesUri());
     },
 
-    updatePreferences: async ({turnComplete, elicitation}) => {
-        return await apiClient.put(await preferencesUri(), {turnComplete, elicitation});
+    updatePreferences: async ({turnComplete, elicitation, interestOffers, interestUpdates}) => {
+        const preferences = {turnComplete, elicitation};
+
+        if (interestOffers !== undefined) {
+            preferences.interestOffers = interestOffers;
+        }
+
+        if (interestUpdates !== undefined) {
+            preferences.interestUpdates = interestUpdates;
+        }
+
+        return await apiClient.put(await preferencesUri(), preferences);
     },
 };
 

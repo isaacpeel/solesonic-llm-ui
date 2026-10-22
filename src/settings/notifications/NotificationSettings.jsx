@@ -24,9 +24,11 @@ const DEVICE_STATES = {
 const PREFERENCE_TOGGLES = [
     {key: "turnComplete", label: "A reply is ready"},
     {key: "elicitation", label: "A tool needs my answer"},
+    {key: "interestOffers", label: "Suggestions to follow an interest"},
+    {key: "interestUpdates", label: "News on interests I follow"},
 ];
 
-const DEFAULT_PREFERENCES = {turnComplete: true, elicitation: true};
+const DEFAULT_PREFERENCES = {turnComplete: true, elicitation: true, interestOffers: true, interestUpdates: true};
 
 const LOAD_FAILED_MESSAGE = "Could not load your notification settings.";
 
@@ -110,7 +112,7 @@ const NotificationSettings = () => {
 
             setDeviceState(resolvedDeviceState);
             setDevices(foundDevices ?? []);
-            setPreferences(foundPreferences ?? DEFAULT_PREFERENCES);
+            setPreferences({...DEFAULT_PREFERENCES, ...foundPreferences});
             setThisDeviceId(pushSubscriptionService.deviceSubscriptionId());
             setLoaded(true);
         } catch (caughtError) {
@@ -264,7 +266,7 @@ const NotificationSettings = () => {
 
         try {
             const savedPreferences = await pushSubscriptionService.updatePreferences(nextPreferences);
-            setPreferences(savedPreferences ?? nextPreferences);
+            setPreferences({...nextPreferences, ...savedPreferences});
         } catch (caughtError) {
             log.error('[NotificationSettings] Failed to save notification preferences', caughtError);
             setPreferences(previousPreferences);
@@ -343,7 +345,8 @@ const NotificationSettings = () => {
         <div className="notification-settings">
             <h2>Notifications</h2>
             <p className="settings-content-subtitle">
-                Get a notification when a reply is ready or a tool needs your answer, even with the app closed.
+                Get a notification when a reply is ready, a tool needs your answer, or there&apos;s news on something you
+                follow, even with the app closed.
                 Notifications never include what was said.
             </p>
 

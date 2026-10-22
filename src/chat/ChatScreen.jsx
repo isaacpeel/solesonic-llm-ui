@@ -9,6 +9,10 @@ import ChatMessage from "./message/ChatMessage.jsx";
 import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
+import InterestOfferBanner from "../interests/InterestOfferBanner.jsx";
+import isEmptyNewConversation from "../interests/isEmptyNewConversation.js";
+import NewsUpdateBanner from "../interests/NewsUpdateBanner.jsx";
+import useInterestUpdate from '../hooks/useInterestUpdate.js';
 import useChatHistory from '../hooks/useChatHistory.js';
 import useChatUrlSync from '../hooks/useChatUrlSync.js';
 import useChatStream from '../hooks/useChatStream.js';
@@ -85,6 +89,7 @@ function ChatScreen() {
     const lightboxInvokerRef = useRef(null);
 
     const attachmentTray = useAttachmentTray({chatId});
+    const interestUpdate = useInterestUpdate(chatId);
     const chatModel = useChatModel({chatId, onChatNotFound: handleChatNotFound});
 
     /*
@@ -180,9 +185,13 @@ function ChatScreen() {
     return (
         <div className={`chat-app${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
             <div className="chat-content" ref={scrollContainerRef}>
+                <NewsUpdateBanner update={interestUpdate}/>
+
                 {chatHistory.map((entry) => (
                     <ChatMessage key={entry._key} message={entry} onExpandImage={openLightbox}/>
                 ))}
+
+                <InterestOfferBanner showing={isEmptyNewConversation(chatId, chatHistory)}/>
 
                 {attachmentNotice && (
                     <div className="chat-attachment-notice" role="status">{attachmentNotice}</div>

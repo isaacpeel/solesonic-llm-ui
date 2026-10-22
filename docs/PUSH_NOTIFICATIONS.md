@@ -4,6 +4,8 @@ A user can turn notifications on for a device and receive them in Chrome, on And
 
 1. **A turn finished** (or failed) while they weren't watching that chat.
 2. **A tool is waiting for their answer** (an elicitation), plus one reminder from the server.
+3. **An interest offer** arrives (the server noticed something they follow and offers a news agent), with **Enable** and **Not now** buttons.
+4. **News arrives** on an interest they follow; the server has already written it into a new chat.
 
 Tapping a notification opens or focuses the app on that chat. Notifications carry **no conversation content**; the server guarantees this and the UI shows exactly what it receives.
 
@@ -48,7 +50,9 @@ This is also how `pushsubscriptionchange` is covered. The worker holds no token,
 
 - `push`: always shows a notification (the `userVisibleOnly` contract), falling back to a default title and body when the payload is missing or unparseable. `tag` plus `renotify` replace the previous notification for that chat.
 - `notificationclick`: focuses an open window (focused, then visible, then any) and posts `{type: 'push:navigate', url}`; the app routes in place with `router.navigate`. With no window open it calls `clients.openWindow`.
-- Every `url` must match the app's own route shapes (`/`, `/chat/<id>`, `/settings/...`, no query or fragment) and resolve to this origin, checked in both the worker and the app (`src/util/safeAppPath.js`; keep the two patterns in sync). Anything else becomes `/`. Title and body are capped at 100 and 200 characters.
+- Actions: only `enable` and `dismiss` with a non-empty string `title` (capped at 32 characters) are shown, at most `Notification.maxActions` (2 when unknown); a payload without valid actions shows none. `dismiss` only closes the notification. `enable` on an `INTEREST_OFFER` opens its url with `?intent=accept`, which the offer screen reads to focus **Enable** (it never accepts by itself). Any other click opens the plain url. The worker still never calls the API.
+- Every `url` must match the app's own route shapes (`/`, `/chat/<id>`, `/interests/offers/<id>` with an optional exact `?intent=accept`, `/settings/...`, no other query or fragment) and resolve to this origin, checked in both the worker and the app (`src/util/safeAppPath.js`; keep the two patterns in sync — `tests/push/appPathFixtures.js` is the shared allow/deny table both test suites run). Anything else becomes `/`. Title and body are capped at 100 and 200 characters.
+- After the app routes to a pushed url it dispatches a `push:navigated` window event. The chat history drawer listens for `/chat/…` urls and reloads its list and groups, so a news chat the open app has never listed shows up under its "News: …" group.
 
 ### Background release
 
@@ -93,10 +97,10 @@ A synchronous test send that bypasses preferences and presence. `204` accepted; 
 ### `GET` / `PUT /users/{userId}/push-preferences`
 
 ```json
-{ "turnComplete": true, "elicitation": true }
+{ "turnComplete": true, "elicitation": true, "interestOffers": true, "interestUpdates": true }
 ```
 
-`GET` with nothing stored returns both `true`. `PUT` requires both fields (`400` `INVALID_PREFERENCES` otherwise), so the UI always sends both. This is deliberately not part of `UserPreferences`, whose full-replace `PUT` would silently switch notifications off for a client that omits the fields.
+`GET` with nothing stored returns every field `true`. `PUT` requires `turnComplete` and `elicitation` (`400` `INVALID_PREFERENCES` otherwise), so the UI always sends both; `interestOffers` and `interestUpdates` are optional and left unchanged when absent. `updatePreferences` sends them only when defined, and the settings page treats a server that does not return them yet as `true`. This is deliberately not part of `UserPreferences`, whose full-replace `PUT` would silently switch notifications off for a client that omits the fields.
 
 ### Push payload
 
@@ -110,6 +114,10 @@ A synchronous test send that bypasses preferences and presence. `204` accepted; 
 | `TURN_FAILED` | `Your request couldn't be completed` | `/chat/<chatId>` | `chat:<chatId>` |
 | `ELICITATION_WAITING` | `A tool is waiting for your answer` | `/chat/<chatId>` | `elicitation:<elicitationId>` |
 | `TEST` | `Notifications are working` | `/settings/notifications` | `test` |
+| `INTEREST_OFFER` | `I can keep you posted on something you're interested in` | `/interests/offers/<offerId>` | `interest-offer:<offerId>` |
+| `INTEREST_UPDATE` | `There's news on one of your interests` | `/chat/<chatId>` | `interest:<agentId>` |
+
+`INTEREST_OFFER` alone carries `"actions": [{"action": "enable", "title": "Enable"}, {"action": "dismiss", "title": "Not now"}]`. Neither interest type names the topic, so the lock screen never shows it.
 
 Unknown `type` values are displayed using `title` and `body` as given. `version` only changes on a breaking change.
 

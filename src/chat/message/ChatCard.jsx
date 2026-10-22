@@ -11,12 +11,39 @@ import MessageFooter from "./MessageFooter.jsx";
 import {USER, AI, SYSTEM, ERROR} from "./ChatMessage.jsx";
 import "./ChatMessage.css";
 
+const CITATION_TEXT_PATTERN = /^\[\d+]$/;
+
+const plainText = (children) => {
+    if (typeof children === "string" || typeof children === "number") {
+        return String(children);
+    }
+
+    if (Array.isArray(children)) {
+        return children.every((child) => typeof child === "string" || typeof child === "number")
+            ? children.join("")
+            : null;
+    }
+
+    return null;
+};
+
+const isCitationText = (children) => CITATION_TEXT_PATTERN.test(plainText(children) ?? "");
+
+const joinClassNames = (...classNames) => classNames.filter(Boolean).join(" ");
+
 function ChatCard({message, children, onExpandImage}) {
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
-        a: ({node, ...props}) => (
-            <a {...props} target="_blank" rel="noopener noreferrer" />
+        a: ({node, className: linkClassName, children: linkChildren, ...props}) => (
+            <a
+                {...props}
+                className={isCitationText(linkChildren) ? joinClassNames(linkClassName, "citation-link") : linkClassName}
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                {linkChildren}
+            </a>
         ),
         pre: ({node, ...props}) => (
             <div className="code-block" {...props} />

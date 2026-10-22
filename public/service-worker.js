@@ -5,7 +5,14 @@ const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
 const MAXIMUM_TITLE_LENGTH = 100;
 const MAXIMUM_BODY_LENGTH = 200;
-const APP_PATH_PATTERN = /^\/(?:chat\/[A-Za-z0-9_-]+|settings(?:\/[A-Za-z0-9_-]+)*)?$/;
+const APP_PATH_PATTERN = /^\/(?:chat\/[A-Za-z0-9_-]+|interests\/offers\/[A-Za-z0-9_-]+(?:\?intent=accept)?|settings(?:\/[A-Za-z0-9_-]+)*)?$/;
+const MAXIMUM_ACTION_TITLE_LENGTH = 32;
+const DEFAULT_MAXIMUM_ACTIONS = 2;
+const ENABLE_ACTION = 'enable';
+const DISMISS_ACTION = 'dismiss';
+const ALLOWED_ACTIONS = new Set([ENABLE_ACTION, DISMISS_ACTION]);
+const INTEREST_OFFER_TYPE = 'INTEREST_OFFER';
+const ACCEPT_INTENT_QUERY = '?intent=accept';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -16,7 +23,12 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-    event.waitUntil(openTarget(safePath(event.notification.data?.url)));
+
+    if (event.action === DISMISS_ACTION) {
+        return;
+    }
+
+    event.waitUntil(openTarget(clickTarget(event.action, event.notification.data)));
 });
 
 // Best effort: Chrome rarely fires this. The app-load sync uploads the new subscription,
@@ -51,18 +63,53 @@ function safePath(url) {
     }
 }
 
+function clickTarget(action, data) {
+    const path = safePath(data?.url);
+
+    if (action === ENABLE_ACTION && data?.type === INTEREST_OFFER_TYPE) {
+        return safePath(`${path}${ACCEPT_INTENT_QUERY}`);
+    }
+
+    return path;
+}
+
+function maximumActions() {
+    const platformLimit = typeof Notification === 'undefined' ? undefined : Notification.maxActions;
+
+    return Number.isInteger(platformLimit) ? platformLimit : DEFAULT_MAXIMUM_ACTIONS;
+}
+
+function readActions(actions) {
+    if (!Array.isArray(actions)) {
+        return [];
+    }
+
+    return actions
+        .filter((candidate) => ALLOWED_ACTIONS.has(candidate?.action)
+            && typeof candidate.title === 'string'
+            && candidate.title.length > 0)
+        .slice(0, maximumActions())
+        .map((candidate) => ({action: candidate.action, title: candidate.title.slice(0, MAXIMUM_ACTION_TITLE_LENGTH)}));
+}
+
 function showPushNotification(payload) {
     const tag = textOrDefault(payload.tag, undefined);
-
-    return self.registration.showNotification(textOrDefault(payload.title, DEFAULT_TITLE).slice(0, MAXIMUM_TITLE_LENGTH), {
+    const actions = readActions(payload.actions);
+    const options = {
         body: textOrDefault(payload.body, DEFAULT_BODY).slice(0, MAXIMUM_BODY_LENGTH),
         tag,
         icon: ICON,
         badge: BADGE,
-        data: {url: safePath(payload.url)},
+        data: {url: safePath(payload.url), type: textOrDefault(payload.type, undefined)},
         timestamp: Date.parse(payload.timestamp) || Date.now(),
         renotify: Boolean(tag),
-    });
+    };
+
+    if (actions.length > 0) {
+        options.actions = actions;
+    }
+
+    return self.registration.showNotification(textOrDefault(payload.title, DEFAULT_TITLE).slice(0, MAXIMUM_TITLE_LENGTH), options);
 }
 
 function pickWindowClient(windowClients) {

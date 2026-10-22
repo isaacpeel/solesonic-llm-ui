@@ -196,8 +196,61 @@ describe('NotificationSettings preferences', () => {
 
         expect(screen.getByLabelText('A reply is ready').checked).toBe(false);
         await waitFor(() => {
-            expect(pushSubscriptionService.updatePreferences).toHaveBeenCalledWith({turnComplete: false, elicitation: true});
+            expect(pushSubscriptionService.updatePreferences).toHaveBeenCalledWith({
+                turnComplete: false,
+                elicitation: true,
+                interestOffers: true,
+                interestUpdates: true,
+            });
         });
+    });
+
+    it('treats interest preferences a server does not return yet as on', async () => {
+        await renderSettingsInState('on');
+
+        await waitFor(() => expect(screen.getByLabelText('Suggestions to follow an interest').checked).toBe(true));
+        expect(screen.getByLabelText('News on interests I follow').checked).toBe(true);
+    });
+
+    it('loads the interest preferences the server returns', async () => {
+        pushSubscriptionService.getPreferences.mockResolvedValue({
+            turnComplete: true,
+            elicitation: true,
+            interestOffers: false,
+            interestUpdates: true,
+        });
+        await renderSettingsInState('on');
+
+        await waitFor(() => expect(screen.getByLabelText('Suggestions to follow an interest').checked).toBe(false));
+        expect(screen.getByLabelText('News on interests I follow').checked).toBe(true);
+    });
+
+    it('saves an interest toggle with the other preferences', async () => {
+        await renderSettingsInState('on');
+        await waitFor(() => expect(screen.getByLabelText('News on interests I follow').checked).toBe(true));
+
+        fireEvent.click(screen.getByLabelText('News on interests I follow'));
+
+        await waitFor(() => {
+            expect(pushSubscriptionService.updatePreferences).toHaveBeenCalledWith({
+                turnComplete: true,
+                elicitation: true,
+                interestOffers: true,
+                interestUpdates: false,
+            });
+        });
+        expect(screen.getByLabelText('News on interests I follow').checked).toBe(false);
+    });
+
+    it('keeps an interest toggle a server that does not know it yet leaves out of its answer', async () => {
+        pushSubscriptionService.updatePreferences.mockResolvedValue({turnComplete: true, elicitation: true});
+        await renderSettingsInState('on');
+        await waitFor(() => expect(screen.getByLabelText('Suggestions to follow an interest').checked).toBe(true));
+
+        fireEvent.click(screen.getByLabelText('Suggestions to follow an interest'));
+
+        await waitFor(() => expect(screen.getByLabelText('Suggestions to follow an interest').disabled).toBe(false));
+        expect(screen.getByLabelText('Suggestions to follow an interest').checked).toBe(false);
     });
 
     it('locks the toggles until the save settles', async () => {

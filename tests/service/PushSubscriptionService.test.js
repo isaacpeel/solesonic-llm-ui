@@ -482,6 +482,24 @@ describe('PushSubscriptionService endpoints', () => {
             {turnComplete: false, elicitation: true},
         );
     });
+
+    it('writes the interest preferences only when they are defined', async () => {
+        await pushSubscriptionService.updatePreferences({
+            turnComplete: true,
+            elicitation: false,
+            interestOffers: false,
+            interestUpdates: true,
+        });
+        await pushSubscriptionService.updatePreferences({turnComplete: true, elicitation: true, interestOffers: undefined});
+
+        expect(apiClient.put.mock.calls[0][1]).toEqual({
+            turnComplete: true,
+            elicitation: false,
+            interestOffers: false,
+            interestUpdates: true,
+        });
+        expect(apiClient.put.mock.calls[1][1]).toStrictEqual({turnComplete: true, elicitation: true});
+    });
 });
 
 describe('PushSubscriptionService device helpers', () => {

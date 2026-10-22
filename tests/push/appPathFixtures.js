@@ -1,0 +1,33 @@
+export const SAFE_APP_PATHS = [
+    '/',
+    '/chat/chat-1',
+    '/settings/notifications',
+    '/settings/interests',
+    '/interests/offers/offer-1',
+    '/interests/offers/offer-1?intent=accept',
+];
+
+export const UNSAFE_APP_PATHS = [
+    'https://evil.example/x',
+    '//evil.example',
+    '/\\evil.example',
+    'javascript:alert(1)',
+    'chat/chat-1',
+    '/chat/chat-1?x=1#y',
+    '/chat/chat-1?intent=accept',
+    '/google/auth/callback?code=forged',
+    '/.//evil.example',
+    '/interests/offers',
+    '/interests/offers/',
+    '/interests/offers/offer-1/extra',
+    '/interests/offers/offer-1?intent=decline',
+    '/interests/offers/offer-1?intent=accept&x=1',
+    '/interests/offers/offer-1?intent=accept#x',
+    '/interests/offers/offer-1?intent=accept?intent=accept',
+    '/interests/offers/a%2Fb',
+    '/interests/offers//evil.example',
+    '',
+    null,
+    undefined,
+    42,
+];

@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {SAFE_APP_PATHS, UNSAFE_APP_PATHS} from './appPathFixtures.js';
 
 const ORIGIN = 'https://app.example.com';
 
@@ -58,9 +59,20 @@ function windowClient(overrides = {}) {
     };
 }
 
-function notificationClickFor(url) {
-    return {notification: {close: vi.fn(), data: {url}}};
+function notificationClickFor(url, {action = '', type} = {}) {
+    return {action, notification: {close: vi.fn(), data: {url, type}}};
 }
+
+const OFFER_PAYLOAD = {
+    version: 1,
+    type: 'INTEREST_OFFER',
+    title: 'Solesonic',
+    body: 'I can keep you posted on something you\'re interested in',
+    url: '/interests/offers/offer-1',
+    tag: 'interest-offer:offer-1',
+    timestamp: '2026-10-21T12:00:00Z',
+    actions: [{action: 'enable', title: 'Enable'}, {action: 'dismiss', title: 'Not now'}],
+};
 
 beforeEach(async () => {
     await loadWorker();
@@ -102,10 +114,55 @@ describe('service worker push', () => {
             tag: 'chat:chat-1',
             icon: '/icons/icon-192.png',
             badge: '/icons/badge-96.png',
-            data: {url: '/chat/chat-1'},
+            data: {url: '/chat/chat-1', type: 'TURN_FINISHED'},
             timestamp: Date.parse('2026-10-20T12:00:00Z'),
             renotify: true,
         });
+    });
+
+    it('shows the two offer actions and keeps the offer url and type', async () => {
+        await dispatch('push', pushEventWith(OFFER_PAYLOAD));
+
+        const options = showNotification.mock.calls[0][1];
+
+        expect(options.actions).toEqual([{action: 'enable', title: 'Enable'}, {action: 'dismiss', title: 'Not now'}]);
+        expect(options.data).toEqual({url: '/interests/offers/offer-1', type: 'INTEREST_OFFER'});
+    });
+
+    it('drops unknown actions, untitled actions and anything past the limit', async () => {
+        await dispatch('push', pushEventWith({
+            ...OFFER_PAYLOAD,
+            actions: [
+                {action: 'open-evil', title: 'Go'},
+                {action: 'enable', title: 42},
+                {action: 'dismiss', title: ''},
+                {action: 'enable', title: 'E'.repeat(50)},
+                {action: 'dismiss', title: 'Not now'},
+                {action: 'enable', title: 'Third'},
+                null,
+            ],
+        }));
+
+        expect(showNotification.mock.calls[0][1].actions).toEqual([
+            {action: 'enable', title: 'E'.repeat(32)},
+            {action: 'dismiss', title: 'Not now'},
+        ]);
+    });
+
+    it('honours a smaller platform action limit', async () => {
+        vi.stubGlobal('Notification', {maxActions: 1});
+
+        await dispatch('push', pushEventWith(OFFER_PAYLOAD));
+
+        expect(showNotification.mock.calls[0][1].actions).toEqual([{action: 'enable', title: 'Enable'}]);
+    });
+
+    it('shows no actions for a payload without them', async () => {
+        await dispatch('push', pushEventWith({version: 1, type: 'INTEREST_UPDATE', title: 'Bot', body: 'News', url: '/chat/chat-9'}));
+        await dispatch('push', pushEventWith({...OFFER_PAYLOAD, actions: 'enable'}));
+
+        expect(showNotification.mock.calls[0][1]).not.toHaveProperty('actions');
+        expect(showNotification.mock.calls[1][1]).not.toHaveProperty('actions');
     });
 
     it('shows an unknown type using its title and body', async () => {
@@ -187,18 +244,65 @@ describe('service worker notificationclick', () => {
         expect(clients.openWindow).toHaveBeenCalledWith('/settings/notifications');
     });
 
-    it.each([
-        'https://evil.example/x',
-        '//evil.example',
-        '/\\evil.example',
-        'javascript:alert(1)',
-        'chat/chat-1',
-        '/google/auth/callback?code=forged',
-        undefined,
-    ])('falls back to / for the unsafe target %s', async (unsafeUrl) => {
+    it.each(SAFE_APP_PATHS)('opens the safe target %s', async (safeUrl) => {
+        await dispatch('notificationclick', notificationClickFor(safeUrl));
+
+        expect(clients.openWindow).toHaveBeenCalledWith(safeUrl);
+    });
+
+    it.each(UNSAFE_APP_PATHS)('falls back to / for the unsafe target %s', async (unsafeUrl) => {
         await dispatch('notificationclick', notificationClickFor(unsafeUrl));
 
         expect(clients.openWindow).toHaveBeenCalledWith('/');
+    });
+
+    it('opens the offer asking to accept when Enable is pressed', async () => {
+        const clickEvent = notificationClickFor('/interests/offers/offer-1', {action: 'enable', type: 'INTEREST_OFFER'});
+
+        await dispatch('notificationclick', clickEvent);
+
+        expect(clickEvent.notification.close).toHaveBeenCalledTimes(1);
+        expect(clients.openWindow).toHaveBeenCalledWith('/interests/offers/offer-1?intent=accept');
+    });
+
+    it('only closes the notification when Not now is pressed', async () => {
+        const openWindowClient = windowClient();
+        clients.matchAll.mockResolvedValue([openWindowClient]);
+        const clickEvent = notificationClickFor('/interests/offers/offer-1', {action: 'dismiss', type: 'INTEREST_OFFER'});
+
+        await dispatch('notificationclick', clickEvent);
+
+        expect(clickEvent.notification.close).toHaveBeenCalledTimes(1);
+        expect(clients.matchAll).not.toHaveBeenCalled();
+        expect(openWindowClient.focus).not.toHaveBeenCalled();
+        expect(clients.openWindow).not.toHaveBeenCalled();
+    });
+
+    it('opens the plain offer url for a tap on the body', async () => {
+        await dispatch('notificationclick', notificationClickFor('/interests/offers/offer-1', {type: 'INTEREST_OFFER'}));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/interests/offers/offer-1');
+    });
+
+    it('ignores Enable on anything that is not an offer', async () => {
+        await dispatch('notificationclick', notificationClickFor('/chat/chat-1', {action: 'enable', type: 'TURN_FINISHED'}));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/chat/chat-1');
+    });
+
+    it('falls back to / when Enable is pressed on an unsafe offer url', async () => {
+        await dispatch('notificationclick', notificationClickFor('https://evil.example/x', {action: 'enable', type: 'INTEREST_OFFER'}));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/');
+    });
+
+    it('opens the news chat for a tap on an interest update', async () => {
+        const openWindowClient = windowClient({focused: true});
+        clients.matchAll.mockResolvedValue([openWindowClient]);
+
+        await dispatch('notificationclick', notificationClickFor('/chat/chat-9', {type: 'INTEREST_UPDATE'}));
+
+        expect(openWindowClient.postMessage).toHaveBeenCalledWith({type: 'push:navigate', url: '/chat/chat-9'});
     });
 });
 

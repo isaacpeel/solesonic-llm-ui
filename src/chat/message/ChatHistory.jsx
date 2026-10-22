@@ -33,6 +33,7 @@ import {
     NEW_GROUP_DROP_ATTRIBUTE,
 } from "../../util/chatHistoryDrag.js";
 import useChatHistoryDrag from "../../hooks/useChatHistoryDrag.js";
+import {PUSH_NAVIGATED_EVENT} from "../../push/usePushNavigation.js";
 
 /* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
 const OVERSCAN_ROWS = 4;
@@ -176,6 +177,27 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     );
 
     const chatGroupSections = chatGroups.chatGroupSections;
+    const reloadChatGroupsRef = useRef(null);
+    reloadChatGroupsRef.current = chatGroups.reloadGroupsAndLoadedChats;
+
+    useEffect(() => {
+        const handlePushNavigated = (event) => {
+            const url = event.detail?.url;
+
+            if (typeof url !== "string" || !url.startsWith("/chat/")) {
+                return;
+            }
+
+            setReloadHistoryTrigger(trigger => trigger + 1);
+            reloadChatGroupsRef.current?.();
+        };
+
+        window.addEventListener(PUSH_NAVIGATED_EVENT, handlePushNavigated);
+
+        return () => {
+            window.removeEventListener(PUSH_NAVIGATED_EVENT, handlePushNavigated);
+        };
+    }, [setReloadHistoryTrigger]);
 
     const rows = useMemo(
         () => flattenChatGroupsToRows([...chatGroupSections, ...daySections]),

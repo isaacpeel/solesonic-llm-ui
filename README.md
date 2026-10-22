@@ -202,6 +202,14 @@ Chrome Web Push tells a user when a turn finished or a tool is waiting for their
 
 See the dedicated doc: [docs/PUSH_NOTIFICATIONS.md](docs/PUSH_NOTIFICATIONS.md).
 
+## Interest Agents (News)
+
+When the backend notices an interest in a user's memories it can offer a news agent for it. The offer arrives as a push with **Enable** / **Not now**, and as a card on the empty new-conversation screen (`src/interests/InterestOfferBanner.jsx`). Either way it leads to `/interests/offers/:offerId` (`src/interests/InterestOfferScreen.jsx`), which names the topic and is the only place an offer is accepted — `?intent=accept` from the push button just focuses **Enable**.
+
+Each news update is a new chat written by the server, filed in a "News: {label}" group. `useInterestUpdate` looks up `GET /users/{userId}/interest-updates/by-chat/{chatId}` for every chat opened (a `404` means an ordinary chat) and `NewsUpdateBanner` labels the ones that are news. Numbered citations (`[[1]](url)`) render with a `citation-link` class in `ChatCard`.
+
+Agents are managed under Settings → Interests (`src/settings/interests/`): pause/resume, cadence, label and query, "Check now" (which makes the agent due on the next server tick rather than running it immediately), recent updates and delete (the chats stay). Two toggles under Settings → Notifications control the offer and update pushes. All calls go through `src/service/InterestService.js`; the backend contract is `solesonic-llm-api/ai-scratch/interest-agents/01-plan.md`.
+
 ## API & Services
 
 Runtime endpoints are derived from `src/properties/ApplicationProperties.jsx`:

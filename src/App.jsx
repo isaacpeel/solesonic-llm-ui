@@ -12,6 +12,8 @@ import {DEFAULT_IMAGE_LEVEL} from "./settings/images/imageLevels.js";
 import MemoryManagement from "./settings/memory/MemoryManagement.jsx";
 import {DEFAULT_MEMORY_LEVEL} from "./settings/memory/memoryLevels.js";
 import NotificationSettings from "./settings/notifications/NotificationSettings.jsx";
+import InterestOfferScreen from "./interests/InterestOfferScreen.jsx";
+import InterestSettings from "./settings/interests/InterestSettings.jsx";
 import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./settings/connections/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
@@ -42,6 +44,7 @@ export const routes = [
         children: [
             {index: true, element: <ChatPage/>},
             {path: "chat/:chatId", element: <ChatPage/>},
+            {path: "interests/offers/:offerId", element: <InterestOfferScreen/>},
             {
                 path: "settings",
                 element: <UserSettings/>,
@@ -56,6 +59,7 @@ export const routes = [
                     {path: "images/:level", element: <GeneratedImageManagement/>},
                     {path: "memory", element: <Navigate to={DEFAULT_MEMORY_LEVEL} replace/>},
                     {path: "memory/:level", element: <MemoryManagement/>},
+                    {path: "interests", element: <InterestSettings/>},
                 ]
             },
             {path: "google/auth/callback", element: <GoogleAuthCallback/>},
