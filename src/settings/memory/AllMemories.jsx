@@ -30,7 +30,7 @@ const KIND_FILTERS = KIND_SECTIONS.map((section) => section.kind);
 const mergeMemory = (memories, updatedMemory) => {
     return memories.map((memory) => (
         memory.id === updatedMemory.id
-            ? {...memory, ...updatedMemory, id: memory.id, userId: memory.userId}
+            ? {...memory, ...updatedMemory, id: memory.id, userId: memory.userId, username: memory.username}
             : memory
     ));
 };

@@ -158,6 +158,24 @@ describe('MemoryStatus', () => {
         expect(secondHrefs).toEqual(['/settings/memory/all?userId=user-3']);
     });
 
+    it('names each user by username, falling back to a short id', async () => {
+        memoryService.getProcessingStatus.mockResolvedValue(processingStatus({
+            users: [
+                {...processingStatus().users[0], username: 'sam'},
+                {...processingStatus().users[0], userId: 'user-3abcdefgh'},
+            ],
+        }));
+
+        renderStatus();
+
+        await waitFor(() => expect(document.querySelectorAll('.memory-status-user-row')).toHaveLength(2));
+
+        const [named, unnamed] = document.querySelectorAll('.memory-status-user-row');
+        expect(named.querySelector('a').textContent).toBe('sam');
+        expect(named.querySelector('a').getAttribute('title')).toBe('user-9');
+        expect(unnamed.querySelector('a').textContent).toBe('user-3ab');
+    });
+
     it('reloads on Refresh', async () => {
         memoryService.getProcessingStatus.mockResolvedValue(processingStatus());
 

@@ -11,6 +11,7 @@ import {
     REFLECTION_STATUS_LABELS,
     REFLECTION_STATUSES,
     shortId,
+    userLabel,
 } from "./memoryLabels.js";
 import {selectedFilterValues, subsetOrNone, useMemorySearchParams} from "./memoryFilters.js";
 import "./MemoryReflections.css";
@@ -186,7 +187,7 @@ const MemoryReflections = () => {
                                                     title={reflection.userId}
                                                     onClick={() => applyUserId(reflection.userId)}
                                                 >
-                                                    {shortId(reflection.userId)}
+                                                    {userLabel(reflection.username, reflection.userId)}
                                                 </button>
                                             </td>
                                             <td>

@@ -14,6 +14,7 @@ import {
     PENDING_HINT,
     shortId,
     STATUS_LABELS,
+    userLabel,
 } from "./memoryLabels.js";
 import "./MemoryRow.css";
 
@@ -131,7 +132,7 @@ function MemoryRow({
                             title={memory.userId}
                             onClick={() => onFilterUser?.(memory.userId)}
                         >
-                            {shortId(memory.userId)}
+                            {userLabel(memory.username, memory.userId)}
                         </button>
                     </span>
 

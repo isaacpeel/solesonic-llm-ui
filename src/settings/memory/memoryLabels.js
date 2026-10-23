@@ -88,6 +88,8 @@ export const shortId = (identifier) => {
     return String(identifier).slice(0, 8);
 };
 
+export const userLabel = (username, userId) => username || shortId(userId);
+
 export const isEpoch = (timestamp) => {
     if (!timestamp) {
         return false;

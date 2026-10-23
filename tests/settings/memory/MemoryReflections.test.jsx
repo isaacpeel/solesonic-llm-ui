@@ -152,6 +152,21 @@ describe('MemoryReflections', () => {
         await waitFor(() => expect(lastFilters().userId).toBe('user-9'));
     });
 
+    it('names the user by username and still filters by id', async () => {
+        memoryService.findReflections.mockResolvedValue(paged([reflection({username: 'sam'})]));
+
+        renderReflections();
+
+        await waitFor(() => expect(reflectionRows()).toHaveLength(1));
+
+        const userButton = within(reflectionRows()[0]).getByTitle('user-9');
+        expect(userButton.textContent).toBe('sam');
+
+        fireEvent.click(userButton);
+
+        await waitFor(() => expect(lastFilters().userId).toBe('user-9'));
+    });
+
     it('shows the no-access message on a 403', async () => {
         memoryService.findReflections.mockRejectedValue(forbidden());
 

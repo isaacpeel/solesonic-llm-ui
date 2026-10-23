@@ -174,7 +174,7 @@ function GeneratedImageCard({image, isAdmin, onRenamed, onDeleted}) {
 
                 {isAdmin && image.userId && (
                     <div className="generated-image-card-owner" title={image.userId}>
-                        Owner: {image.userId}
+                        Owner: {image.username || image.userId}
                     </div>
                 )}
 

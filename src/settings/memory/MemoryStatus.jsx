@@ -10,8 +10,8 @@ import {
     NO_ADMIN_ACCESS_MESSAGE,
     REFLECTION_STATUS_LABELS,
     REFLECTION_STATUSES,
-    shortId,
     STATUS_LABELS,
+    userLabel,
 } from "./memoryLabels.js";
 import "./MemoryStatus.css";
 
@@ -276,7 +276,7 @@ const MemoryStatus = () => {
                                                     to={`/settings/memory/all?userId=${encodeURIComponent(user.userId)}`}
                                                     title={user.userId}
                                                 >
-                                                    {shortId(user.userId)}
+                                                    {userLabel(user.username, user.userId)}
                                                 </Link>
                                             </td>
                                             <td>{user.activeMemories ?? 0}</td>

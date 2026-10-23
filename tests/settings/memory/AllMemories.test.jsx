@@ -227,6 +227,44 @@ describe('AllMemories rows', () => {
         expect(within(currentRow).getByRole('button', {name: 'Edit'})).toBeDefined();
     });
 
+    it('names the owner by username, falling back to a short id', async () => {
+        memoryService.findAllMemories.mockResolvedValue(paged([
+            memory({id: 'memory-1', content: 'Named', username: 'sam'}),
+            memory({id: 'memory-2', content: 'Unnamed', userId: 'user-3abcdefgh'}),
+        ]));
+
+        renderAllMemories();
+
+        await waitFor(() => expect(rowContents()).toHaveLength(2));
+
+        expect(within(rowFor('Named')).getByTitle('user-9').textContent).toBe('sam');
+        expect(within(rowFor('Unnamed')).getByTitle('user-3abcdefgh').textContent).toBe('user-3ab');
+    });
+
+    it('keeps the owner\'s username after an edit on their behalf', async () => {
+        memoryService.findAllMemories.mockResolvedValue(paged([memory({username: 'sam'})]));
+        memoryService.updateMemory.mockResolvedValue({
+            id: 'memory-1',
+            kind: 'FACT',
+            origin: 'AUTHORED',
+            status: 'ACTIVE',
+            content: 'Lives in Boulder',
+            confidence: 1,
+            chatIds: [],
+        });
+
+        renderAllMemories();
+
+        await waitFor(() => expect(rowFor('Lives in Denver')).not.toBeNull());
+
+        fireEvent.click(within(rowFor('Lives in Denver')).getByRole('button', {name: 'Edit'}));
+        fireEvent.change(screen.getByLabelText('Memory content'), {target: {value: 'Lives in Boulder'}});
+        fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => expect(rowFor('Lives in Boulder')).not.toBeNull());
+        expect(within(rowFor('Lives in Boulder')).getByTitle('user-9').textContent).toBe('sam');
+    });
+
     it('offers no actions on a row whose owner is unknown', async () => {
         memoryService.findAllMemories.mockResolvedValue(paged([memory({userId: null})]));
 
