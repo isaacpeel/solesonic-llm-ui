@@ -7,6 +7,7 @@ import {toast} from 'react-toastify';
 import authService from '../service/AuthService.js';
 import pushSubscriptionService from '../service/PushSubscriptionService.js';
 import {observePageResumed} from '../util/pageLifecycle.js';
+import {clearKeycloakSession, readKeycloakSession, saveKeycloakSession} from '../util/keycloakSessionStorage.js';
 
 // Create Keycloak context
 const KeycloakContext = createContext(null);
@@ -19,9 +20,9 @@ const KeycloakContext = createContext(null);
  * Refreshes the access token on a 30-second interval, immediately when the tab resumes from
  * background, and via keycloak-js's own onTokenExpired schedule, whenever authenticated.
  *
- * Tokens are deliberately never written to sessionStorage or localStorage - they live
- * only in the keycloak-js instance, so an XSS foothold cannot exfiltrate a refresh
- * token that outlives the page.
+ * Tokens are kept in localStorage and handed back to init() on the next load, because mobile
+ * browsers routinely discard a backgrounded tab and drop Keycloak's SSO cookie with it. A stored
+ * refresh token that Keycloak rejects falls through to the normal login-required redirect.
  */
 export const KeycloakProvider = ({children}) => {
     const [keycloak, setKeycloak] = useState(null);
@@ -52,6 +53,17 @@ export const KeycloakProvider = ({children}) => {
             clientId: keycloakConfig.clientId
         });
 
+        const storedSession = readKeycloakSession();
+        let restoringStoredSession = Boolean(storedSession);
+
+        const persistSession = () => {
+            saveKeycloakSession(keycloakInstance);
+        };
+
+        keycloakInstance.onAuthSuccess = persistSession;
+        keycloakInstance.onAuthRefreshSuccess = persistSession;
+        keycloakInstance.onAuthLogout = clearKeycloakSession;
+
         keycloakInstance.onTokenExpired = () => {
             keycloakInstance.updateToken(30).catch((error) => {
                 log.error('[KeycloakProvider] Token refresh failed', error);
@@ -59,10 +71,18 @@ export const KeycloakProvider = ({children}) => {
         };
 
         keycloakInstance.onAuthError = (errorData) => {
+            if (restoringStoredSession) {
+                return;
+            }
+
             void authService.authFailure(errorData?.error ?? 'unknown_auth_error');
         };
 
         keycloakInstance.onAuthRefreshError = () => {
+            if (restoringStoredSession) {
+                return;
+            }
+
             /*
              * keycloak-js fires this for every failed refresh, including a transient network
              * blip on any ordinary API call (updateToken is called on every request via
@@ -83,8 +103,10 @@ export const KeycloakProvider = ({children}) => {
                 pkceMethod: 'S256',
                 checkLoginIframe: false,
                 redirectUri,
+                ...storedSession,
             })
             .then(async (authenticationResult) => {
+                restoringStoredSession = false;
                 setAuthenticated(!!authenticationResult);
                 setKeycloak(keycloakInstance);
 
@@ -102,6 +124,7 @@ export const KeycloakProvider = ({children}) => {
                 }
             })
             .catch((error) => {
+                restoringStoredSession = false;
                 log.error('[KeycloakProvider] Initialization failed', error);
                 toast.error('Authentication initialization failed. Please refresh the page.');
                 setKeycloak(keycloakInstance);
@@ -169,6 +192,8 @@ export const KeycloakProvider = ({children}) => {
         } catch (releaseError) {
             log.warn('[KeycloakProvider] Push release failed; signing out anyway', releaseError);
         }
+
+        clearKeycloakSession();
 
         keycloak.logout({
             redirectUri: window.location.origin,
