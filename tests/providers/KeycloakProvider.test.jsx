@@ -20,12 +20,6 @@ vi.mock('../../src/service/PushSubscriptionService.js', () => ({
     default: {releaseOnLogout: vi.fn()},
 }));
 
-vi.mock('../../src/util/keycloakSessionStorage.js', () => ({
-    readKeycloakSession: vi.fn(),
-    saveKeycloakSession: vi.fn(),
-    clearKeycloakSession: vi.fn(),
-}));
-
 let lastKeycloakInstance;
 let mockInit;
 let mockTokenParsed;
@@ -53,7 +47,6 @@ vi.mock('../../src/util/pageLifecycle.js', () => ({
 
 import {observePageResumed} from '../../src/util/pageLifecycle.js';
 import pushSubscriptionService from '../../src/service/PushSubscriptionService.js';
-import {clearKeycloakSession, readKeycloakSession, saveKeycloakSession} from '../../src/util/keycloakSessionStorage.js';
 
 const Consumer = () => {
     const {authenticated, loading, keycloak, login} = useKeycloak();
@@ -210,6 +203,24 @@ describe('KeycloakProvider', () => {
         expect(toast.error).not.toHaveBeenCalled();
         expect(lastKeycloakInstance.login).not.toHaveBeenCalled();
     });
+
+    test('removes the session a previous release stored in localStorage', () => {
+        const removeItem = vi.fn();
+        vi.stubGlobal('localStorage', {removeItem});
+        mockInit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+        try {
+            render(
+                <KeycloakProvider>
+                    <Consumer/>
+                </KeycloakProvider>
+            );
+        } finally {
+            vi.unstubAllGlobals();
+        }
+
+        expect(removeItem).toHaveBeenCalledWith('solesonic.keycloakSession');
+    });
 });
 
 const GroupConsumer = ({groupName}) => {
@@ -345,102 +356,5 @@ describe('KeycloakProvider logout', () => {
         await waitFor(() => {
             expect(lastKeycloakInstance.logout).toHaveBeenCalledTimes(1);
         });
-    });
-
-    test('forgets the stored session before signing out', async () => {
-        pushSubscriptionService.releaseOnLogout.mockResolvedValue(undefined);
-
-        await renderAndLogOut();
-
-        await waitFor(() => {
-            expect(lastKeycloakInstance.logout).toHaveBeenCalledTimes(1);
-        });
-        expect(clearKeycloakSession.mock.invocationCallOrder[0])
-            .toBeLessThan(lastKeycloakInstance.logout.mock.invocationCallOrder[0]);
-    });
-});
-
-const renderPendingProvider = () => {
-    mockInit = vi.fn().mockReturnValue(new Promise(() => {}));
-
-    render(
-        <KeycloakProvider>
-            <Consumer/>
-        </KeycloakProvider>
-    );
-};
-
-describe('KeycloakProvider stored session', () => {
-    const storedSession = {token: 'stored-access', refreshToken: 'stored-refresh', idToken: 'stored-id'};
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        observePageResumed.mockImplementation(() => () => {});
-        readKeycloakSession.mockReturnValue(null);
-    });
-
-    test('hands a stored session to init so a discarded tab resumes without a login redirect', () => {
-        readKeycloakSession.mockReturnValue(storedSession);
-
-        renderPendingProvider();
-
-        expect(mockInit).toHaveBeenCalledWith(expect.objectContaining(storedSession));
-        expect(mockInit).toHaveBeenCalledWith(expect.objectContaining({onLoad: 'login-required'}));
-    });
-
-    test('starts a normal login when nothing is stored', () => {
-        renderPendingProvider();
-
-        expect(mockInit.mock.calls[0][0].refreshToken).toBeUndefined();
-    });
-
-    test('persists the tokens after a login and after every refresh', () => {
-        renderPendingProvider();
-
-        lastKeycloakInstance.onAuthSuccess();
-        lastKeycloakInstance.onAuthRefreshSuccess();
-
-        expect(saveKeycloakSession).toHaveBeenCalledTimes(2);
-        expect(saveKeycloakSession).toHaveBeenCalledWith(lastKeycloakInstance);
-    });
-
-    test('forgets the stored session when keycloak-js drops the tokens', () => {
-        renderPendingProvider();
-
-        lastKeycloakInstance.onAuthLogout();
-
-        expect(clearKeycloakSession).toHaveBeenCalled();
-    });
-
-    test('does not count a rejected stored session toward the lockout or toast about it', () => {
-        readKeycloakSession.mockReturnValue(storedSession);
-
-        renderPendingProvider();
-
-        lastKeycloakInstance.token = undefined;
-        lastKeycloakInstance.onAuthRefreshError();
-        lastKeycloakInstance.onAuthError();
-
-        expect(authService.authFailure).not.toHaveBeenCalled();
-        expect(toast.error).not.toHaveBeenCalled();
-    });
-
-    test('counts auth errors again once the restore has settled', async () => {
-        readKeycloakSession.mockReturnValue(storedSession);
-        mockInit = vi.fn().mockResolvedValue(true);
-
-        render(
-            <KeycloakProvider>
-                <Consumer/>
-            </KeycloakProvider>
-        );
-
-        await waitFor(() => {
-            expect(screen.getByTestId('authenticated').textContent).toBe('true');
-        });
-
-        lastKeycloakInstance.onAuthError({error: 'access_denied'});
-
-        expect(authService.authFailure).toHaveBeenCalledWith('access_denied');
     });
 });
