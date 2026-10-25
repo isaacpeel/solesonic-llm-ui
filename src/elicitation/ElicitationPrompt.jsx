@@ -19,6 +19,10 @@ const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPR
 
 const FOCUSABLE_CONTROL_SELECTOR = 'button:not(:disabled), input:not(:disabled)';
 
+const DROPDOWN_PANEL_GAP = 4;
+const DROPDOWN_PANEL_MAX_HEIGHT = 224;
+const DROPDOWN_VIEWPORT_MARGIN = 8;
+
 function isBlank(fieldValue) {
     if (fieldValue === undefined || fieldValue === null) {
         return true;
@@ -67,10 +71,19 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
         }
 
         const triggerRect = containerRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const spaceBelow = viewportHeight - triggerRect.bottom - DROPDOWN_PANEL_GAP - DROPDOWN_VIEWPORT_MARGIN;
+        const spaceAbove = triggerRect.top - DROPDOWN_PANEL_GAP - DROPDOWN_VIEWPORT_MARGIN;
+        const opensUpward = spaceBelow < DROPDOWN_PANEL_MAX_HEIGHT && spaceAbove > spaceBelow;
+        const verticalPlacement = opensUpward
+            ? { bottom: viewportHeight - triggerRect.top + DROPDOWN_PANEL_GAP }
+            : { top: triggerRect.bottom + DROPDOWN_PANEL_GAP };
+
         setPanelPosition({
-            top: triggerRect.bottom + 4,
+            ...verticalPlacement,
             left: triggerRect.left,
             width: triggerRect.width,
+            maxHeight: Math.max(0, Math.min(DROPDOWN_PANEL_MAX_HEIGHT, opensUpward ? spaceAbove : spaceBelow)),
         });
     }, [isOpen]);
 
@@ -93,16 +106,26 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
             }
         };
 
-        const closeOnScroll = () => setIsOpen(false);
+        const closeOnScroll = (event) => {
+            if (panelRef.current?.contains(event.target)) {
+                return;
+            }
+
+            setIsOpen(false);
+        };
+
+        const closeOnResize = () => setIsOpen(false);
 
         document.addEventListener('mousedown', handleOutsideClick);
         document.addEventListener('keydown', handleEscapeKey);
         document.addEventListener('scroll', closeOnScroll, true);
+        window.addEventListener('resize', closeOnResize);
 
         return () => {
             document.removeEventListener('mousedown', handleOutsideClick);
             document.removeEventListener('keydown', handleEscapeKey);
             document.removeEventListener('scroll', closeOnScroll, true);
+            window.removeEventListener('resize', closeOnResize);
         };
     }, [isOpen]);
 
@@ -137,9 +160,11 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
                     role="listbox"
                     aria-labelledby={triggerId}
                     style={{
-                        top: `${panelPosition.top}px`,
+                        top: panelPosition.top === undefined ? undefined : `${panelPosition.top}px`,
+                        bottom: panelPosition.bottom === undefined ? undefined : `${panelPosition.bottom}px`,
                         left: `${panelPosition.left}px`,
                         width: `${panelPosition.width}px`,
+                        maxHeight: `${panelPosition.maxHeight}px`,
                     }}
                 >
                     {options.map((option) => {

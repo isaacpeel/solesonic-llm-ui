@@ -96,9 +96,29 @@ function submitButton(container) {
     return [...container.querySelectorAll('button')].find((button) => button.textContent === 'Submit');
 }
 
+function openDropdownWithTriggerAt(triggerRect, viewportHeight) {
+    vi.stubGlobal('innerHeight', viewportHeight);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+        left: 40,
+        width: 300,
+        right: 340,
+        x: 40,
+        y: triggerRect.top,
+        height: triggerRect.bottom - triggerRect.top,
+        ...triggerRect,
+    });
+
+    const renderResult = renderPrompt(BIG_MONEY_PICK);
+    fireEvent.click(renderResult.container.querySelector('.elicitation-dropdown-trigger'));
+
+    return {...renderResult, panel: document.querySelector('.elicitation-dropdown-panel')};
+}
+
 afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
 });
 
 describe('ElicitationPrompt', () => {
@@ -176,6 +196,39 @@ describe('ElicitationPrompt', () => {
 
         expect(container.querySelector('.elicitation-dropdown-trigger')).not.toBeNull();
         expect(screen.queryByText('Sunscreen')).toBeNull();
+    });
+
+    it('opens the dropdown below its trigger when there is room', () => {
+        const {panel} = openDropdownWithTriggerAt({top: 100, bottom: 140}, 800);
+
+        expect(panel.style.top).toBe('144px');
+        expect(panel.style.bottom).toBe('');
+        expect(panel.style.maxHeight).toBe('224px');
+    });
+
+    it('flips the dropdown above its trigger when it would run off the bottom of the viewport', () => {
+        const {panel} = openDropdownWithTriggerAt({top: 700, bottom: 740}, 800);
+
+        expect(panel.style.top).toBe('');
+        expect(panel.style.bottom).toBe('104px');
+        expect(panel.style.maxHeight).toBe('224px');
+    });
+
+    it('caps the dropdown height to the space available so every option stays reachable', () => {
+        const {panel} = openDropdownWithTriggerAt({top: 40, bottom: 80}, 300);
+
+        expect(panel.style.top).toBe('84px');
+        expect(panel.style.maxHeight).toBe('208px');
+    });
+
+    it('keeps the dropdown open while its own option list is scrolled', () => {
+        const {panel} = openDropdownWithTriggerAt({top: 100, bottom: 140}, 800);
+
+        fireEvent.scroll(panel);
+        expect(document.querySelector('.elicitation-dropdown-panel')).not.toBeNull();
+
+        fireEvent.scroll(document);
+        expect(document.querySelector('.elicitation-dropdown-panel')).toBeNull();
     });
 
     it('moves focus to the first control when a prompt opens', () => {
