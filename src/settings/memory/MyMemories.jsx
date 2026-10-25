@@ -1,12 +1,13 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useMemo, useState} from "react";
 import {FiAlertCircle} from "react-icons/fi";
-import log from "loglevel";
 
 import memoryService from "../../service/MemoryService.js";
+import usePagedList from "../../hooks/usePagedList.js";
 import MemoryRow from "./MemoryRow.jsx";
 import AddMemoryForm from "./AddMemoryForm.jsx";
 import ForgetAllMemoriesDialog from "./ForgetAllMemoriesDialog.jsx";
 import {KIND_SECTIONS, MEMORY_ORIGINS, MEMORY_STATUSES, ORIGIN_LABELS} from "./memoryLabels.js";
+import {useMemorySearchParams} from "./memoryFilters.js";
 import "./MyMemories.css";
 
 const EMPTY_MESSAGE = "Nothing learned yet. Memories appear here after a conversation has been quiet for a while.";
@@ -15,22 +16,15 @@ const LOAD_FAILED_MESSAGE = "Could not load your memories.";
 
 const ORIGIN_FILTERS = [MEMORY_ORIGINS.INFERRED, MEMORY_ORIGINS.REMEMBERED, MEMORY_ORIGINS.AUTHORED];
 
-const STATUS_ORDER = {
-    [MEMORY_STATUSES.ACTIVE]: 0,
-    [MEMORY_STATUSES.PENDING]: 1,
-};
+const LISTED_STATUSES = [MEMORY_STATUSES.ACTIVE, MEMORY_STATUSES.PENDING];
 
-const timestampOf = (timestamp) => (timestamp ? new Date(timestamp).getTime() : 0);
-
-const compareWithinSection = (left, right) => {
-    const statusDifference = (STATUS_ORDER[left.status] ?? 2) - (STATUS_ORDER[right.status] ?? 2);
-
-    if (statusDifference !== 0) {
-        return statusDifference;
-    }
-
-    return timestampOf(right.lastConfirmed) - timestampOf(left.lastConfirmed);
-};
+const SORT_OPTIONS = [
+    {value: "active", label: "Active first", sorts: ["status,asc", "lastConfirmed,desc"]},
+    {value: "updated", label: "Recently updated", sorts: ["updated,desc"]},
+    {value: "confirmed", label: "Recently confirmed", sorts: ["lastConfirmed,desc"]},
+    {value: "confidence", label: "Highest confidence", sorts: ["confidence,desc"]},
+    {value: "oldest", label: "Oldest first", sorts: ["created,asc"]},
+];
 
 const replaceMemory = (memories, updatedMemory) => {
     return memories.map((memory) => memory.id === updatedMemory.id ? updatedMemory : memory);
@@ -41,54 +35,26 @@ const removeMemory = (memories, memoryId) => {
 };
 
 const MyMemories = () => {
-    const [memories, setMemories] = useState([]);
-    const [loaded, setLoaded] = useState(false);
-    const [loadFailed, setLoadFailed] = useState(false);
     const [searchText, setSearchText] = useState("");
     const [selectedOrigins, setSelectedOrigins] = useState([]);
     const [showForgetDialog, setShowForgetDialog] = useState(false);
 
-    const loadGenerationRef = useRef(0);
+    const {sortOption, changeSort} = useMemorySearchParams(SORT_OPTIONS);
 
-    const loadMemories = useCallback(async () => {
-        loadGenerationRef.current += 1;
-        const generation = loadGenerationRef.current;
+    const filters = {
+        statuses: LISTED_STATUSES,
+        sorts: sortOption.sorts,
+    };
 
-        try {
-            const foundMemories = await memoryService.findMemories();
-
-            if (generation !== loadGenerationRef.current) {
-                return;
-            }
-
-            setMemories(foundMemories ?? []);
-            setLoadFailed(false);
-            setLoaded(true);
-        } catch (caughtError) {
-            if (generation !== loadGenerationRef.current) {
-                return;
-            }
-
-            log.error('[MyMemories] Failed to load memories', caughtError);
-            setLoadFailed(true);
-            setLoaded(true);
-        }
-    }, []);
-
-    useEffect(() => {
-        void loadMemories();
-    }, [loadMemories]);
-
-    useEffect(() => {
-        return () => {
-            loadGenerationRef.current += 1;
-        };
-    }, []);
+    const {items, setItems, loaded, hasMore, loadingMore, loadError, sentinelRef, reload} = usePagedList(
+        (page) => memoryService.findMemories(filters, page),
+        JSON.stringify(filters),
+    );
 
     const sections = useMemo(() => {
         const normalizedSearch = searchText.trim().toLowerCase();
 
-        const visibleMemories = memories.filter((memory) => {
+        const visibleMemories = items.filter((memory) => {
             const matchesSearch = !normalizedSearch || (memory.content ?? "").toLowerCase().includes(normalizedSearch);
             const matchesOrigin = selectedOrigins.length === 0 || selectedOrigins.includes(memory.origin);
 
@@ -98,10 +64,10 @@ const MyMemories = () => {
         return KIND_SECTIONS
             .map((section) => ({
                 ...section,
-                memories: visibleMemories.filter((memory) => memory.kind === section.kind).sort(compareWithinSection),
+                memories: visibleMemories.filter((memory) => memory.kind === section.kind),
             }))
             .filter((section) => section.memories.length > 0);
-    }, [memories, searchText, selectedOrigins]);
+    }, [items, searchText, selectedOrigins]);
 
     const toggleOrigin = (origin) => {
         setSelectedOrigins((currentOrigins) => (
@@ -111,32 +77,27 @@ const MyMemories = () => {
         ));
     };
 
-    const applyLocalChange = (change) => {
-        loadGenerationRef.current += 1;
-        setMemories(change);
-        setLoaded(true);
-    };
-
     const handleCreated = (createdMemory) => {
-        applyLocalChange((currentMemories) => [createdMemory, ...currentMemories]);
+        setItems((currentMemories) => [createdMemory, ...currentMemories]);
     };
 
     const handleChanged = (updatedMemory) => {
-        applyLocalChange((currentMemories) => replaceMemory(currentMemories, updatedMemory));
+        setItems((currentMemories) => replaceMemory(currentMemories, updatedMemory));
     };
 
     const handleDeleted = (memoryId) => {
-        applyLocalChange((currentMemories) => removeMemory(currentMemories, memoryId));
+        setItems((currentMemories) => removeMemory(currentMemories, memoryId));
     };
 
     const handleGone = (memoryId) => {
         handleDeleted(memoryId);
-        void loadMemories();
+        reload();
     };
 
     const handleForgotten = () => {
         setShowForgetDialog(false);
-        applyLocalChange([]);
+        setItems([]);
+        reload();
     };
 
     return (
@@ -154,17 +115,17 @@ const MyMemories = () => {
 
             <AddMemoryForm onCreated={handleCreated}/>
 
-            {loadFailed && (
+            {loadError && (
                 <div className="memory-status-message memory-status-message-error" role="alert">
                     <FiAlertCircle aria-hidden="true"/>
                     {LOAD_FAILED_MESSAGE}
-                    <button type="button" className="memory-button" onClick={() => void loadMemories()}>
+                    <button type="button" className="memory-button" onClick={reload}>
                         Retry
                     </button>
                 </div>
             )}
 
-            {memories.length > 0 && (
+            {items.length > 0 && (
                 <div className="my-memories-filters">
                     <input
                         type="search"
@@ -186,6 +147,17 @@ const MyMemories = () => {
                             {ORIGIN_LABELS[origin]}
                         </button>
                     ))}
+
+                    <select
+                        className="memory-filter-select my-memories-sort"
+                        aria-label="Sort memories"
+                        value={sortOption.value}
+                        onChange={(event) => changeSort(event.target.value)}
+                    >
+                        {SORT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
                 </div>
             )}
 
@@ -207,15 +179,21 @@ const MyMemories = () => {
                 </section>
             ))}
 
-            {loaded && !loadFailed && memories.length === 0 && (
+            {hasMore && <div ref={sentinelRef} className="memory-sentinel" aria-hidden="true"/>}
+
+            <div className="memory-loading-more" role="status" aria-live="polite">
+                {loadingMore ? "Loading more memories..." : ""}
+            </div>
+
+            {loaded && !loadError && items.length === 0 && (
                 <p className="memory-empty-hint">{EMPTY_MESSAGE}</p>
             )}
 
-            {memories.length > 0 && sections.length === 0 && (
+            {items.length > 0 && sections.length === 0 && (
                 <p className="memory-empty-hint">{NO_MATCH_MESSAGE}</p>
             )}
 
-            {memories.length > 0 && (
+            {items.length > 0 && (
                 <div className="my-memories-danger-zone">
                     <button
                         type="button"

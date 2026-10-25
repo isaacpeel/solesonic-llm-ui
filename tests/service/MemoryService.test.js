@@ -24,7 +24,7 @@ vi.mock('../../src/properties/ApplicationProperties', () => ({
     },
 }));
 
-import memoryService, {ADMIN_PAGE_SIZE} from '../../src/service/MemoryService.js';
+import memoryService, {MEMORY_PAGE_SIZE} from '../../src/service/MemoryService.js';
 import apiClient from '../../src/client/ApiClient.js';
 import authService from '../../src/service/AuthService.js';
 
@@ -34,21 +34,42 @@ beforeEach(() => {
 });
 
 describe('MemoryService owner endpoints', () => {
-    it('lists the caller\'s memories by default', async () => {
-        apiClient.get.mockResolvedValue([]);
+    it('pages the caller\'s memories by default', async () => {
+        apiClient.get.mockResolvedValue({content: [], page: {}});
 
         await memoryService.findMemories();
 
-        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/users/user-7/memories');
+        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/users/user-7/memories?page=0&size=50');
+    });
+
+    it('appends repeated status, kind and sort parameters to the caller\'s listing', async () => {
+        apiClient.get.mockResolvedValue({content: [], page: {}});
+
+        await memoryService.findMemories({
+            statuses: ['ACTIVE', 'PENDING'],
+            kinds: ['FACT'],
+            sorts: ['status,asc', 'lastConfirmed,desc'],
+        }, 3, 10);
+
+        const requestedUri = apiClient.get.mock.calls[0][0];
+        const searchParams = new URL(requestedUri).searchParams;
+
+        expect(requestedUri.startsWith('https://api.example.com/users/user-7/memories?')).toBe(true);
+        expect(searchParams.getAll('status')).toEqual(['ACTIVE', 'PENDING']);
+        expect(searchParams.getAll('kind')).toEqual(['FACT']);
+        expect(searchParams.getAll('sort')).toEqual(['status,asc', 'lastConfirmed,desc']);
+        expect(searchParams.get('page')).toBe('3');
+        expect(searchParams.get('size')).toBe('10');
+        expect(searchParams.has('userId')).toBe(false);
     });
 
     it('lets an explicit userId override the caller', async () => {
-        apiClient.get.mockResolvedValue([]);
+        apiClient.get.mockResolvedValue({content: [], page: {}});
 
-        await memoryService.findMemories('user-9');
+        await memoryService.findMemories({}, 0, 50, 'user-9');
 
         expect(authService.getUserId).not.toHaveBeenCalled();
-        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/users/user-9/memories');
+        expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/users/user-9/memories?page=0&size=50');
     });
 
     it('creates a memory with only kind and content', async () => {
@@ -117,7 +138,7 @@ describe('MemoryService admin endpoints', () => {
 
         await memoryService.findAllMemories();
 
-        expect(ADMIN_PAGE_SIZE).toBe(50);
+        expect(MEMORY_PAGE_SIZE).toBe(50);
         expect(apiClient.get).toHaveBeenCalledWith('https://api.example.com/memories?page=0&size=50');
     });
 

@@ -2,7 +2,7 @@ import apiClient from '../client/ApiClient.js';
 import authService from './AuthService.js';
 import config from '../properties/ApplicationProperties';
 
-export const ADMIN_PAGE_SIZE = 50;
+export const MEMORY_PAGE_SIZE = 50;
 
 const userMemoriesUri = async (userId) => {
     const ownerId = userId ?? await authService.getUserId();
@@ -34,8 +34,9 @@ const definedEntries = (changes) => {
 };
 
 const memoryService = {
-    findMemories: async (userId = null) => {
-        return await apiClient.get(await userMemoriesUri(userId));
+    findMemories: async ({statuses, kinds, sorts} = {}, page = 0, size = MEMORY_PAGE_SIZE, userId = null) => {
+        const queryString = pagedQueryString({statuses, kinds, sorts}, page, size);
+        return await apiClient.get(`${await userMemoriesUri(userId)}?${queryString}`);
     },
 
     createMemory: async ({kind, content}, userId = null) => {
@@ -54,11 +55,11 @@ const memoryService = {
         return await apiClient.delete(await userMemoriesUri(userId));
     },
 
-    findAllMemories: async (filters = {}, page = 0, size = ADMIN_PAGE_SIZE) => {
+    findAllMemories: async (filters = {}, page = 0, size = MEMORY_PAGE_SIZE) => {
         return await apiClient.get(`${config.memoriesUri}?${pagedQueryString(filters, page, size)}`);
     },
 
-    findReflections: async ({userId, statuses, sorts} = {}, page = 0, size = ADMIN_PAGE_SIZE) => {
+    findReflections: async ({userId, statuses, sorts} = {}, page = 0, size = MEMORY_PAGE_SIZE) => {
         const queryString = pagedQueryString({userId, statuses, sorts}, page, size);
         return await apiClient.get(`${config.memoriesUri}/reflections?${queryString}`);
     },

@@ -1,4 +1,4 @@
-import {render, screen, waitFor, fireEvent, within} from '@testing-library/react';
+import {render, screen, waitFor, fireEvent, within, act} from '@testing-library/react';
 import {MemoryRouter} from 'react-router';
 import {describe, it, vi, expect, beforeEach} from 'vitest';
 
@@ -15,6 +15,34 @@ vi.mock('../../../src/service/MemoryService.js', () => ({
 }));
 
 import memoryService from '../../../src/service/MemoryService.js';
+
+let liveObservers = new Set();
+
+class FakeIntersectionObserver {
+    constructor(callback) {
+        this.callback = callback;
+    }
+
+    observe() {
+        liveObservers.add(this);
+    }
+
+    unobserve() {
+        liveObservers.delete(this);
+    }
+
+    disconnect() {
+        liveObservers.delete(this);
+    }
+}
+
+vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+
+const scrollToSentinel = async () => {
+    await act(async () => {
+        liveObservers.forEach((observer) => observer.callback([{isIntersecting: true}]));
+    });
+};
 
 const PENDING_HINT = "Learned once. It's used after it comes up in a second conversation.";
 const OWNERSHIP_NOTE = 'Editing makes this memory yours. Deleting the conversations it came from will no longer remove it.';
@@ -33,15 +61,20 @@ const memory = (overrides) => ({
     ...overrides,
 });
 
+const paged = (content, {number = 0, totalPages = 1} = {}) => ({
+    content,
+    page: {size: 50, number, totalElements: content.length, totalPages},
+});
+
 const apiError = (status) => {
     const caughtError = new Error(`${status}: PATCH - /users/user-7/memories/memory-1`);
     caughtError.status = status;
     return caughtError;
 };
 
-function renderMyMemories() {
+function renderMyMemories(search = '') {
     return render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[`/settings/memory/mine${search}`]}>
             <MyMemories/>
         </MemoryRouter>
     );
@@ -55,18 +88,24 @@ const rowContents = (container = document) => Array.from(container.querySelector
 
 const rowFor = (content) => screen.getByText(content).closest('.memory-row');
 
+const lastFilters = () => memoryService.findMemories.mock.calls.at(-1)[0];
+
+beforeEach(() => {
+    liveObservers = new Set();
+});
+
 describe('MyMemories listing', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('renders sections in instruction, preference, fact order with pending after active', async () => {
-        memoryService.findMemories.mockResolvedValue([
+    it('renders sections in instruction, preference, fact order keeping the server order within each', async () => {
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({id: 'memory-1', kind: 'FACT', content: 'Lives in Denver'}),
-            memory({id: 'memory-2', kind: 'PREFERENCE', status: 'PENDING', content: 'Likes jazz', lastConfirmed: '2026-10-18T12:00:00Z'}),
-            memory({id: 'memory-3', kind: 'PREFERENCE', content: 'Prefers tea', lastConfirmed: '2026-10-02T12:00:00Z'}),
+            memory({id: 'memory-3', kind: 'PREFERENCE', content: 'Prefers tea'}),
+            memory({id: 'memory-2', kind: 'PREFERENCE', status: 'PENDING', content: 'Likes jazz'}),
             memory({id: 'memory-4', kind: 'INSTRUCTION', origin: 'AUTHORED', confidence: 1, content: 'Answer briefly'}),
-        ]);
+        ]));
 
         renderMyMemories();
 
@@ -76,19 +115,21 @@ describe('MyMemories listing', () => {
         expect(rowContents(preferencesSection)).toEqual(['Prefers tea', 'Likes jazz']);
     });
 
-    it('orders active rows by most recently confirmed', async () => {
-        memoryService.findMemories.mockResolvedValue([
-            memory({id: 'memory-1', content: 'Older fact', lastConfirmed: '2026-10-01T12:00:00Z'}),
-            memory({id: 'memory-2', content: 'Newer fact', lastConfirmed: '2026-10-15T12:00:00Z'}),
-        ]);
+    it('requests active and pending memories, active first, from the first page', async () => {
+        memoryService.findMemories.mockResolvedValue(paged([]));
 
         renderMyMemories();
 
-        await waitFor(() => expect(rowContents()).toEqual(['Newer fact', 'Older fact']));
+        await waitFor(() => expect(memoryService.findMemories).toHaveBeenCalled());
+
+        expect(memoryService.findMemories).toHaveBeenCalledWith(
+            {statuses: ['ACTIVE', 'PENDING'], sorts: ['status,asc', 'lastConfirmed,desc']},
+            0,
+        );
     });
 
     it('hides a section with no memories', async () => {
-        memoryService.findMemories.mockResolvedValue([memory({kind: 'FACT'})]);
+        memoryService.findMemories.mockResolvedValue(paged([memory({kind: 'FACT'})]));
 
         renderMyMemories();
 
@@ -96,10 +137,10 @@ describe('MyMemories listing', () => {
     });
 
     it('shows the pending badge and hint on a pending memory only', async () => {
-        memoryService.findMemories.mockResolvedValue([
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({id: 'memory-1', status: 'PENDING', content: 'Likes jazz'}),
             memory({id: 'memory-2', content: 'Lives in Denver'}),
-        ]);
+        ]));
 
         renderMyMemories();
 
@@ -111,11 +152,11 @@ describe('MyMemories listing', () => {
     });
 
     it('labels each origin', async () => {
-        memoryService.findMemories.mockResolvedValue([
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({id: 'memory-1', origin: 'INFERRED', content: 'Inferred one'}),
             memory({id: 'memory-2', origin: 'REMEMBERED', confidence: 1, content: 'Remembered one'}),
             memory({id: 'memory-3', origin: 'AUTHORED', confidence: 1, content: 'Authored one'}),
-        ]);
+        ]));
 
         renderMyMemories();
 
@@ -127,10 +168,10 @@ describe('MyMemories listing', () => {
     });
 
     it('shows confidence only for an inferred memory', async () => {
-        memoryService.findMemories.mockResolvedValue([
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({id: 'memory-1', origin: 'INFERRED', confidence: 0.85, content: 'Inferred one'}),
             memory({id: 'memory-2', origin: 'AUTHORED', confidence: 1, content: 'Authored one'}),
-        ]);
+        ]));
 
         renderMyMemories();
 
@@ -141,9 +182,9 @@ describe('MyMemories listing', () => {
     });
 
     it('links each source conversation to its chat', async () => {
-        memoryService.findMemories.mockResolvedValue([
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({chatIds: ['chat-1', 'chat-2']}),
-        ]);
+        ]));
 
         renderMyMemories();
 
@@ -155,7 +196,7 @@ describe('MyMemories listing', () => {
     });
 
     it('shows the empty state when nothing has been learned', async () => {
-        memoryService.findMemories.mockResolvedValue([]);
+        memoryService.findMemories.mockResolvedValue(paged([]));
 
         renderMyMemories();
 
@@ -167,7 +208,7 @@ describe('MyMemories listing', () => {
 
     it('offers a retry after a failed load', async () => {
         memoryService.findMemories.mockRejectedValueOnce(new Error('network down'));
-        memoryService.findMemories.mockResolvedValue([memory()]);
+        memoryService.findMemories.mockResolvedValue(paged([memory()]));
 
         renderMyMemories();
 
@@ -180,13 +221,74 @@ describe('MyMemories listing', () => {
     });
 });
 
+describe('MyMemories paging and sorting', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('loads the next page when the end of the list is reached', async () => {
+        memoryService.findMemories.mockImplementation(async (filters, page) => paged(
+            [memory({id: `memory-${page}`, content: `Memory page ${page}`})],
+            {number: page, totalPages: 2},
+        ));
+
+        renderMyMemories();
+
+        await waitFor(() => expect(rowContents()).toEqual(['Memory page 0']));
+
+        await scrollToSentinel();
+
+        await waitFor(() => expect(rowContents()).toEqual(['Memory page 0', 'Memory page 1']));
+        expect(memoryService.findMemories.mock.calls.at(-1)[1]).toBe(1);
+        expect(document.querySelector('.memory-sentinel')).toBeNull();
+    });
+
+    it('sends the sort chosen in the select and starts paging over', async () => {
+        memoryService.findMemories.mockImplementation(async (filters, page) => {
+            if (filters.sorts[0] === 'confidence,desc') {
+                return paged([memory({id: 'memory-9', content: 'Most confident'})]);
+            }
+
+            return paged(
+                [memory({id: `memory-${page}`, content: `Memory page ${page}`})],
+                {number: page, totalPages: 2},
+            );
+        });
+
+        renderMyMemories();
+
+        await waitFor(() => expect(rowContents()).toEqual(['Memory page 0']));
+
+        await scrollToSentinel();
+
+        await waitFor(() => expect(rowContents()).toEqual(['Memory page 0', 'Memory page 1']));
+
+        fireEvent.change(screen.getByLabelText('Sort memories'), {target: {value: 'confidence'}});
+
+        await waitFor(() => expect(rowContents()).toEqual(['Most confident']));
+        expect(lastFilters().sorts).toEqual(['confidence,desc']);
+        expect(memoryService.findMemories.mock.calls.at(-1)[1]).toBe(0);
+    });
+
+    it('reads its sort from the URL', async () => {
+        memoryService.findMemories.mockResolvedValue(paged([memory()]));
+
+        renderMyMemories('?sort=oldest');
+
+        await waitFor(() => expect(memoryService.findMemories).toHaveBeenCalled());
+
+        expect(lastFilters().sorts).toEqual(['created,asc']);
+        await waitFor(() => expect(screen.getByLabelText('Sort memories').value).toBe('oldest'));
+    });
+});
+
 describe('MyMemories filtering', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        memoryService.findMemories.mockResolvedValue([
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({id: 'memory-1', origin: 'INFERRED', content: 'Lives in Denver'}),
             memory({id: 'memory-2', origin: 'AUTHORED', confidence: 1, content: 'Works on weekends'}),
-        ]);
+        ]));
     });
 
     it('filters by a substring of the content', async () => {
@@ -216,7 +318,7 @@ describe('MyMemories editing', () => {
     });
 
     it('sends only the changed fields and replaces the row with the response', async () => {
-        memoryService.findMemories.mockResolvedValue([memory()]);
+        memoryService.findMemories.mockResolvedValue(paged([memory()]));
         memoryService.updateMemory.mockResolvedValue(memory({
             content: 'Lives in Boulder',
             origin: 'AUTHORED',
@@ -240,7 +342,7 @@ describe('MyMemories editing', () => {
     });
 
     it('moves an edited memory to the section of its new kind', async () => {
-        memoryService.findMemories.mockResolvedValue([memory()]);
+        memoryService.findMemories.mockResolvedValue(paged([memory()]));
         memoryService.updateMemory.mockResolvedValue(memory({kind: 'PREFERENCE', origin: 'AUTHORED', confidence: 1}));
 
         renderMyMemories();
@@ -256,7 +358,7 @@ describe('MyMemories editing', () => {
     });
 
     it('notes the ownership change when editing a learned memory', async () => {
-        memoryService.findMemories.mockResolvedValue([memory({origin: 'REMEMBERED', confidence: 1})]);
+        memoryService.findMemories.mockResolvedValue(paged([memory({origin: 'REMEMBERED', confidence: 1})]));
 
         renderMyMemories();
 
@@ -268,7 +370,7 @@ describe('MyMemories editing', () => {
     });
 
     it('does not note an ownership change on a memory already yours', async () => {
-        memoryService.findMemories.mockResolvedValue([memory({origin: 'AUTHORED', confidence: 1})]);
+        memoryService.findMemories.mockResolvedValue(paged([memory({origin: 'AUTHORED', confidence: 1})]));
 
         renderMyMemories();
 
@@ -280,7 +382,7 @@ describe('MyMemories editing', () => {
     });
 
     it('explains a rejected save without showing the raw error', async () => {
-        memoryService.findMemories.mockResolvedValue([memory()]);
+        memoryService.findMemories.mockResolvedValue(paged([memory()]));
         memoryService.updateMemory.mockRejectedValue(apiError(400));
 
         renderMyMemories();
@@ -298,8 +400,8 @@ describe('MyMemories editing', () => {
     });
 
     it('removes the row when the memory is gone by the time it is saved', async () => {
-        memoryService.findMemories.mockResolvedValueOnce([memory()]);
-        memoryService.findMemories.mockResolvedValue([]);
+        memoryService.findMemories.mockResolvedValueOnce(paged([memory()]));
+        memoryService.findMemories.mockResolvedValue(paged([]));
         memoryService.updateMemory.mockRejectedValue(apiError(404));
 
         renderMyMemories();
@@ -311,17 +413,17 @@ describe('MyMemories editing', () => {
         fireEvent.click(screen.getByRole('button', {name: 'Save'}));
 
         await waitFor(() => expect(rowContents()).toEqual([]));
-        expect(memoryService.findMemories).toHaveBeenCalledTimes(2);
+        await waitFor(() => expect(memoryService.findMemories).toHaveBeenCalledTimes(2));
     });
 });
 
 describe('MyMemories deleting', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        memoryService.findMemories.mockResolvedValue([
+        memoryService.findMemories.mockResolvedValue(paged([
             memory({id: 'memory-1', content: 'Lives in Denver'}),
             memory({id: 'memory-2', content: 'Works on weekends'}),
-        ]);
+        ]));
     });
 
     it('removes the row after a confirmed delete', async () => {
@@ -369,7 +471,7 @@ describe('MyMemories deleting', () => {
 describe('MyMemories adding', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        memoryService.findMemories.mockResolvedValue([]);
+        memoryService.findMemories.mockResolvedValue(paged([]));
     });
 
     it('requires both a kind and content before submitting', async () => {
@@ -401,6 +503,8 @@ describe('MyMemories adding', () => {
 
         const addForm = await screen.findByRole('form', {name: 'Add a memory'});
 
+        await waitFor(() => expect(screen.getByText(/Nothing learned yet/)).toBeDefined());
+
         fireEvent.change(within(addForm).getByLabelText('Kind'), {target: {value: 'PREFERENCE'}});
         fireEvent.change(within(addForm).getByLabelText('Memory'), {target: {value: '  Likes dark mode  '}});
         fireEvent.click(within(addForm).getByRole('button', {name: 'Add memory'}));
@@ -415,7 +519,8 @@ describe('MyMemories adding', () => {
 describe('MyMemories forget everything', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        memoryService.findMemories.mockResolvedValue([memory()]);
+        memoryService.findMemories.mockResolvedValueOnce(paged([memory()]));
+        memoryService.findMemories.mockResolvedValue(paged([]));
         memoryService.deleteAllMemories.mockResolvedValue(null);
     });
 

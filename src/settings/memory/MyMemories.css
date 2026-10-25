@@ -40,6 +40,10 @@
     background-color: rgba(0, 116, 217, 0.1);
 }
 
+.my-memories-sort {
+    margin-left: auto;
+}
+
 .my-memories-section {
     margin-bottom: 22px;
 }
