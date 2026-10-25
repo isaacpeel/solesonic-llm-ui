@@ -171,7 +171,7 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
     );
 };
 
-function ElicitationPrompt({ elicitation, values, onChange, onSubmit, onDismiss, submitting }) {
+function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting }) {
     const containerRef = useRef(null);
     const elicitationId = elicitation?.elicitationId;
 
@@ -204,7 +204,9 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, onDismiss,
         return options?.some((option) => option.value.toLowerCase() === 'cancel');
     });
 
-    const dismissible = isDismissibleElicitation(elicitation);
+    // A dismissible prompt (an A2A agent's) leaves the composer open: typing the move is the way out, so it
+    // gets no button of its own for that.
+    const offersCancel = !hasExplicitCancelOption && !isDismissibleElicitation(elicitation);
     const fieldNames = new Set(nonMetaPropertyEntries.map(([propertyName]) => propertyName));
     const requiredFieldNames = new Set((Array.isArray(schema.required) ? schema.required : []).filter((fieldName) => fieldNames.has(fieldName)));
     const missingRequired = [...requiredFieldNames].filter((fieldName) => isBlank(values[fieldName]));
@@ -368,7 +370,7 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, onDismiss,
                     </div>
                 ))}
             </div>
-            {(!singleActionAutoSubmits || !hasExplicitCancelOption) && (
+            {(!singleActionAutoSubmits || offersCancel) && (
                 <div className="mt-3 flex items-center gap-3">
                     {!singleActionAutoSubmits && (
                         <button
@@ -381,14 +383,14 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, onDismiss,
                         </button>
                     )}
 
-                    {!hasExplicitCancelOption && (
+                    {offersCancel && (
                         <button
                             type="button"
                             className="elicitation-button-secondary"
-                            onClick={() => (dismissible ? onDismiss?.() : onSubmit({ action: 'cancel' }))}
+                            onClick={() => onSubmit({ action: 'cancel' })}
                             disabled={submitting}
                         >
-                            {dismissible ? "I'll type it" : 'Cancel'}
+                            Cancel
                         </button>
                     )}
 

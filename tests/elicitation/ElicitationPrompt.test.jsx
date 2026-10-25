@@ -71,7 +71,7 @@ const MCP_TITLE_PROMPT = {
     },
 };
 
-function ControlledPrompt({elicitation, onSubmit, onDismiss, initialValues = {}}) {
+function ControlledPrompt({elicitation, onSubmit, initialValues = {}}) {
     const [values, setValues] = useState(initialValues);
 
     return (
@@ -80,7 +80,6 @@ function ControlledPrompt({elicitation, onSubmit, onDismiss, initialValues = {}}
             values={values}
             onChange={(fieldName, fieldValue) => setValues((previousValues) => ({...previousValues, [fieldName]: fieldValue}))}
             onSubmit={onSubmit}
-            onDismiss={onDismiss}
             submitting={false}
         />
     );
@@ -88,10 +87,9 @@ function ControlledPrompt({elicitation, onSubmit, onDismiss, initialValues = {}}
 
 function renderPrompt(elicitation, props = {}) {
     const onSubmit = vi.fn();
-    const onDismiss = vi.fn();
-    const renderResult = render(<ControlledPrompt elicitation={elicitation} onSubmit={onSubmit} onDismiss={onDismiss} {...props}/>);
+    const renderResult = render(<ControlledPrompt elicitation={elicitation} onSubmit={onSubmit} {...props}/>);
 
-    return {...renderResult, onSubmit, onDismiss};
+    return {...renderResult, onSubmit};
 }
 
 function submitButton(container) {
@@ -157,24 +155,20 @@ describe('ElicitationPrompt', () => {
         expect(onSubmit).toHaveBeenCalledTimes(1);
     });
 
-    it("offers I'll type it on a dismissible prompt and dismisses instead of cancelling", () => {
-        const {onSubmit, onDismiss} = renderPrompt(BUZZ_IN);
+    it('offers no way out but its own options on a dismissible prompt: typing the move is the way out', () => {
+        const {container} = renderPrompt(PLAY_OR_PASS);
 
         expect(screen.queryByText('Cancel')).toBeNull();
-        fireEvent.click(screen.getByText("I'll type it"));
-
-        expect(onDismiss).toHaveBeenCalledTimes(1);
-        expect(onSubmit).not.toHaveBeenCalled();
+        expect(screen.queryByText("I'll type it")).toBeNull();
+        expect([...container.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Play', 'Pass']);
     });
 
     it('still offers Cancel on an MCP prompt', () => {
-        const {onSubmit, onDismiss} = renderPrompt(MCP_TITLE_PROMPT);
+        const {onSubmit} = renderPrompt(MCP_TITLE_PROMPT);
 
-        expect(screen.queryByText("I'll type it")).toBeNull();
         fireEvent.click(screen.getByText('Cancel'));
 
         expect(onSubmit).toHaveBeenCalledWith({action: 'cancel'});
-        expect(onDismiss).not.toHaveBeenCalled();
     });
 
     it('renders the Big Money pick as a dropdown', () => {

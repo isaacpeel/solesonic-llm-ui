@@ -173,10 +173,6 @@ function ChatScreen() {
         return handleElicitationSubmit(overrideFields);
     };
 
-    const handlePromptDismiss = async () => {
-        focusComposerWhenIdleRef.current = await dismissElicitation();
-    };
-
     const trayStateClassName = attachmentTray.trayEntries.length > 0
         ? (isCaptionRowOpen ? ' chat-app--caption-open' : ' chat-app--tray-open')
         : '';
@@ -222,7 +218,6 @@ function ChatScreen() {
                         values={elicitationValues}
                         onChange={handleElicitationChange}
                         onSubmit={handlePromptSubmit}
-                        onDismiss={handlePromptDismiss}
                         submitting={elicitationSubmitting}
                     />
                 )}

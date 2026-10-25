@@ -81,7 +81,6 @@ function ControlledElicitationPrompt({elicitation, initialValues, submitting}) {
             values={values}
             onChange={handleChange}
             onSubmit={() => {}}
-            onDismiss={() => {}}
             submitting={submitting}
         />
     );

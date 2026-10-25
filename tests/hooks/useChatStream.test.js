@@ -2105,6 +2105,15 @@ describe('typing while a dismissible prompt is open', () => {
     beforeEach(() => {
         useSharedData.mockReturnValue({chatInputRef: {current: {style: {height: '20px'}, focus: vi.fn()}}});
 
+        /* Earlier blocks leave implementations behind that clearAllMocks does not undo. */
+        chatService.chatStream.mockReset().mockResolvedValue(undefined);
+        chatService.chatStreamResume.mockReset().mockResolvedValue('unavailable');
+        chatService.findChatDetails.mockReset().mockResolvedValue({chatMessages: []});
+        streamService.isTransientStreamDisconnect.mockReset().mockReturnValue(false);
+        isPageHidden.mockReset().mockReturnValue(false);
+        observePageHidden.mockReset().mockReturnValue(() => {});
+        observePageResumed.mockReset().mockReturnValue(() => {});
+
         options = {
             chatId: 'chat-1',
             chatHistory: [{type: 'USER', text: 'new game Alex vs Sam', _key: 'user-1'}],
