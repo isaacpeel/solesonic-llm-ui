@@ -14,6 +14,10 @@ function generateToolMessageId() {
 
 const DEFAULT_CONFIRMATION_ACTIONS = ['accept', 'cancel', 'decline'];
 
+export const TYPED_INSTEAD_RESPONSE = 'Typed instead';
+
+const DISMISSIBLE_ELICITATION_META_KEY = 'solesonic/elicitation';
+
 const ELICITATION_ACTION_ALIASES = new Map([
     ['accept', 'accept'],
     ['yes', 'accept'],
@@ -57,6 +61,31 @@ export function resolveElicitationAction(fields) {
     }
 
     return 'accept';
+}
+
+/*
+ * A prompt that only offers a shortcut for something the user could type. It opts in through
+ * `_meta`, so typing in the composer declines it instead of being locked out by it.
+ */
+export function isDismissibleElicitation(elicitation) {
+    return !!elicitation?._meta?.[DISMISSIBLE_ELICITATION_META_KEY];
+}
+
+function buildToolMessage(elicitationId, content) {
+    return {
+        id: generateToolMessageId(),
+        role: 'tool',
+        toolCallId: elicitationId,
+        content: JSON.stringify(content),
+    };
+}
+
+function stopStreamingMessage(message) {
+    if (message.type !== AI || !message.isStreaming) {
+        return message;
+    }
+
+    return {...message, isStreaming: false, hasSeededNotification: false};
 }
 
 const elicitationService = {
@@ -200,12 +229,7 @@ const elicitationService = {
         const chatId = activeElicitation.chatId;
 
         try {
-            const toolMessage = {
-                id: generateToolMessageId(),
-                role: 'tool',
-                toolCallId: elicitationId,
-                content: JSON.stringify({...fieldsToSend, action: resolveElicitationAction(fieldsToSend)}),
-            };
+            const toolMessage = buildToolMessage(elicitationId, {...fieldsToSend, action: resolveElicitationAction(fieldsToSend)});
 
             await streamService.chatStreamElicitationResponse(toolMessage, chatId, elicitationId, {
                 onChunk: handleStreamChunk,
@@ -215,6 +239,44 @@ const elicitationService = {
         }
 
         setElicitationSubmitting(false);
+    },
+
+    /*
+     * No AI placeholder follows: the API ends the run on a decline, so nothing streams after it.
+     * On failure the prompt comes back, since the run is still parked on it.
+     */
+    dismissElicitation: async ({activeElicitation, setChatHistory, setActiveElicitation, appendErrorMessage}) => {
+        if (!activeElicitation) {
+            return false;
+        }
+
+        const resolvedElicitationMessage = {
+            type: SYSTEM,
+            text: activeElicitation.message,
+            elicitationResponse: TYPED_INSTEAD_RESPONSE,
+            _key: generateMessageKey('elicitation'),
+        };
+
+        setActiveElicitation(null);
+        setChatHistory((previousHistory) => [
+            ...previousHistory.filter((message) => !message.ephemeral).map(stopStreamingMessage),
+            resolvedElicitationMessage,
+        ]);
+
+        const {elicitationId, chatId} = activeElicitation;
+
+        try {
+            await streamService.chatStreamElicitationResponse(buildToolMessage(elicitationId, {action: 'decline'}), chatId, elicitationId);
+
+            return true;
+        } catch (error) {
+            console.error('[ElicitationService] Failed to decline the elicitation:', error);
+            setChatHistory((previousHistory) => previousHistory.filter((message) => message._key !== resolvedElicitationMessage._key));
+            setActiveElicitation(activeElicitation);
+            appendErrorMessage('Your message could not be sent. Please try again.');
+
+            return false;
+        }
     },
 };
 

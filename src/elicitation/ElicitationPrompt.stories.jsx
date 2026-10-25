@@ -81,10 +81,127 @@ function ControlledElicitationPrompt({elicitation, initialValues, submitting}) {
             values={values}
             onChange={handleChange}
             onSubmit={() => {}}
+            onDismiss={() => {}}
             submitting={submitting}
         />
     );
 }
+
+const FEUD_META = {'solesonic/elicitation': 'feud'};
+
+const FEUD_PLAY_OR_PASS = {
+    elicitationId: 'elicit-feud-play-or-pass',
+    chatId: 'chat-1',
+    mode: 'form',
+    message: 'Alex, play or pass?',
+    requestedSchema: {
+        type: 'object',
+        required: ['choice'],
+        properties: {
+            choice: {type: 'string', title: 'Play or pass', oneOf: [{const: 'play', title: 'Play'}, {const: 'pass', title: 'Pass'}]},
+        },
+    },
+    _meta: {...FEUD_META, 'feud/prompt': 'play_or_pass'},
+};
+
+const FEUD_BUZZ_IN = {
+    elicitationId: 'elicit-feud-buzz-in',
+    chatId: 'chat-1',
+    mode: 'form',
+    message: 'Face-off: who buzzed in first?',
+    requestedSchema: {
+        type: 'object',
+        required: ['speaker', 'answer'],
+        properties: {
+            speaker: {type: 'string', title: 'Who buzzed in', oneOf: [{const: 'Alex', title: 'Alex'}, {const: 'Sam', title: 'Sam'}]},
+            answer: {type: 'string', title: 'Answer', maxLength: 80},
+        },
+    },
+    _meta: {...FEUD_META, 'feud/prompt': 'buzz_in'},
+};
+
+const FEUD_FAST_MONEY_READY = {
+    elicitationId: 'elicit-feud-fast-money-ready',
+    chatId: 'chat-1',
+    mode: 'form',
+    message: 'Jo, ready for Fast Money?',
+    requestedSchema: {
+        type: 'object',
+        required: ['choice'],
+        properties: {
+            choice: {type: 'string', title: 'Ready', oneOf: [{const: 'ready', title: "I'm ready: start the clock"}]},
+        },
+    },
+    _meta: {...FEUD_META, 'feud/prompt': 'fast_money_ready'},
+};
+
+const FEUD_BIG_MONEY_PICK = {
+    elicitationId: 'elicit-feud-big-money-pick',
+    chatId: 'chat-1',
+    mode: 'form',
+    message: 'Kim, which is in the top 6?',
+    requestedSchema: {
+        type: 'object',
+        required: ['pick'],
+        properties: {
+            pick: {
+                type: 'string',
+                title: 'Your pick',
+                oneOf: [
+                    {const: '1', title: 'Sunscreen'},
+                    {const: '2', title: 'Stapler'},
+                    {const: '4', title: 'Towel'},
+                    {const: '5', title: 'Mittens'},
+                ],
+            },
+        },
+    },
+    _meta: {...FEUD_META, 'feud/prompt': 'big_money_pick'},
+};
+
+const FEUD_SETUP = {
+    elicitationId: 'elicit-feud-setup',
+    chatId: 'chat-1',
+    mode: 'form',
+    message: "Who's playing?",
+    requestedSchema: {
+        type: 'object',
+        required: ['kind', 'players'],
+        properties: {
+            kind: {
+                type: 'string',
+                title: 'Game',
+                oneOf: [
+                    {const: 'show', title: 'The whole show'},
+                    {const: 'main game', title: 'Main Game'},
+                    {const: 'fast money', title: 'Fast Money (2 players)'},
+                    {const: 'big money', title: 'Big Money Challenge (1 player)'},
+                ],
+            },
+            players: {type: 'string', title: 'Players', description: 'Alex, Jo vs Sam, Kim', maxLength: 400},
+        },
+    },
+    _meta: {...FEUD_META, 'feud/prompt': 'setup'},
+};
+
+const FEUD_REMATCH = {
+    elicitationId: 'elicit-feud-rematch',
+    chatId: 'chat-1',
+    mode: 'form',
+    message: "That's the show! Play again?",
+    requestedSchema: {
+        type: 'object',
+        required: ['choice'],
+        properties: {
+            choice: {
+                type: 'string',
+                title: 'Play again',
+                oneOf: [{const: 'new main game Alex vs Sam', title: 'Rematch'}, {const: 'new players', title: 'New players'}],
+            },
+        },
+    },
+    _meta: {...FEUD_META, 'feud/prompt': 'rematch'},
+};
 
 /*
  * Reproduces the real scroll container from ChatScreen.jsx — `.chat-app` > `.chat-content`
@@ -201,4 +318,45 @@ export const InProgressChat = {
         const trigger = await canvas.findByRole('button', {name: /select an option/i});
         await userEvent.click(trigger);
     },
+};
+
+export const FeudPlayOrPass = {
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_PLAY_OR_PASS} initialValues={{}} submitting={false}/>,
+};
+
+export const FeudBuzzIn = {
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_BUZZ_IN} initialValues={{}} submitting={false}/>,
+};
+
+export const FeudBuzzInFilled = {
+    render: () => (
+        <ControlledElicitationPrompt
+            elicitation={FEUD_BUZZ_IN}
+            initialValues={{speaker: 'Sam', answer: 'toothbrush'}}
+            submitting={false}
+        />
+    ),
+};
+
+export const FeudFastMoneyReady = {
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_FAST_MONEY_READY} initialValues={{}} submitting={false}/>,
+};
+
+export const FeudBigMoneyPick = {
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_BIG_MONEY_PICK} initialValues={{}} submitting={false}/>,
+};
+
+export const FeudBigMoneyPickMobile = {
+    globals: {
+        viewport: {value: 'iphone6', isRotated: false},
+    },
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_BIG_MONEY_PICK} initialValues={{}} submitting={false}/>,
+};
+
+export const FeudSetup = {
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_SETUP} initialValues={{}} submitting={false}/>,
+};
+
+export const FeudRematch = {
+    render: () => <ControlledElicitationPrompt elicitation={FEUD_REMATCH} initialValues={{}} submitting={false}/>,
 };

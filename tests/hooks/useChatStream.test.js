@@ -2078,3 +2078,198 @@ describe('attaching to a turn already in flight', () => {
         expect(activeTurnRegistry.read('chat-1')).toBeNull();
     });
 });
+
+/*
+ * A feud prompt keeps the run open, but the player may type the answer instead. The typed text
+ * must never go into the open run: the prompt is declined, the run is allowed to end, and only
+ * then does the text go out as a turn of its own.
+ */
+describe('typing while a dismissible prompt is open', () => {
+    const FEUD_PROMPT = {
+        elicitationId: 'elicit-buzz',
+        chatId: 'chat-1',
+        message: 'Face-off: who buzzed in first?',
+        requestedSchema: {type: 'object', properties: {answer: {type: 'string'}}},
+        _meta: {'solesonic/elicitation': 'feud', 'feud/prompt': 'buzz_in'},
+    };
+
+    const MCP_PROMPT = {
+        elicitationId: 'elicit-mcp',
+        chatId: 'chat-1',
+        message: 'Confirm?',
+        requestedSchema: {properties: {}},
+    };
+
+    let options;
+
+    beforeEach(() => {
+        useSharedData.mockReturnValue({chatInputRef: {current: {style: {height: '20px'}, focus: vi.fn()}}});
+
+        options = {
+            chatId: 'chat-1',
+            chatHistory: [{type: 'USER', text: 'new game Alex vs Sam', _key: 'user-1'}],
+            setChatHistory: vi.fn(),
+            appendToLastAIMessage: vi.fn(),
+            appendNotificationToLastAIMessage: vi.fn(),
+            updateSeededNotificationText: vi.fn(),
+            stopStreamingLastAIMessage: vi.fn(),
+            finalizeLastAIMessage: vi.fn(),
+            ensureChatIdFromResponse: vi.fn(),
+            appendErrorMessage: vi.fn(),
+            activeElicitation: null,
+            setActiveElicitation: vi.fn(),
+            setElicitationSubmitting: vi.fn(),
+            setElicitationValues: vi.fn(),
+            getSelectedCommandRef: {current: null},
+        };
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.clearAllMocks();
+    });
+
+    function holdRunOpen() {
+        const run = {onChunk: null, finish: null};
+
+        chatService.chatStream.mockImplementationOnce((payload, chatId, chunkOptions) => {
+            run.onChunk = chunkOptions.onChunk;
+
+            return new Promise((resolve) => {
+                run.finish = resolve;
+            });
+        });
+
+        return run;
+    }
+
+    async function startTurnThatRaisesPrompt(elicitation) {
+        const run = holdRunOpen();
+        const hook = renderHook((hookOptions) => useChatStream(hookOptions), {initialProps: options});
+
+        act(() => {
+            hook.result.current.setInputValue('new game Alex vs Sam');
+        });
+
+        act(() => {
+            void hook.result.current.handleSubmit();
+        });
+
+        await waitFor(() => expect(run.onChunk).not.toBeNull());
+
+        act(() => {
+            run.onChunk(runStartedFrame());
+        });
+
+        options = {...options, activeElicitation: elicitation};
+        hook.rerender(options);
+
+        act(() => {
+            hook.result.current.setInputValue('Sam: toothbrush');
+        });
+
+        return {...hook, run};
+    }
+
+    it('declines the prompt, waits for the run to end, then sends the text as one new turn', async () => {
+        const {result, rerender, run} = await startTurnThatRaisesPrompt(FEUD_PROMPT);
+        const dismissElicitation = vi.fn().mockResolvedValue(true);
+
+        let typedSubmit = null;
+        act(() => {
+            typedSubmit = result.current.handleSubmit({dismissElicitation});
+        });
+
+        await waitFor(() => expect(dismissElicitation).toHaveBeenCalledTimes(1));
+        await act(async () => {
+            await Promise.resolve();
+        });
+        expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+
+        const typedInsteadBubble = {type: 'SYSTEM', text: FEUD_PROMPT.message, elicitationResponse: 'Typed instead', _key: 'elicitation-1'};
+        options = {...options, activeElicitation: null, chatHistory: [...options.chatHistory, typedInsteadBubble]};
+        rerender(options);
+
+        let typedSubmitResult = null;
+        await act(async () => {
+            run.onChunk(runFinishedFrame());
+            run.finish();
+        });
+        await act(async () => {
+            typedSubmitResult = await typedSubmit;
+        });
+
+        expect(typedSubmitResult).toBe(true);
+        expect(chatService.chatStream).toHaveBeenCalledTimes(2);
+        expect(chatService.chatStream.mock.calls[1][0]).toEqual({chatMessage: 'Sam: toothbrush'});
+
+        const historyForTypedTurn = options.setChatHistory.mock.calls.at(-1)[0];
+        expect(historyForTypedTurn.map((message) => message._key)).toEqual(['user-1', 'elicitation-1', expect.any(String), expect.any(String)]);
+        expect(historyForTypedTurn.at(-2)).toMatchObject({type: 'USER', text: 'Sam: toothbrush'});
+    });
+
+    it('still blocks typing into an open run when the prompt is not dismissible', async () => {
+        const {result, run} = await startTurnThatRaisesPrompt(MCP_PROMPT);
+        const dismissElicitation = vi.fn().mockResolvedValue(true);
+
+        let submitted = null;
+        await act(async () => {
+            submitted = await result.current.handleSubmit({dismissElicitation});
+        });
+
+        expect(submitted).toBe(false);
+        expect(dismissElicitation).not.toHaveBeenCalled();
+        expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            run.onChunk(runFinishedFrame());
+            run.finish();
+        });
+    });
+
+    it('sends nothing and keeps the text when the run does not end after the decline', async () => {
+        const {result, run} = await startTurnThatRaisesPrompt(FEUD_PROMPT);
+        vi.useFakeTimers({shouldAdvanceTime: true});
+        const dismissElicitation = vi.fn().mockResolvedValue(true);
+
+        let typedSubmit = null;
+        act(() => {
+            typedSubmit = result.current.handleSubmit({dismissElicitation});
+        });
+
+        let typedSubmitResult = null;
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10000);
+            typedSubmitResult = await typedSubmit;
+        });
+
+        expect(typedSubmitResult).toBe(false);
+        expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+        expect(options.appendErrorMessage).toHaveBeenCalledWith('Your message could not be sent. Your text has been restored — please try again.');
+        expect(result.current.inputValue).toBe('Sam: toothbrush');
+
+        await act(async () => {
+            run.onChunk(runFinishedFrame());
+            run.finish();
+        });
+    });
+
+    it('sends nothing when the decline itself fails', async () => {
+        const {result, run} = await startTurnThatRaisesPrompt(FEUD_PROMPT);
+        const dismissElicitation = vi.fn().mockResolvedValue(false);
+
+        let submitted = null;
+        await act(async () => {
+            submitted = await result.current.handleSubmit({dismissElicitation});
+        });
+
+        expect(submitted).toBe(false);
+        expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+        expect(result.current.inputValue).toBe('Sam: toothbrush');
+
+        await act(async () => {
+            run.onChunk(runFinishedFrame());
+            run.finish();
+        });
+    });
+});

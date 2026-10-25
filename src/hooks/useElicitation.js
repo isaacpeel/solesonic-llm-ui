@@ -74,6 +74,17 @@ function useElicitation({
         });
     };
 
+    const dismissElicitation = async () => {
+        carriedNotificationsRef.current = [];
+
+        return await elicitationService.dismissElicitation({
+            activeElicitation,
+            setChatHistory,
+            setActiveElicitation,
+            appendErrorMessage,
+        });
+    };
+
     return {
         activeElicitation,
         setActiveElicitation,
@@ -83,6 +94,7 @@ function useElicitation({
         setElicitationSubmitting,
         handleElicitationChange,
         handleElicitationSubmit,
+        dismissElicitation,
     };
 }
 

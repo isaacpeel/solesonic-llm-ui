@@ -135,6 +135,10 @@
     outline-offset: 2px;
 }
 
+.composer-stop-button + .composer-send-button {
+    margin-left: 6px;
+}
+
 .dots-loader {
     display: flex;
     gap: 5px;

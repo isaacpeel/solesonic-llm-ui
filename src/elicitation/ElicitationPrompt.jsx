@@ -1,5 +1,5 @@
 import "./ElicitationPrompt.css";
-import elicitationService from '../service/ElicitationService.js';
+import elicitationService, {isDismissibleElicitation} from '../service/ElicitationService.js';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -16,6 +16,36 @@ const SpinnerLabel = () => (
 const { getEnumOptions, getMultiEnumOptions } = elicitationService;
 
 const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPROVE']);
+
+const FOCUSABLE_CONTROL_SELECTOR = 'button:not(:disabled), input:not(:disabled)';
+
+function isBlank(fieldValue) {
+    if (fieldValue === undefined || fieldValue === null) {
+        return true;
+    }
+
+    if (typeof fieldValue === 'string') {
+        return fieldValue.trim().length === 0;
+    }
+
+    if (typeof fieldValue === 'number') {
+        return Number.isNaN(fieldValue);
+    }
+
+    if (Array.isArray(fieldValue)) {
+        return fieldValue.length === 0;
+    }
+
+    return false;
+}
+
+function rendersTextInput(propertyDef) {
+    if (getEnumOptions(propertyDef)) {
+        return false;
+    }
+
+    return !(propertyDef?.type === 'array' && getMultiEnumOptions(propertyDef));
+}
 
 const Dropdown = ({ options, value, onChange, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -141,7 +171,18 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
     );
 };
 
-function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting }) {
+function ElicitationPrompt({ elicitation, values, onChange, onSubmit, onDismiss, submitting }) {
+    const containerRef = useRef(null);
+    const elicitationId = elicitation?.elicitationId;
+
+    useEffect(() => {
+        if (!elicitationId) {
+            return;
+        }
+
+        containerRef.current?.querySelector(FOCUSABLE_CONTROL_SELECTOR)?.focus();
+    }, [elicitationId]);
+
     if (!elicitation) {
         return null;
     }
@@ -162,6 +203,28 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
         const options = getEnumOptions(propertyDef);
         return options?.some((option) => option.value.toLowerCase() === 'cancel');
     });
+
+    const dismissible = isDismissibleElicitation(elicitation);
+    const fieldNames = new Set(nonMetaPropertyEntries.map(([propertyName]) => propertyName));
+    const requiredFieldNames = new Set((Array.isArray(schema.required) ? schema.required : []).filter((fieldName) => fieldNames.has(fieldName)));
+    const missingRequired = [...requiredFieldNames].filter((fieldName) => isBlank(values[fieldName]));
+    const canSubmitForm = !submitting && missingRequired.length === 0;
+    const lastTextFieldName = nonMetaPropertyEntries
+        .filter(([, propertyDef]) => rendersTextInput(propertyDef))
+        .map(([propertyName]) => propertyName)
+        .at(-1);
+
+    const submitOnEnter = (propertyName) => (event) => {
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing || propertyName !== lastTextFieldName || singleActionAutoSubmits) {
+            return;
+        }
+
+        event.preventDefault();
+
+        if (canSubmitForm) {
+            onSubmit();
+        }
+    };
 
     const fieldControl = (propertyName, propertyDef) => {
         const currentValue = values[propertyName] ?? '';
@@ -187,22 +250,28 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
 
             return (
                 <div className="elicitation-boolean-container">
-                    {enumOptions.map((option) => (
-                        <button
-                            key={option.value}
-                            type="button"
-                            className={option.value === primaryValue ? 'elicitation-button-primary' : 'elicitation-button-secondary'}
-                            disabled={submitting || isReadOnlyField}
-                            onClick={() => {
-                                onChange(propertyName, option.value);
-                                if (isSingleActionField) {
-                                    onSubmit({ [propertyName]: option.value });
+                    {enumOptions.map((option) => {
+                        const isSelected = !isSingleActionField && option.value === currentValue;
+                        const variantClassName = option.value === primaryValue ? 'elicitation-button-primary' : 'elicitation-button-secondary';
+
+                        return (
+                            <button
+                                key={option.value}
+                                type="button"
+                                className={isSelected ? `${variantClassName} elicitation-button-selected` : variantClassName}
+                                aria-pressed={isSingleActionField ? undefined : isSelected}
+                                disabled={submitting || isReadOnlyField}
+                                onClick={() => {
+                                    onChange(propertyName, option.value);
+                                    if (isSingleActionField) {
+                                        onSubmit({ [propertyName]: option.value });
                                     }
-                            }}
-                        >
-                            {option.label}
-                        </button>
-                    ))}
+                                }}
+                            >
+                                {option.label}
+                            </button>
+                        );
+                    })}
                     {submitting && isSingleActionField && <SpinnerLabel />}
                 </div>
             );
@@ -255,6 +324,7 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                     max={propertyDef.maximum ?? undefined}
                     step={propertyDef.type === 'integer' ? 1 : 'any'}
                     onChange={(event) => onChange(propertyName, event.target.valueAsNumber)}
+                    onKeyDown={submitOnEnter(propertyName)}
                     disabled={submitting || isReadOnlyField}
                 />
             );
@@ -274,19 +344,25 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                 minLength={propertyDef?.minLength ?? undefined}
                 maxLength={propertyDef?.maxLength ?? undefined}
                 onChange={(event) => onChange(propertyName, event.target.value)}
+                onKeyDown={submitOnEnter(propertyName)}
                 disabled={submitting || isReadOnlyField}
             />
         );
     };
 
     return (
-        <div className="elicitation-container">
+        <div className="elicitation-container" ref={containerRef}>
             <div className="elicitation-container-title">{elicitation.message}</div>
             <div className="space-y-3">
                 {nonMetaPropertyEntries.map(([propertyName, propertyDef]) => (
                     <div key={propertyName}>
                         {propertyDef.title && (
-                            <label className="block text-xs font-medium text-slate-300 mb-1">{propertyDef.title}</label>
+                            <label className="block text-xs font-medium text-slate-300 mb-1">
+                                {propertyDef.title}
+                                {requiredFieldNames.has(propertyName) && !singleActionAutoSubmits && (
+                                    <span className="elicitation-required-marker" aria-hidden="true"> *</span>
+                                )}
+                            </label>
                         )}
                         {fieldControl(propertyName, propertyDef)}
                     </div>
@@ -299,7 +375,7 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                             type="button"
                             className="elicitation-button-primary"
                             onClick={() => onSubmit()}
-                            disabled={submitting}
+                            disabled={!canSubmitForm}
                         >
                             Submit
                         </button>
@@ -309,10 +385,10 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                         <button
                             type="button"
                             className="elicitation-button-secondary"
-                            onClick={() => onSubmit({ action: 'cancel' })}
+                            onClick={() => (dismissible ? onDismiss?.() : onSubmit({ action: 'cancel' }))}
                             disabled={submitting}
                         >
-                            Cancel
+                            {dismissible ? "I'll type it" : 'Cancel'}
                         </button>
                     )}
 

@@ -23,6 +23,7 @@ import useChatModel from '../hooks/useChatModel.js';
 import useAttachmentTray from '../hooks/useAttachmentTray.js';
 import useScrollToBottom from '../hooks/useScrollToBottom.js';
 import useKeyboardInset from '../hooks/useKeyboardInset.js';
+import {isDismissibleElicitation} from '../service/ElicitationService.js';
 
 
 function ChatScreen() {
@@ -117,13 +118,6 @@ function ChatScreen() {
         getMessageTextRef,
     } = chatTurn;
 
-    const handleSubmit = () => chatTurn.handleSubmit({
-        attachmentTray,
-        pendingModel: chatModel.pendingModel,
-        rejectPendingModel: chatModel.rejectPendingModel,
-        clearModelNotice: chatModel.clearModelNotice,
-    });
-
     const composerRef = useRef(null);
     const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
     const keyboardInset = useKeyboardInset();
@@ -140,7 +134,7 @@ function ChatScreen() {
     getMessageTextRef.current = () => inputValue.trim();
     chatSwitchResetRef.current = handleDismiss;
 
-    const {handleElicitationChange, handleElicitationSubmit} = useElicitation({
+    const {handleElicitationChange, handleElicitationSubmit, dismissElicitation} = useElicitation({
         chatHistory,
         setChatHistory,
         handleStreamChunk,
@@ -152,6 +146,36 @@ function ChatScreen() {
         setElicitationSubmitting,
         appendErrorMessage,
     });
+
+    const handleSubmit = () => chatTurn.handleSubmit({
+        attachmentTray,
+        pendingModel: chatModel.pendingModel,
+        rejectPendingModel: chatModel.rejectPendingModel,
+        clearModelNotice: chatModel.clearModelNotice,
+        dismissElicitation,
+    });
+
+    /* The composer is disabled until the run ends, so focus can only move there once it does. */
+    const focusComposerWhenIdleRef = useRef(false);
+
+    useEffect(() => {
+        if (loading || !focusComposerWhenIdleRef.current) {
+            return;
+        }
+
+        focusComposerWhenIdleRef.current = false;
+        chatInputRef.current?.focus();
+    }, [loading, chatInputRef]);
+
+    const handlePromptSubmit = (overrideFields) => {
+        focusComposerWhenIdleRef.current = true;
+
+        return handleElicitationSubmit(overrideFields);
+    };
+
+    const handlePromptDismiss = async () => {
+        focusComposerWhenIdleRef.current = await dismissElicitation();
+    };
 
     const trayStateClassName = attachmentTray.trayEntries.length > 0
         ? (isCaptionRowOpen ? ' chat-app--caption-open' : ' chat-app--tray-open')
@@ -197,13 +221,15 @@ function ChatScreen() {
                         elicitation={activeElicitation}
                         values={elicitationValues}
                         onChange={handleElicitationChange}
-                        onSubmit={handleElicitationSubmit}
+                        onSubmit={handlePromptSubmit}
+                        onDismiss={handlePromptDismiss}
                         submitting={elicitationSubmitting}
                     />
                 )}
 
                 <ChatInput
                     loading={loading}
+                    promptOpen={isDismissibleElicitation(activeElicitation)}
                     streamActive={streamActive}
                     onStopChat={stopChat}
                     inputValue={inputValue}

@@ -198,3 +198,49 @@ describe('ChatInput model picker', () => {
         expect(document.activeElement).toBe(container.querySelector('.chat-text-input'));
     });
 });
+
+describe('ChatInput while a prompt is open', () => {
+    it('keeps the textarea and Send usable during the turn, with attachments still locked', () => {
+        const {container} = renderChatInput({loading: true, streamActive: true, promptOpen: true, inputValue: 'Sam: toothbrush'});
+
+        const textarea = container.querySelector('.chat-text-input');
+        expect(textarea.disabled).toBe(false);
+        expect(textarea.getAttribute('placeholder')).toBe('Or type your answer…');
+        expect(container.querySelector('.composer-send-button').disabled).toBe(false);
+        expect(container.querySelector('.composer-stop-button')).not.toBeNull();
+        expect(container.querySelector('.composer-attach-button').disabled).toBe(true);
+    });
+
+    it('sends the typed answer on Enter', () => {
+        const handleSubmit = vi.fn().mockResolvedValue(true);
+        const {container} = renderChatInput({loading: true, streamActive: true, promptOpen: true, inputValue: 'Sam: toothbrush', handleSubmit});
+
+        fireEvent.keyDown(container.querySelector('.chat-text-input'), {key: 'Enter'});
+
+        expect(handleSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not offer slash commands while the turn is running', () => {
+        const onCommandSelect = vi.fn();
+        const {container} = renderChatInput({
+            loading: true,
+            promptOpen: true,
+            inputValue: '/sum',
+            commandCandidates: [summarizeCommand],
+            onCommandSelect,
+        });
+
+        fireEvent.keyDown(container.querySelector('.chat-text-input'), {key: 'Tab'});
+
+        expect(onCommandSelect).not.toHaveBeenCalled();
+        expect(container.querySelector('.slash-command-list')).toBeNull();
+    });
+
+    it('locks everything while loading without a prompt, as before', () => {
+        const {container} = renderChatInput({loading: true, streamActive: true, inputValue: 'hello'});
+
+        expect(container.querySelector('.chat-text-input').disabled).toBe(true);
+        expect(container.querySelector('.composer-send-button')).toBeNull();
+        expect(container.querySelector('.composer-attach-button').disabled).toBe(true);
+    });
+});

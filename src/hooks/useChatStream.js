@@ -9,6 +9,7 @@ import chatService, {
     findRunStartedUserMessageId,
 } from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
+import {isDismissibleElicitation} from '../service/ElicitationService.js';
 import {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatModelService.js';
 import {ApiError} from '../client/ApiClient.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
@@ -27,6 +28,9 @@ const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the model may be warming up
 
 /* The server only sends a push notification when no stream is open, so a hidden page lets go of its stream. */
 const BACKGROUND_STREAM_RELEASE_DELAY_MILLISECONDS = 5000;
+
+/* A declined prompt ends its run promptly; one that has not ended by now is not going to. */
+const DECLINED_RUN_SETTLE_TIMEOUT_MILLISECONDS = 10000;
 
 function isRejectedBeforeRunStarted(caughtError) {
     return caughtError instanceof ApiError
@@ -129,6 +133,54 @@ function useChatStream({
 
         recoveringRef.current = recovering;
     }, [recovering]);
+
+    /*
+     * A turn sent after awaiting another one must build on the transcript as it is now, not as
+     * it was when the user pressed Enter.
+     */
+    const chatHistoryRef = useRef(chatHistory);
+
+    useEffect(() => {
+        chatHistoryRef.current = chatHistory;
+    }, [chatHistory]);
+
+    const turnInProgress = loading || recovering;
+    const turnInProgressRef = useRef(turnInProgress);
+    const turnIdleWaitersRef = useRef([]);
+
+    useEffect(() => {
+        turnInProgressRef.current = turnInProgress;
+
+        if (turnInProgress) {
+            return;
+        }
+
+        const turnIdleWaiters = turnIdleWaitersRef.current;
+        turnIdleWaitersRef.current = [];
+        turnIdleWaiters.forEach((resolveWaiter) => resolveWaiter());
+    }, [turnInProgress]);
+
+    /* Resolves true once no turn is running, or false if one is still running after the timeout. */
+    const waitForTurnIdle = (timeoutMilliseconds) => new Promise((resolve) => {
+        if (!turnInProgressRef.current) {
+            resolve(true);
+            return;
+        }
+
+        let timeoutId = null;
+
+        const resolveWaiter = () => {
+            clearTimeout(timeoutId);
+            resolve(true);
+        };
+
+        timeoutId = setTimeout(() => {
+            turnIdleWaitersRef.current = turnIdleWaitersRef.current.filter((waiter) => waiter !== resolveWaiter);
+            resolve(false);
+        }, timeoutMilliseconds);
+
+        turnIdleWaitersRef.current.push(resolveWaiter);
+    });
 
     /*
      * Drops this client's end of the turn. The backend runs an in-flight turn to completion
@@ -291,6 +343,10 @@ function useChatStream({
             clearModelNotice: composer.clearModelNotice ?? clearModelNotice,
         };
 
+        if (turnInProgress && composer.dismissElicitation && isDismissibleElicitation(activeElicitation)) {
+            return await sendInsteadOfOpenPrompt(composer.dismissElicitation, turnComposer);
+        }
+
         if (loading) {
             return false;
         }
@@ -309,6 +365,39 @@ function useChatStream({
         }
 
         await sendTurn(selectedCommand, submittedMessageText, turnComposer);
+
+        return true;
+    };
+
+    /*
+     * The open run is parked on the prompt, so the typed text cannot go into it. The prompt is
+     * declined, the API ends the run, and the text is sent as an ordinary turn. A typed answer
+     * never carries files.
+     */
+    const sendInsteadOfOpenPrompt = async (dismissElicitation, turnComposer) => {
+        const selectedCommand = getSelectedCommandRef?.current?.() || null;
+        const submittedMessageText = getMessageTextRef?.current?.() || inputValue.trim();
+
+        if (!submittedMessageText) {
+            return false;
+        }
+
+        const dismissed = await dismissElicitation();
+
+        if (!dismissed) {
+            return false;
+        }
+
+        const runSettled = await waitForTurnIdle(DECLINED_RUN_SETTLE_TIMEOUT_MILLISECONDS);
+
+        if (!runSettled) {
+            log.warn('[useChatStream] The run did not end after its prompt was declined; the typed text was not sent.');
+            appendErrorMessage(describeRejectedSend({}, selectedCommand));
+
+            return false;
+        }
+
+        await sendTurn(selectedCommand, submittedMessageText, {...turnComposer, attachmentTray: null});
 
         return true;
     };
@@ -343,7 +432,7 @@ function useChatStream({
                 localObjectUrl: entry.localObjectUrl,
             }));
 
-        const updatedHistory = chatHistory.filter((message) => !message.ephemeral);
+        const updatedHistory = chatHistoryRef.current.filter((message) => !message.ephemeral);
         const userMessage = {
             type: USER,
             text: submittedMessageText,
@@ -535,7 +624,7 @@ function useChatStream({
                         activeTurnRegistry.forget(resolvedChatId);
                     }
 
-                    handleStreamChunk(rawEvent);
+                    handleStreamChunkRef.current(rawEvent);
                 },
             });
 
@@ -693,7 +782,7 @@ function useChatStream({
 
     return {
         loading,
-        turnInProgress: loading || recovering,
+        turnInProgress,
         inputValue,
         setInputValue,
         handleInputChange,

@@ -10,6 +10,7 @@ import useIsMobile from '../../hooks/useIsMobile.js';
 
 function ChatInput({
     loading,
+    promptOpen = false,
     streamActive,
     onStopChat,
     inputValue,
@@ -54,13 +55,17 @@ function ChatInput({
     }, [chatInputRef, inputValue, pickerOpen]);
 
     const isMobile = useIsMobile();
-    const hasCandidates = commandCandidates.length > 0;
+    const visibleCommandCandidates = loading ? [] : commandCandidates;
+    const hasCandidates = visibleCommandCandidates.length > 0;
+
+    /* An open dismissible prompt keeps the run going but still takes a typed answer. */
+    const inputLocked = loading && !promptOpen;
 
     /*
      * Attachments alone are not a message; a freshly selected command is. A pinned one still needs
      * an argument, or a stray Enter after every reply would resend the bare command.
      */
-    const canSubmit = !loading && !pickerOpen && (inputValue.trim().length > 0 || (!!selectedCommand && !isPinned));
+    const canSubmit = !inputLocked && !pickerOpen && (inputValue.trim().length > 0 || (!!selectedCommand && !isPinned));
 
     const submitMessage = () => {
         if (!canSubmit) {
@@ -123,7 +128,7 @@ function ChatInput({
                   */}
                 <div className="composer-popovers">
                     <SlashCommandList
-                        commandCandidates={commandCandidates}
+                        commandCandidates={visibleCommandCandidates}
                         selectedIndex={selectedIndex}
                         onCommandSelect={onCommandSelect}
                     />
@@ -160,12 +165,12 @@ function ChatInput({
                     onCaptionOpenChange={onCaptionOpenChange}
                 >
                     <textarea
-                        disabled={loading}
+                        disabled={inputLocked}
                         ref={chatInputRef}
                         value={inputValue}
                         onChange={handleInputChange}
                         onPaste={handlePaste}
-                        placeholder={loading ? "" : "Type a message..."}
+                        placeholder={promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Type a message...")}
                         className="chat-text-input"
                         rows={1}
                         onKeyDown={(event) => {
@@ -185,7 +190,7 @@ function ChatInput({
                             if (hasCandidates && event.key === 'Tab') {
                                 event.preventDefault();
                                 const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
-                                onCommandSelect(commandCandidates[targetIndex]);
+                                onCommandSelect(visibleCommandCandidates[targetIndex]);
                                 return;
                             }
 
@@ -201,10 +206,10 @@ function ChatInput({
                             }
 
                             if (event.key === 'Enter' && !event.shiftKey) {
-                                if (hasCandidates && (selectedIndex >= 0 || commandCandidates.length === 1)) {
+                                if (hasCandidates && (selectedIndex >= 0 || visibleCommandCandidates.length === 1)) {
                                     event.preventDefault();
                                     const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
-                                    onCommandSelect(commandCandidates[targetIndex]);
+                                    onCommandSelect(visibleCommandCandidates[targetIndex]);
                                     return;
                                 }
 
@@ -227,7 +232,7 @@ function ChatInput({
                         </div>
                     )}
 
-                    {streamActive ? (
+                    {streamActive && (
                         <button
                             type="button"
                             className="composer-stop-button"
@@ -237,7 +242,9 @@ function ChatInput({
                         >
                             <StopIcon/>
                         </button>
-                    ) : (
+                    )}
+
+                    {(!streamActive || promptOpen) && (
                         <button
                             type="button"
                             className="composer-send-button"

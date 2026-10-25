@@ -149,13 +149,31 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.elicitation-resolved-badge--neutral')).not.toBeNull();
         });
 
-        it('capitalises the first letter of the response and lowercases the rest', () => {
+        it('capitalises the first letter of the response', () => {
             render(<ChatMessage message={buildMessage({
                 type: 'SYSTEM',
                 text: 'Question?',
-                elicitationResponse: 'ACCEPT',
+                elicitationResponse: 'accept',
             })}/>);
             expect(screen.getByText('✓ Accept')).toBeDefined();
+        });
+
+        it('keeps the capitals of names inside a form summary', () => {
+            render(<ChatMessage message={buildMessage({
+                type: 'SYSTEM',
+                text: 'Who is playing?',
+                elicitationResponse: 'The whole show, Alex, Jo vs Sam, Kim',
+            })}/>);
+            expect(screen.getByText('✓ The whole show, Alex, Jo vs Sam, Kim')).toBeDefined();
+        });
+
+        it('keeps a typed-instead badge neutral', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'SYSTEM',
+                text: 'Face-off: who buzzed in first?',
+                elicitationResponse: 'Typed instead',
+            })}/>);
+            expect(container.querySelector('.elicitation-resolved-badge--neutral')).not.toBeNull();
         });
 
         it('renders the question text', () => {

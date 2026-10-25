@@ -32,7 +32,7 @@ function ChatMessage({message, onExpandImage}) {
             : NEGATIVE_RESPONSE_KEYWORDS.has(responseLower)
                 ? 'elicitation-resolved-badge--negative'
                 : 'elicitation-resolved-badge--neutral';
-        const displayResponse = responseText.charAt(0).toUpperCase() + responseText.slice(1).toLowerCase();
+        const displayResponse = responseText.charAt(0).toUpperCase() + responseText.slice(1);
 
         return (
             <>
