@@ -137,6 +137,30 @@ function useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef}) 
         });
     }, [setChatHistory]);
 
+    /* In memory only: history never stores it, so a reloaded chat cannot replay a cue. */
+    const mergeMetadataIntoLastAIMessage = useCallback((metadata) => {
+        if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+            return;
+        }
+
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
+                return previousHistory;
+            }
+
+            const lastMessage = previousHistory[lastIndex];
+            const newHistory = [...previousHistory];
+            newHistory[lastIndex] = {
+                ...lastMessage,
+                metadata: {...lastMessage.metadata, ...metadata},
+            };
+
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
     const stopStreamingLastAIMessage = useCallback(() => {
         setChatHistory((previousHistory) => {
             const lastIndex = previousHistory.length - 1;
@@ -300,6 +324,7 @@ function useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef}) 
         finalizeLastAIMessage,
         updateSeededNotificationText,
         attachGeneratedImagesToLastAIMessage,
+        mergeMetadataIntoLastAIMessage,
         stopStreamingLastAIMessage,
         appendSystemMessage,
         ensureChatIdFromResponse,

@@ -13,6 +13,7 @@ vi.mock('../../src/service/ChatModelService.js', async (importOriginal) => ({
 import chatModelService from '../../src/service/ChatModelService.js';
 import useChatModel, {
     PICKER_ERROR_FAILED,
+    PICKER_ERROR_NO_ACCESS,
     PICKER_ERROR_UNAVAILABLE,
     PICKER_ERROR_UNKNOWN_MODEL,
 } from '../../src/hooks/useChatModel.js';
@@ -120,6 +121,17 @@ describe('useChatModel opening the picker', () => {
 
         expect(result.current.pickerOpen).toBe(true);
         expect(result.current.pickerError).toBe(PICKER_ERROR_UNAVAILABLE);
+        expect(result.current.options).toBeNull();
+    });
+
+    it('reports a missing model key as no access', async () => {
+        chatModelService.options.mockRejectedValue(apiError(403, 'LLM_KEY_MISSING'));
+        const {result} = renderChatModel();
+
+        await openLoadedPicker(result);
+
+        expect(result.current.pickerOpen).toBe(true);
+        expect(result.current.pickerError).toBe(PICKER_ERROR_NO_ACCESS);
         expect(result.current.options).toBeNull();
     });
 

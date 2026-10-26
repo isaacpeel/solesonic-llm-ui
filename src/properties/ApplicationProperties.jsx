@@ -15,9 +15,11 @@ config.documentsUri = `${config.apiBaseUri}/documents`;
 config.slashCommandsUri = `${config.apiBaseUri}/slash/commands`;
 config.attachmentsUri = `${config.apiBaseUri}/attachments`;
 config.imagesUri = `${config.apiBaseUri}/images`;
+config.soundsUri = `${config.apiBaseUri}/sounds`;
 config.memoriesUri = `${config.apiBaseUri}/memories`;
 config.addressesUri = `${config.apiBaseUri}/addresses`;
 config.pushUri = `${config.apiBaseUri}/push`;
+config.llmKeysUri = `${config.apiBaseUri}/llm-keys`;
 config.authFailureUri = `${config.uiBaseUri}/authFailure`;
 
 export default config;

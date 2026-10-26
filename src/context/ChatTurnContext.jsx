@@ -2,6 +2,7 @@ import {createContext, useCallback, useEffect, useRef, useState} from 'react';
 import {useSharedData} from './useSharedData.jsx';
 import useChatStream from '../hooks/useChatStream.js';
 import useChatHistoryMutations from '../hooks/useChatHistoryMutations.js';
+import useSoundPlayer from '../hooks/useSoundPlayer.js';
 import {reloadChatHistoryInto} from '../hooks/useChatHistory.js';
 
 const ChatTurnContext = createContext(null);
@@ -13,6 +14,8 @@ const ChatTurnContext = createContext(null);
 export function ChatTurnProvider({children}) {
     const {chatId, setChatId, chatHistory, setChatHistory, adoptedChatIdRef, setStreamingChatId} = useSharedData();
     const historyMutations = useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef});
+    const soundPlayer = useSoundPlayer();
+    const {playSound, stopSound} = soundPlayer;
 
     const [activeElicitation, setActiveElicitation] = useState(null);
     const [elicitationValues, setElicitationValues] = useState({});
@@ -33,6 +36,7 @@ export function ChatTurnProvider({children}) {
         chatHistory,
         setChatHistory,
         ...historyMutations,
+        playSound,
         reloadChatHistory,
         activeElicitation,
         setActiveElicitation,
@@ -46,10 +50,11 @@ export function ChatTurnProvider({children}) {
 
     const releaseTurn = useCallback(() => {
         abortActiveStream();
+        stopSound();
         setActiveElicitation(null);
         setElicitationSubmitting(false);
         setElicitationValues({});
-    }, [abortActiveStream]);
+    }, [abortActiveStream, stopSound]);
 
     useEffect(() => {
         setStreamingChatId(turnInProgress ? chatId : null);
@@ -84,6 +89,7 @@ export function ChatTurnProvider({children}) {
         <ChatTurnContext.Provider value={{
             ...chatStream,
             releaseTurn,
+            soundPlayer,
             activeElicitation, setActiveElicitation,
             elicitationValues, setElicitationValues,
             elicitationSubmitting, setElicitationSubmitting,

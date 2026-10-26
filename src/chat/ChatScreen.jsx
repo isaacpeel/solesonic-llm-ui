@@ -9,6 +9,7 @@ import ChatMessage from "./message/ChatMessage.jsx";
 import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
+import SoundBlockedButton from "./SoundBlockedButton.jsx";
 import InterestOfferBanner from "../interests/InterestOfferBanner.jsx";
 import isEmptyNewConversation from "../interests/isEmptyNewConversation.js";
 import NewsUpdateBanner from "../interests/NewsUpdateBanner.jsx";
@@ -116,7 +117,18 @@ function ChatScreen() {
         setElicitationSubmitting,
         getSelectedCommandRef,
         getMessageTextRef,
+        soundPlayer,
     } = chatTurn;
+
+    const {attachSoundSurface} = soundPlayer;
+
+    useEffect(attachSoundSurface, [attachSoundSurface]);
+
+    /* Runs first, inside the send gesture, so Safari will still allow the cue that lands later. */
+    const prepareSoundForTurn = () => {
+        soundPlayer.dismissBlockedSound();
+        soundPlayer.unlockSoundPlayer();
+    };
 
     const composerRef = useRef(null);
     const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(chatHistory, composerRef);
@@ -147,7 +159,13 @@ function ChatScreen() {
         appendErrorMessage,
     });
 
-    const handleSubmit = () => chatTurn.handleSubmit({
+    const handleSubmit = () => {
+        prepareSoundForTurn();
+
+        return submitTurn();
+    };
+
+    const submitTurn = () => chatTurn.handleSubmit({
         attachmentTray,
         pendingModel: chatModel.pendingModel,
         rejectPendingModel: chatModel.rejectPendingModel,
@@ -168,6 +186,7 @@ function ChatScreen() {
     }, [loading, chatInputRef]);
 
     const handlePromptSubmit = (overrideFields) => {
+        prepareSoundForTurn();
         focusComposerWhenIdleRef.current = true;
 
         return handleElicitationSubmit(overrideFields);
@@ -204,6 +223,11 @@ function ChatScreen() {
                         </button>
                     </div>
                 )}
+
+                <SoundBlockedButton
+                    blockedSound={soundPlayer.blockedSound}
+                    onPlay={soundPlayer.playBlockedSound}
+                />
 
                 {lightboxAttachment && (
                     <AttachmentLightbox

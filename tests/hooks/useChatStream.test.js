@@ -70,6 +70,7 @@ import {useSharedData} from '../../src/context/useSharedData.jsx';
 import {isPageHidden, observePageHidden, observePageResumed} from '../../src/util/pageLifecycle.js';
 import {toast} from 'react-toastify';
 import {ApiError} from '../../src/client/ApiClient.js';
+import {NO_MODEL_ACCESS_MESSAGE} from '../../src/service/LlmKeyService.js';
 import activeTurnRegistry from '../../src/util/activeTurnRegistry.js';
 
 /*
@@ -516,6 +517,20 @@ describe('useChatStream', () => {
             appendErrorMessage: options.appendErrorMessage,
             adoptMessageId: options.adoptMessageIdForLastUserMessage,
         });
+    });
+
+    it('handleStreamChunk hands the router the sound player and the metadata merge', () => {
+        const playSound = vi.fn();
+        const mergeMetadataIntoLastAIMessage = vi.fn();
+        const {result} = renderHook(() => useChatStream({...options, playSound, mergeMetadataIntoLastAIMessage}));
+
+        act(() => {
+            result.current.handleStreamChunk({event: 'TEXT_MESSAGE_START', data: '{"messageId":"wire-1"}'});
+        });
+
+        const routedHandlers = chatService.handleStreamChunk.mock.calls[0][1];
+        expect(routedHandlers.playSound).toBe(playSound);
+        expect(routedHandlers.mergeMessageMetadata).toBe(mergeMetadataIntoLastAIMessage);
     });
 });
 
@@ -1565,6 +1580,30 @@ describe('a send rejected before the run starts', () => {
         expect(options.appendErrorMessage).toHaveBeenCalledWith(expect.stringContaining('re-select the command'));
         expect(options.rejectPendingModel).not.toHaveBeenCalled();
         expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('restores the composer and explains a missing model key', async () => {
+        options.chatId = 'chat-1';
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(403, 'LLM_KEY_MISSING'));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(result.current.inputValue).toBe('hello there');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith(NO_MODEL_ACCESS_MESSAGE);
+        expect(options.rejectPendingModel).not.toHaveBeenCalled();
+        expect(streamService.handleStreamError).not.toHaveBeenCalled();
+    });
+
+    it('keeps the generic copy for a bodyless 403', async () => {
+        options.chatId = 'chat-1';
+        chatService.chatStream.mockRejectedValueOnce(rejectedOpen(403));
+
+        const {result} = renderHook(() => useChatStream(options));
+        await submitWith(result, 'hello there');
+
+        expect(result.current.inputValue).toBe('hello there');
+        expect(options.appendErrorMessage).toHaveBeenCalledWith('Your message could not be sent. Your text has been restored — please try again.');
     });
 
     it('restores the composer with the generic copy for a 400 without a code', async () => {

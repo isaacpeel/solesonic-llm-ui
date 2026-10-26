@@ -25,7 +25,14 @@ vi.mock('../src/settings/UserSettings.jsx', async () => {
 
     return {default: () => <Outlet/>};
 });
-vi.mock('../src/settings/GeneralUserSettings.jsx', () => ({default: () => <div/>}));
+vi.mock('../src/settings/GeneralUserSettings.jsx', () => ({default: () => <div data-testid="general-settings"/>}));
+vi.mock('../src/providers/KeycloakProvider.jsx', () => ({
+    useKeycloak: vi.fn(() => ({hasRole: () => false, keycloak: {tokenParsed: {sub: 'user-1'}}})),
+}));
+vi.mock('../src/service/LlmKeyService.js', async (importOriginal) => ({
+    ...(await importOriginal()),
+    default: {findKeys: vi.fn().mockResolvedValue({content: [], page: {totalPages: 0}})},
+}));
 vi.mock('../src/settings/connections/ConnectionsSettings.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/rag/RagManagement.jsx', () => ({default: () => <div/>}));
 vi.mock('../src/settings/images/GeneratedImageManagement.jsx', () => ({default: () => <div/>}));
@@ -145,6 +152,21 @@ describe('App routes', () => {
         expect(await findByTestId('interest-offer-screen')).not.toBeNull();
         expect(routes[0].children.some((route) => route.path === 'interests/offers/:offerId')).toBe(true);
         expect(chatPageMountCount).toBe(0);
+    });
+
+    it('declares the model access route under settings', () => {
+        const settingsRoute = routes[0].children.find((route) => route.path === 'settings');
+
+        expect(settingsRoute.children.some((route) => route.path === 'model-access')).toBe(true);
+    });
+
+    it('redirects a non-admin away from model access to general settings', async () => {
+        const router = createMemoryRouter(routes, {initialEntries: ['/settings/model-access']});
+
+        const {findByTestId} = render(<RouterProvider router={router}/>);
+
+        expect(await findByTestId('general-settings')).not.toBeNull();
+        expect(router.state.location.pathname).toBe('/settings/general');
     });
 
     it('renders the interest settings under settings', async () => {

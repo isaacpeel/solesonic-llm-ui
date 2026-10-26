@@ -1,13 +1,14 @@
 import authService from '../service/AuthService.js';
 
 export class ApiError extends Error {
-    constructor({ message, status, method, uri, code }) {
+    constructor({ message, status, method, uri, code, serverMessage }) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.method = method;
         this.uri = uri;
         this.code = code;
+        this.serverMessage = serverMessage;
     }
 }
 
@@ -63,6 +64,7 @@ async function request(method, uri, { body, headers = {}, noOp = false, response
             method,
             uri,
             code: errorBody.code,
+            serverMessage: errorBody.message,
         });
     }
 

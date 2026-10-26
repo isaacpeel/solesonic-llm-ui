@@ -4,6 +4,7 @@ import log from 'loglevel';
 import {useKeycloak} from '../providers/KeycloakProvider.jsx';
 import addressService from '../service/AddressService.js';
 import userPreferencesService from '../service/UserPreferencesService.js';
+import GameSoundsSetting from './GameSoundsSetting.jsx';
 import './GeneralUserSettings.css';
 
 const initialsFor = (user) => {
@@ -233,6 +234,8 @@ const GeneralUserSettings = () => {
                         )}
                     </div>
                 </div>
+
+                <GameSoundsSetting/>
             </div>
 
             <div className="general-settings-address-form">

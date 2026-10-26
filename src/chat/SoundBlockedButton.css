@@ -1,0 +1,24 @@
+.sound-blocked-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding: 4px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    font-size: 12px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+.sound-blocked-button:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.sound-blocked-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}

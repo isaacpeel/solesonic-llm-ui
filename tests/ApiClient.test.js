@@ -104,6 +104,14 @@ describe('ApiClient', () => {
         expect(error.code).toBe('UNKNOWN_MODEL');
     });
 
+    it('carries the server message from the error body on its own', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(400, {code: 'INVALID_LLM_KEY', message: 'The model server did not accept this key.'}));
+
+        const error = await apiClient.put('/api/llm-keys/user-1', {apiKey: 'x'}).catch((caughtError) => caughtError);
+
+        expect(error.serverMessage).toBe('The model server did not accept this key.');
+    });
+
     it('leaves the error code undefined when the error body is not JSON', async () => {
         vi.mocked(fetch).mockResolvedValue({
             ok: false,

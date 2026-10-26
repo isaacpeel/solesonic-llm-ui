@@ -83,6 +83,9 @@ const activeNavLabel = () => document.querySelector('.settings-nav-row.selected'
 const navLabels = () => Array.from(document.querySelectorAll('.settings-nav-row'))
     .map((navRow) => navRow.textContent.trim());
 
+const navGroupLabels = () => Array.from(document.querySelectorAll('.settings-nav-group-label'))
+    .map((groupLabel) => groupLabel.textContent.trim());
+
 describe('UserSettings navigation', () => {
     beforeEach(() => {
         useKeycloak.mockReturnValue(keycloakMock({roles: ['rag-admin']}));
@@ -112,6 +115,23 @@ describe('UserSettings navigation', () => {
         renderSettings('/settings/general');
 
         expect(navLabels()).toEqual(['General', 'Notifications', 'Connections', 'RAG', 'Images', 'Memory', 'Interests']);
+    });
+
+    it('hides the Administration group from a user without an admin role', () => {
+        renderSettings('/settings/general');
+
+        expect(navLabels()).not.toContain('Model Access');
+        expect(navGroupLabels()).not.toContain('Administration');
+    });
+
+    it('shows Model Access under Administration to an llm-key-admin', () => {
+        useKeycloak.mockReturnValue(keycloakMock({roles: ['llm-key-admin']}));
+
+        renderSettings('/settings/general');
+
+        expect(navGroupLabels()).toEqual(['Account', 'Connections', 'Data', 'Administration']);
+        expect(navLabels().at(-1)).toBe('Model Access');
+        expect(document.querySelector('a.settings-nav-row[href="/settings/model-access"]')).not.toBeNull();
     });
 
     it('renders a back link to a new chat when none is open', () => {

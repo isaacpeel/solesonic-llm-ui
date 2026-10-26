@@ -2,9 +2,11 @@ import {useEffect, useId, useRef, useState} from 'react';
 import './ModelPicker.css';
 import {
     PICKER_ERROR_FAILED,
+    PICKER_ERROR_NO_ACCESS,
     PICKER_ERROR_UNAVAILABLE,
     PICKER_ERROR_UNKNOWN_MODEL,
 } from '../../hooks/useChatModel.js';
+import {NO_MODEL_ACCESS_MESSAGE} from '../../service/LlmKeyService.js';
 import useIsMobile from '../../hooks/useIsMobile.js';
 
 const RESET_ROW = 'reset';
@@ -112,6 +114,14 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
     const renderBody = () => {
         if (loading && !options) {
             return <div className="model-picker-message">Loading models…</div>;
+        }
+
+        if (error === PICKER_ERROR_NO_ACCESS) {
+            return (
+                <div className="model-picker-message model-picker-message--error" role="alert">
+                    {NO_MODEL_ACCESS_MESSAGE}
+                </div>
+            );
         }
 
         if (error === PICKER_ERROR_UNAVAILABLE) {

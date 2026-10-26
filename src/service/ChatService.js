@@ -25,6 +25,12 @@ export const CUSTOM_CANCEL = "cancel";
 
 export const TERMINAL_RUN_EVENTS = [RUN_FINISHED, RUN_ERROR];
 
+export const SOUND_METADATA_KEY = "solesonic/sound";
+
+const SOUND_ID_PATTERN = /^[0-9a-f]{64}$/;
+const SOUND_SOURCE_PATH_PREFIX = '/sounds/';
+const MAX_SOUND_CUE_ID_LENGTH = 128;
+
 /* Outcomes of a resume attempt, mapped from the status codes the resume endpoint decides up front. */
 export const RESUME_STREAMED = "streamed";
 export const RESUME_ALREADY_COMPLETE = "alreadyComplete";
@@ -174,7 +180,34 @@ async function withIdleWatchdog(callerSignal, streamOperation) {
     }
 }
 
-const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
+const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
+
+/*
+ * The cue only names a clip; the bytes are always fetched from our own sounds endpoint by id,
+ * so a frame can never steer an authenticated request at an arbitrary URL.
+ */
+export function readSoundCue(metadata) {
+    const soundCue = metadata?.[SOUND_METADATA_KEY];
+
+    if (typeof soundCue !== 'object' || soundCue === null) {
+        return null;
+    }
+
+    const source = soundCue.source;
+
+    const isValidCue = typeof soundCue.cueId === 'string'
+        && soundCue.cueId.length > 0
+        && soundCue.cueId.length <= MAX_SOUND_CUE_ID_LENGTH
+        && typeof soundCue.soundId === 'string'
+        && SOUND_ID_PATTERN.test(soundCue.soundId)
+        && source?.type === 'url'
+        && typeof source.value === 'string'
+        && source.value.startsWith(SOUND_SOURCE_PATH_PREFIX)
+        && typeof source.mimeType === 'string'
+        && source.mimeType.startsWith('audio/');
+
+    return isValidCue ? soundCue : null;
+}
 
 function surfaceErrorText(errorText, appendErrorMessage) {
     if (typeof errorText === 'string' && errorText.length > 0) {
@@ -201,6 +234,22 @@ function readFailureText(failureValue) {
 function handleRunStarted(runStartedData, {ensureChatIdFromResponse, adoptMessageId}) {
     ensureChatIdFromResponse({chatId: runStartedData?.threadId});
     adoptMessageId?.(findRunStartedUserMessageId(runStartedData));
+}
+
+function handleTextMessageStart(textMessageData, {playSound, mergeMessageMetadata}) {
+    const metadata = textMessageData?.metadata;
+
+    if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+        return;
+    }
+
+    mergeMessageMetadata?.(metadata);
+
+    const soundCue = readSoundCue(metadata);
+
+    if (soundCue) {
+        playSound?.(soundCue);
+    }
 }
 
 function handleTextMessageContent(textMessageData, {
@@ -375,6 +424,9 @@ const chatService = {
         switch (event) {
             case RUN_STARTED:
                 handleRunStarted(eventData, handlers);
+                break;
+            case TEXT_MESSAGE_START:
+                handleTextMessageStart(eventData, handlers);
                 break;
             case TEXT_MESSAGE_CONTENT:
                 handleTextMessageContent(eventData, handlers);

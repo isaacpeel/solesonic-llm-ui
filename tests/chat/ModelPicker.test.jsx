@@ -3,6 +3,7 @@ import {useState} from 'react';
 import {flushSync} from 'react-dom';
 import {render, fireEvent, screen, act} from '@testing-library/react';
 import ModelPicker from '../../src/chat/command/ModelPicker.jsx';
+import {NO_MODEL_ACCESS_MESSAGE} from '../../src/service/LlmKeyService.js';
 
 const modelOptions = {
     models: [
@@ -284,6 +285,14 @@ describe('ModelPicker states', () => {
 
         fireEvent.click(container.querySelector('.model-picker-retry'));
         expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it('explains a missing model key without offering Retry', () => {
+        const {container} = renderPicker({options: null, error: 'no-access'});
+
+        expect(container.querySelector('.model-picker-message--error').textContent).toBe(NO_MODEL_ACCESS_MESSAGE);
+        expect(container.querySelector('.model-picker-retry')).toBeNull();
+        expect(container.querySelector('[role="listbox"]')).toBeNull();
     });
 
     it('explains a pick that is no longer offered, above the list', () => {

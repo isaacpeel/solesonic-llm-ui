@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {useEffect} from 'react';
 import {render, act, waitFor} from '@testing-library/react';
 
 vi.mock('../../src/service/AuthService.js', () => ({
@@ -30,6 +31,12 @@ vi.mock('react-toastify', () => ({
     toast: Object.assign(vi.fn(), {error: vi.fn()}),
 }));
 
+vi.mock('../../src/util/soundObjectUrlCache.js', () => ({
+    acquireSoundObjectUrl: vi.fn().mockResolvedValue('blob:theme'),
+    releaseSoundObjectUrl: vi.fn(),
+}));
+
+import {acquireSoundObjectUrl, releaseSoundObjectUrl} from '../../src/util/soundObjectUrlCache.js';
 import chatService from '../../src/service/ChatService.js';
 import {SharedDataProvider} from '../../src/context/SharedDataContext.jsx';
 import {ChatTurnProvider} from '../../src/context/ChatTurnContext.jsx';
@@ -42,6 +49,10 @@ let streamControl = null;
 
 function TurnProbe() {
     latestTurn = useChatTurn();
+
+    const {attachSoundSurface} = latestTurn.soundPlayer;
+
+    useEffect(attachSoundSurface, [attachSoundSurface]);
 
     return null;
 }
@@ -105,6 +116,29 @@ function elicitationFrame() {
                 message: 'Pick an assignee',
                 requestedSchema: {properties: {assignee: {type: 'string'}}},
             }),
+        }),
+    };
+}
+
+const THEME_SOUND_ID = 'c'.repeat(64);
+
+function themeCueFrame() {
+    return {
+        event: 'TEXT_MESSAGE_START',
+        id: '1754062831238-0',
+        data: JSON.stringify({
+            type: 'TEXT_MESSAGE_START',
+            messageId: 'wire-1',
+            role: 'assistant',
+            metadata: {
+                'solesonic/sound': {
+                    cueId: 'sound-cue-theme',
+                    soundId: THEME_SOUND_ID,
+                    cue: 'theme',
+                    playOnce: true,
+                    source: {type: 'url', value: `/sounds/${THEME_SOUND_ID}`, mimeType: 'audio/mpeg'},
+                },
+            },
         }),
     };
 }
@@ -283,6 +317,57 @@ describe('ChatTurnProvider', () => {
         });
 
         expect(latestShared.adoptedChatIdRef.current).toBeNull();
+    });
+
+    it('plays a cued theme without holding up the stream, and stops it when another conversation is opened', async () => {
+        const audioElement = {play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), src: '', loop: true};
+        vi.stubGlobal('Audio', class {
+            constructor() {
+                return audioElement;
+            }
+        });
+
+        render(<Harness showTurnProbe/>);
+        await startTurn('/feud');
+
+        act(() => {
+            streamControl.onChunk(themeCueFrame());
+            streamControl.onChunk(contentFrame('Survey says', '1754062831240-0'));
+        });
+
+        expect(lastHistoryEntry().text).toBe('Survey says');
+        expect(lastHistoryEntry().metadata['solesonic/sound'].cueId).toBe('sound-cue-theme');
+
+        await waitFor(() => expect(audioElement.play).toHaveBeenCalledOnce());
+        expect(audioElement.src).toBe('blob:theme');
+
+        act(() => {
+            latestShared.setChatId('chat-2');
+        });
+
+        expect(audioElement.pause).toHaveBeenCalledOnce();
+        expect(releaseSoundObjectUrl).toHaveBeenCalledWith(THEME_SOUND_ID);
+
+        await act(async () => {});
+        vi.unstubAllGlobals();
+    });
+
+    it('skips a cued theme that lands while the chat screen is not shown', async () => {
+        const {rerender} = render(<Harness showTurnProbe/>);
+        await startTurn('/feud');
+
+        rerender(<Harness showTurnProbe={false}/>);
+
+        act(() => {
+            streamControl.onChunk({...themeCueFrame(), data: themeCueFrame().data.replace('sound-cue-theme', 'sound-cue-away')});
+        });
+
+        await act(async () => {});
+
+        rerender(<Harness showTurnProbe/>);
+
+        expect(acquireSoundObjectUrl).not.toHaveBeenCalled();
+        expect(latestTurn.soundPlayer.blockedSound).toBeNull();
     });
 
     it('releases a turn that has not started yet', async () => {

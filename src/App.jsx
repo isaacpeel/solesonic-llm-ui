@@ -14,6 +14,7 @@ import {DEFAULT_MEMORY_LEVEL} from "./settings/memory/memoryLevels.js";
 import NotificationSettings from "./settings/notifications/NotificationSettings.jsx";
 import InterestOfferScreen from "./interests/InterestOfferScreen.jsx";
 import InterestSettings from "./settings/interests/InterestSettings.jsx";
+import ModelAccessSettings from "./settings/modelaccess/ModelAccessSettings.jsx";
 import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./settings/connections/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
@@ -61,6 +62,7 @@ export const routes = [
                     {path: "memory", element: <Navigate to={DEFAULT_MEMORY_LEVEL} replace/>},
                     {path: "memory/:level", element: <MemoryManagement/>},
                     {path: "interests", element: <InterestSettings/>},
+                    {path: "model-access", element: <ModelAccessSettings/>},
                 ]
             },
             {path: "google/auth/callback", element: <GoogleAuthCallback/>},

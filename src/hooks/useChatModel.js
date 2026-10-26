@@ -1,12 +1,18 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import log from 'loglevel';
 import chatModelService, {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatModelService.js';
+import {LLM_KEY_MISSING_CODE} from '../service/LlmKeyService.js';
 
 export const PICKER_ERROR_UNAVAILABLE = 'unavailable';
 export const PICKER_ERROR_UNKNOWN_MODEL = 'unknown';
 export const PICKER_ERROR_FAILED = 'failed';
+export const PICKER_ERROR_NO_ACCESS = 'no-access';
 
 function pickerErrorFor(caughtError) {
+    if (caughtError?.code === LLM_KEY_MISSING_CODE) {
+        return PICKER_ERROR_NO_ACCESS;
+    }
+
     if (caughtError?.code === UNKNOWN_MODEL_CODE) {
         return PICKER_ERROR_UNKNOWN_MODEL;
     }

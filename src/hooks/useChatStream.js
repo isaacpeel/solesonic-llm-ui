@@ -11,6 +11,7 @@ import chatService, {
 import streamService from '../service/StreamService.js';
 import {isDismissibleElicitation} from '../service/ElicitationService.js';
 import {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatModelService.js';
+import {LLM_KEY_MISSING_CODE, NO_MODEL_ACCESS_MESSAGE} from '../service/LlmKeyService.js';
 import {ApiError} from '../client/ApiClient.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
@@ -38,6 +39,10 @@ function isRejectedBeforeRunStarted(caughtError) {
 }
 
 function describeRejectedSend(caughtError, selectedCommand) {
+    if (caughtError.code === LLM_KEY_MISSING_CODE) {
+        return NO_MODEL_ACCESS_MESSAGE;
+    }
+
     if (caughtError.code === UNKNOWN_MODEL_CODE) {
         return 'The model you picked is no longer available. Pick another and send again.';
     }
@@ -67,6 +72,8 @@ function useChatStream({
     ensureChatIdFromResponse,
     adoptMessageIdForLastUserMessage,
     updateAttachmentStatus,
+    mergeMetadataIntoLastAIMessage,
+    playSound,
     activeElicitation,
     setActiveElicitation,
     setElicitationSubmitting,
@@ -225,6 +232,8 @@ function useChatStream({
             adoptMessageId: adoptMessageIdForLastUserMessage,
             attachGeneratedImages: attachGeneratedImagesToLastAIMessage,
             updateAttachmentStatus,
+            mergeMessageMetadata: mergeMetadataIntoLastAIMessage,
+            playSound,
         });
     }, [
         activeElicitation,
@@ -235,6 +244,8 @@ function useChatStream({
         adoptMessageIdForLastUserMessage,
         attachGeneratedImagesToLastAIMessage,
         updateAttachmentStatus,
+        mergeMetadataIntoLastAIMessage,
+        playSound,
         finalizeLastAIMessage,
         stopStreamingLastAIMessage,
         appendSystemMessage,

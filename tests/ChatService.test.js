@@ -12,6 +12,7 @@ import chatService, {
     RUN_ERROR,
     RUN_FINISHED,
     RUN_STARTED,
+    SOUND_METADATA_KEY,
     STREAM_IDLE_TIMEOUT_MILLISECONDS,
     StreamStalledError,
     TEXT_MESSAGE_CONTENT,
@@ -183,6 +184,22 @@ function elicitationArgsFrame(elicitationRequest, toolCallId = 'elicitation-1') 
     return agUiFrame(TOOL_CALL_ARGS, {toolCallId, delta: JSON.stringify(elicitationRequest)});
 }
 
+const VALID_SOUND_ID = 'a'.repeat(64);
+
+function validSoundCue() {
+    return {
+        cueId: 'sound-cue-1',
+        soundId: VALID_SOUND_ID,
+        cue: 'theme',
+        playOnce: true,
+        source: {type: 'url', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'},
+    };
+}
+
+function textMessageStartFrame(metadata) {
+    return agUiFrame(TEXT_MESSAGE_START, {messageId: 'wire-1', role: 'assistant', metadata});
+}
+
 function runFinishedFrame(result) {
     return agUiFrame(RUN_FINISHED, {threadId: 'chat-1', runId: 'run-1', result});
 }
@@ -306,13 +323,66 @@ describe('handleStreamChunk', () => {
         consoleError.mockRestore();
     });
 
-    it('TEXT_MESSAGE_START and TEXT_MESSAGE_END are structural only', () => {
-        const callbacks = makeCallbacks();
+    it('TEXT_MESSAGE_START without metadata and TEXT_MESSAGE_END open nothing', () => {
+        const playSound = vi.fn();
+        const mergeMessageMetadata = vi.fn();
+        const callbacks = makeCallbacks({playSound, mergeMessageMetadata});
 
         chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_START, {messageId: 'wire-1', role: 'assistant'}), callbacks);
         chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_END, {messageId: 'wire-1'}), callbacks);
 
         expectNoStreamHandlerCalled(callbacks);
+        expect(playSound).not.toHaveBeenCalled();
+        expect(mergeMessageMetadata).not.toHaveBeenCalled();
+    });
+
+    it('TEXT_MESSAGE_START with a valid sound cue plays it once', () => {
+        const playSound = vi.fn();
+        const callbacks = makeCallbacks({playSound});
+        const soundCue = validSoundCue();
+
+        chatService.handleStreamChunk(textMessageStartFrame({[SOUND_METADATA_KEY]: soundCue}), callbacks);
+
+        expect(playSound).toHaveBeenCalledOnce();
+        expect(playSound).toHaveBeenCalledWith(soundCue);
+        expectNoStreamHandlerCalled(callbacks);
+    });
+
+    it('TEXT_MESSAGE_START merges its metadata onto the message', () => {
+        const mergeMessageMetadata = vi.fn();
+        const metadata = {[SOUND_METADATA_KEY]: validSoundCue(), other: 'value'};
+
+        chatService.handleStreamChunk(textMessageStartFrame(metadata), makeCallbacks({mergeMessageMetadata}));
+
+        expect(mergeMessageMetadata).toHaveBeenCalledWith(metadata);
+    });
+
+    it('TEXT_MESSAGE_START with a sound cue does not throw without sound handlers', () => {
+        expect(() => chatService.handleStreamChunk(
+            textMessageStartFrame({[SOUND_METADATA_KEY]: validSoundCue()}),
+            makeCallbacks(),
+        )).not.toThrow();
+    });
+
+    it.each([
+        ['an absolute source url', {source: {type: 'url', value: 'https://evil.example.com/sounds/abc', mimeType: 'audio/mpeg'}}],
+        ['a protocol-relative source url', {source: {type: 'url', value: '//evil.example.com/sounds/abc', mimeType: 'audio/mpeg'}}],
+        ['an off-path source url', {source: {type: 'url', value: '/attachments/abc', mimeType: 'audio/mpeg'}}],
+        ['a non-url source type', {source: {type: 'data', value: '/sounds/abc', mimeType: 'audio/mpeg'}}],
+        ['a non-audio mime type', {source: {type: 'url', value: '/sounds/abc', mimeType: 'text/html'}}],
+        ['a short sound id', {soundId: 'abc123'}],
+        ['an uppercase sound id', {soundId: 'A'.repeat(64)}],
+        ['a missing cue id', {cueId: undefined}],
+        ['an oversized cue id', {cueId: 'x'.repeat(129)}],
+    ])('TEXT_MESSAGE_START with %s plays nothing', (description, overrides) => {
+        const playSound = vi.fn();
+
+        chatService.handleStreamChunk(
+            textMessageStartFrame({[SOUND_METADATA_KEY]: {...validSoundCue(), ...overrides}}),
+            makeCallbacks({playSound}),
+        );
+
+        expect(playSound).not.toHaveBeenCalled();
     });
 
     it('TOOL_CALL_ARGS opens the elicitation carried in the delta', () => {
@@ -489,6 +559,17 @@ describe('handleStreamChunk', () => {
         expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
         expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
         expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('RUN_ERROR for a missing model key surfaces the backend sentence and ends the turn', () => {
+        const callbacks = makeCallbacks();
+        const message = "Model access isn't configured for your account. Ask an administrator.";
+
+        chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message, code: 'LLM_KEY_MISSING'}), callbacks);
+
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith(message);
+        expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });
 

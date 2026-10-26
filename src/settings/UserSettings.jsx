@@ -7,9 +7,12 @@ import {
     CubeTransparentIcon,
     LightBulbIcon,
     NewspaperIcon,
-    PhotoIcon
+    PhotoIcon,
+    KeyIcon
 } from "@heroicons/react/24/solid";
 import {useSharedData} from "../context/useSharedData.jsx";
+import {useKeycloak} from "../providers/KeycloakProvider.jsx";
+import {ROLES} from "../authorizer/roles.js";
 
 import "./UserSettings.css";
 
@@ -35,11 +38,25 @@ const SETTINGS_NAV_GROUPS = [
             {to: "/settings/memory", label: "Memory", Icon: LightBulbIcon},
             {to: "/settings/interests", label: "Interests", Icon: NewspaperIcon}
         ]
+    },
+    {
+        label: "Administration",
+        items: [
+            {to: "/settings/model-access", label: "Model Access", Icon: KeyIcon, requiresRole: ROLES.LLM_KEY_ADMIN}
+        ]
     }
 ];
 
+const visibleNavGroups = (hasRole) => SETTINGS_NAV_GROUPS
+    .map((navGroup) => ({
+        ...navGroup,
+        items: navGroup.items.filter((item) => !item.requiresRole || hasRole(item.requiresRole))
+    }))
+    .filter((navGroup) => navGroup.items.length > 0);
+
 const UserSettings = () => {
     const {chatId} = useSharedData();
+    const {hasRole} = useKeycloak();
 
     return (
         <div className="settings-page">
@@ -54,7 +71,7 @@ const UserSettings = () => {
 
                 <div className="settings-layout">
                     <nav className="settings-nav" aria-label="Settings">
-                        {SETTINGS_NAV_GROUPS.map((navGroup) => (
+                        {visibleNavGroups(hasRole).map((navGroup) => (
                             <div className="settings-nav-group" key={navGroup.label}>
                                 <div className="settings-nav-group-label">{navGroup.label}</div>
                                 {navGroup.items.map(({to, label, Icon}) => (
