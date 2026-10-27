@@ -80,6 +80,9 @@ repeating the policy text means the two copies cannot disagree.
 `init()` rejects, and the app is stuck on "Authentication Required" — a login loop
 with no visible error beyond a "Refused to connect" line in the browser console.
 
+`media-src` allows `data:` (the silent clip that unlocks audio on send) and `blob:` (agent sounds, fetched with the
+bearer token and played from an object URL). Without it both fall back to `default-src 'self'` and no sound plays.
+
 ## Running the Container
 
 Start the container with Docker Compose:

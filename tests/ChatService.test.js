@@ -192,7 +192,7 @@ function validSoundCue() {
         soundId: VALID_SOUND_ID,
         cue: 'theme',
         playOnce: true,
-        source: {type: 'url', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'},
+        source: {type: 'url', value: `/izzybot/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'},
     };
 }
 
@@ -364,12 +364,31 @@ describe('handleStreamChunk', () => {
         )).not.toThrow();
     });
 
+    it('TEXT_MESSAGE_START plays a cue whose source has no context path', () => {
+        const playSound = vi.fn();
+        const soundCue = {
+            ...validSoundCue(),
+            source: {type: 'url', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'},
+        };
+
+        chatService.handleStreamChunk(textMessageStartFrame({[SOUND_METADATA_KEY]: soundCue}), makeCallbacks({playSound}));
+
+        expect(playSound).toHaveBeenCalledWith(soundCue);
+    });
+
+    const OTHER_SOUND_ID = 'b'.repeat(64);
+
     it.each([
-        ['an absolute source url', {source: {type: 'url', value: 'https://evil.example.com/sounds/abc', mimeType: 'audio/mpeg'}}],
-        ['a protocol-relative source url', {source: {type: 'url', value: '//evil.example.com/sounds/abc', mimeType: 'audio/mpeg'}}],
-        ['an off-path source url', {source: {type: 'url', value: '/attachments/abc', mimeType: 'audio/mpeg'}}],
-        ['a non-url source type', {source: {type: 'data', value: '/sounds/abc', mimeType: 'audio/mpeg'}}],
-        ['a non-audio mime type', {source: {type: 'url', value: '/sounds/abc', mimeType: 'text/html'}}],
+        ['an absolute source url', {source: {type: 'url', value: `https://evil.example.com/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a protocol-relative source url', {source: {type: 'url', value: `//evil.example.com/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['an off-path source url', {source: {type: 'url', value: `/attachments/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source naming a different sound id', {source: {type: 'url', value: `/izzybot/sounds/${OTHER_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with a query string', {source: {type: 'url', value: `/izzybot/sounds/x?y=/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with a fragment', {source: {type: 'url', value: `/izzybot/sounds/x#/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with a backslash', {source: {type: 'url', value: `/\\evil.example.com/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with no sound id', {source: {type: 'url', value: '/izzybot/sounds/', mimeType: 'audio/mpeg'}}],
+        ['a non-url source type', {source: {type: 'data', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a non-audio mime type', {source: {type: 'url', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'text/html'}}],
         ['a short sound id', {soundId: 'abc123'}],
         ['an uppercase sound id', {soundId: 'A'.repeat(64)}],
         ['a missing cue id', {cueId: undefined}],

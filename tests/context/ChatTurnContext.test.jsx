@@ -136,7 +136,7 @@ function themeCueFrame() {
                     soundId: THEME_SOUND_ID,
                     cue: 'theme',
                     playOnce: true,
-                    source: {type: 'url', value: `/sounds/${THEME_SOUND_ID}`, mimeType: 'audio/mpeg'},
+                    source: {type: 'url', value: `/izzybot/sounds/${THEME_SOUND_ID}`, mimeType: 'audio/mpeg'},
                 },
             },
         }),

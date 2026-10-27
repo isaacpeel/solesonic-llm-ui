@@ -28,7 +28,7 @@ export const TERMINAL_RUN_EVENTS = [RUN_FINISHED, RUN_ERROR];
 export const SOUND_METADATA_KEY = "solesonic/sound";
 
 const SOUND_ID_PATTERN = /^[0-9a-f]{64}$/;
-const SOUND_SOURCE_PATH_PREFIX = '/sounds/';
+const SOUND_SOURCE_PATH_SUFFIX = '/sounds/';
 const MAX_SOUND_CUE_ID_LENGTH = 128;
 
 /* Outcomes of a resume attempt, mapped from the status codes the resume endpoint decides up front. */
@@ -182,6 +182,14 @@ async function withIdleWatchdog(callerSignal, streamOperation) {
 
 const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
 
+function isSoundSourcePath(sourceValue, soundId) {
+    return typeof sourceValue === 'string'
+        && sourceValue.startsWith('/')
+        && !sourceValue.startsWith('//')
+        && !/[?#\\]/.test(sourceValue)
+        && sourceValue.endsWith(`${SOUND_SOURCE_PATH_SUFFIX}${soundId}`);
+}
+
 /*
  * The cue only names a clip; the bytes are always fetched from our own sounds endpoint by id,
  * so a frame can never steer an authenticated request at an arbitrary URL.
@@ -201,8 +209,7 @@ export function readSoundCue(metadata) {
         && typeof soundCue.soundId === 'string'
         && SOUND_ID_PATTERN.test(soundCue.soundId)
         && source?.type === 'url'
-        && typeof source.value === 'string'
-        && source.value.startsWith(SOUND_SOURCE_PATH_PREFIX)
+        && isSoundSourcePath(source.value, soundCue.soundId)
         && typeof source.mimeType === 'string'
         && source.mimeType.startsWith('audio/');
 
