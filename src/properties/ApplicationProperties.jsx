@@ -20,6 +20,8 @@ config.memoriesUri = `${config.apiBaseUri}/memories`;
 config.addressesUri = `${config.apiBaseUri}/addresses`;
 config.pushUri = `${config.apiBaseUri}/push`;
 config.llmKeysUri = `${config.apiBaseUri}/llm-keys`;
+config.sharedSessionsUri = `${config.apiBaseUri}/shared-sessions`;
+config.sharedSessionInvitesUri = `${config.sharedSessionsUri}/invites`;
 config.authFailureUri = `${config.uiBaseUri}/authFailure`;
 
 export default config;

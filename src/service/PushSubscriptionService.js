@@ -339,7 +339,7 @@ const pushSubscriptionService = {
         return await apiClient.get(await preferencesUri());
     },
 
-    updatePreferences: async ({turnComplete, elicitation, interestOffers, interestUpdates}) => {
+    updatePreferences: async ({turnComplete, elicitation, interestOffers, interestUpdates, sessionInvites, sessionTurns}) => {
         const preferences = {turnComplete, elicitation};
 
         if (interestOffers !== undefined) {
@@ -348,6 +348,14 @@ const pushSubscriptionService = {
 
         if (interestUpdates !== undefined) {
             preferences.interestUpdates = interestUpdates;
+        }
+
+        if (sessionInvites !== undefined) {
+            preferences.sessionInvites = sessionInvites;
+        }
+
+        if (sessionTurns !== undefined) {
+            preferences.sessionTurns = sessionTurns;
         }
 
         return await apiClient.put(await preferencesUri(), preferences);

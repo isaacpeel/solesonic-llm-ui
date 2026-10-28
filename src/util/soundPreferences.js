@@ -1,22 +1,22 @@
-const GAME_SOUNDS_ENABLED_STORAGE_KEY = 'solesonic.gameSoundsEnabled';
+export const AGENT_SOUNDS_ENABLED_STORAGE_KEY = 'solesonic.gameSoundsEnabled';
 
-let gameSoundsEnabledForThisPage = true;
+let agentSoundsEnabledForThisPage = true;
 
-export function readGameSoundsEnabled() {
+export function readAgentSoundsEnabled() {
     try {
-        const storedValue = localStorage.getItem(GAME_SOUNDS_ENABLED_STORAGE_KEY);
+        const storedValue = localStorage.getItem(AGENT_SOUNDS_ENABLED_STORAGE_KEY);
 
-        return storedValue === null ? gameSoundsEnabledForThisPage : storedValue !== 'false';
+        return storedValue === null ? agentSoundsEnabledForThisPage : storedValue !== 'false';
     } catch {
-        return gameSoundsEnabledForThisPage;
+        return agentSoundsEnabledForThisPage;
     }
 }
 
-export function writeGameSoundsEnabled(enabled) {
-    gameSoundsEnabledForThisPage = enabled;
+export function writeAgentSoundsEnabled(enabled) {
+    agentSoundsEnabledForThisPage = enabled;
 
     try {
-        localStorage.setItem(GAME_SOUNDS_ENABLED_STORAGE_KEY, String(enabled));
+        localStorage.setItem(AGENT_SOUNDS_ENABLED_STORAGE_KEY, String(enabled));
     } catch {
         // Storage can be blocked or full; the choice then lasts for this page only.
     }

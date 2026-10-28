@@ -13,6 +13,9 @@ import MemoryManagement from "./settings/memory/MemoryManagement.jsx";
 import {DEFAULT_MEMORY_LEVEL} from "./settings/memory/memoryLevels.js";
 import NotificationSettings from "./settings/notifications/NotificationSettings.jsx";
 import InterestOfferScreen from "./interests/InterestOfferScreen.jsx";
+import SharedSessionsScreen from "./sharedsessions/SharedSessionsScreen.jsx";
+import SharedSessionScreen from "./sharedsessions/SharedSessionScreen.jsx";
+import SharedSessionInviteScreen from "./sharedsessions/SharedSessionInviteScreen.jsx";
 import InterestSettings from "./settings/interests/InterestSettings.jsx";
 import ModelAccessSettings from "./settings/modelaccess/ModelAccessSettings.jsx";
 import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
@@ -47,6 +50,9 @@ export const routes = [
             {index: true, element: <ChatPage/>},
             {path: "chat/:chatId", element: <ChatPage/>},
             {path: "interests/offers/:offerId", element: <InterestOfferScreen/>},
+            {path: "shared-sessions", element: <SharedSessionsScreen/>},
+            {path: "shared-sessions/invites/:inviteId", element: <SharedSessionInviteScreen/>},
+            {path: "shared-sessions/:sessionId", element: <SharedSessionScreen/>},
             {
                 path: "settings",
                 element: <UserSettings/>,

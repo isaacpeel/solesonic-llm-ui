@@ -6,7 +6,7 @@ vi.mock('../../src/util/soundObjectUrlCache.js', () => ({
 }));
 
 vi.mock('../../src/util/soundPreferences.js', () => ({
-    readGameSoundsEnabled: vi.fn(),
+    readAgentSoundsEnabled: vi.fn(),
 }));
 
 const FIRST_SOUND_ID = 'a'.repeat(64);
@@ -86,7 +86,7 @@ let useSoundPlayer;
 let unlockSoundPlayer;
 let acquireSoundObjectUrl;
 let releaseSoundObjectUrl;
-let readGameSoundsEnabled;
+let readAgentSoundsEnabled;
 
 beforeEach(async () => {
     vi.resetAllMocks();
@@ -97,11 +97,11 @@ beforeEach(async () => {
 
     ({renderHook, act, waitFor} = await import('@testing-library/react'));
     ({acquireSoundObjectUrl, releaseSoundObjectUrl} = await import('../../src/util/soundObjectUrlCache.js'));
-    ({readGameSoundsEnabled} = await import('../../src/util/soundPreferences.js'));
+    ({readAgentSoundsEnabled} = await import('../../src/util/soundPreferences.js'));
     ({default: useSoundPlayer, unlockSoundPlayer} = await import('../../src/hooks/useSoundPlayer.js'));
 
     acquireSoundObjectUrl.mockResolvedValue('blob:sound-1');
-    readGameSoundsEnabled.mockReturnValue(true);
+    readAgentSoundsEnabled.mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -142,7 +142,7 @@ describe('useSoundPlayer playSound', () => {
         expect(acquireSoundObjectUrl).toHaveBeenCalledOnce();
     });
 
-    it('plays a later game whose cue reuses the same clip under a new cue id', async () => {
+    it('plays a later session whose cue reuses the same clip under a new cue id', async () => {
         const {result} = renderMountedSoundPlayer();
 
         result.current.playSound(soundCue());
@@ -155,8 +155,8 @@ describe('useSoundPlayer playSound', () => {
         expect(acquireSoundObjectUrl).toHaveBeenLastCalledWith(FIRST_SOUND_ID);
     });
 
-    it('plays nothing while game sounds are muted', async () => {
-        readGameSoundsEnabled.mockReturnValue(false);
+    it('plays nothing while agent sounds are muted', async () => {
+        readAgentSoundsEnabled.mockReturnValue(false);
         const {result} = renderMountedSoundPlayer();
 
         result.current.playSound(soundCue());

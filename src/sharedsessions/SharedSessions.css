@@ -1,0 +1,163 @@
+.shared-sessions-screen,
+.shared-session-screen,
+.shared-session-invite-screen {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.shared-session-screen {
+    height: calc(100vh - 80px);
+}
+
+.shared-sessions-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 8px;
+}
+
+.shared-sessions-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.shared-sessions-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
+    border-radius: 8px;
+}
+
+.shared-sessions-list-item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.shared-sessions-waiting-on-you {
+    font-weight: 600;
+    color: var(--accent-color, #2f7de1);
+}
+
+.shared-sessions-invite-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.shared-sessions-invite-form input,
+.shared-sessions-invite-form select,
+.shared-session-composer textarea {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.4));
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.shared-sessions-button {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.4));
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.shared-sessions-button--primary {
+    background: var(--accent-color, #2f7de1);
+    border-color: var(--accent-color, #2f7de1);
+    color: #fff;
+}
+
+.shared-sessions-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.shared-sessions-notice {
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.shared-sessions-notice--error {
+    color: var(--error-color, #d64545);
+}
+
+.shared-session-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.shared-session-participants {
+    font-weight: 600;
+}
+
+.shared-session-status-banner {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--surface-color, rgba(128, 128, 128, 0.12));
+}
+
+.shared-session-status-banner--viewer {
+    background: var(--accent-color, #2f7de1);
+    color: #fff;
+    font-weight: 600;
+}
+
+.shared-session-messages {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.shared-session-message-sender {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin: 4px 4px -4px;
+}
+
+.shared-session-message--mine .shared-session-message-sender {
+    text-align: right;
+}
+
+.shared-session-message--other .chat-message-container.USER {
+    justify-content: flex-start;
+}
+
+.shared-session-composer {
+    display: flex;
+    gap: 8px;
+}
+
+.shared-session-composer textarea {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+}
+
+.shared-sessions-link {
+    position: relative;
+}
+
+.shared-sessions-link-dot {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent-color, #2f7de1);
+}

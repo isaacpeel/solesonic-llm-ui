@@ -26,9 +26,18 @@ const PREFERENCE_TOGGLES = [
     {key: "elicitation", label: "A tool needs my answer"},
     {key: "interestOffers", label: "Suggestions to follow an interest"},
     {key: "interestUpdates", label: "News on interests I follow"},
+    {key: "sessionInvites", label: "Invitations to a shared session"},
+    {key: "sessionTurns", label: "When it's my turn in a shared session"},
 ];
 
-const DEFAULT_PREFERENCES = {turnComplete: true, elicitation: true, interestOffers: true, interestUpdates: true};
+const DEFAULT_PREFERENCES = {
+    turnComplete: true,
+    elicitation: true,
+    interestOffers: true,
+    interestUpdates: true,
+    sessionInvites: true,
+    sessionTurns: true,
+};
 
 const LOAD_FAILED_MESSAGE = "Could not load your notification settings.";
 

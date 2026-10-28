@@ -5,7 +5,7 @@ const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
 const MAXIMUM_TITLE_LENGTH = 100;
 const MAXIMUM_BODY_LENGTH = 200;
-const APP_PATH_PATTERN = /^\/(?:chat\/[A-Za-z0-9_-]+|interests\/offers\/[A-Za-z0-9_-]+(?:\?intent=accept)?|settings(?:\/[A-Za-z0-9_-]+)*)?$/;
+const APP_PATH_PATTERN = /^\/(?:chat\/[A-Za-z0-9_-]+|interests\/offers\/[A-Za-z0-9_-]+(?:\?intent=accept)?|shared-sessions(?:\/invites)?\/[A-Za-z0-9_-]+|shared-sessions|settings(?:\/[A-Za-z0-9_-]+)*)?$/;
 const MAXIMUM_ACTION_TITLE_LENGTH = 32;
 const DEFAULT_MAXIMUM_ACTIONS = 2;
 const ENABLE_ACTION = 'enable';

@@ -1,5 +1,9 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {readGameSoundsEnabled, writeGameSoundsEnabled} from '../../src/util/soundPreferences.js';
+import {
+    AGENT_SOUNDS_ENABLED_STORAGE_KEY,
+    readAgentSoundsEnabled,
+    writeAgentSoundsEnabled,
+} from '../../src/util/soundPreferences.js';
 
 function createFakeStorage() {
     const storedValues = new Map();
@@ -30,32 +34,41 @@ describe('soundPreferences', () => {
         vi.unstubAllGlobals();
     });
 
-    it('defaults to game sounds on when nothing is stored', () => {
-        expect(readGameSoundsEnabled()).toBe(true);
+    it('defaults to agent sounds on when nothing is stored', () => {
+        expect(readAgentSoundsEnabled()).toBe(true);
     });
 
     it('reads back a stored off', () => {
-        writeGameSoundsEnabled(false);
+        writeAgentSoundsEnabled(false);
 
-        expect(readGameSoundsEnabled()).toBe(false);
+        expect(readAgentSoundsEnabled()).toBe(false);
     });
 
     it('reads back a stored on after an off', () => {
-        writeGameSoundsEnabled(false);
-        writeGameSoundsEnabled(true);
+        writeAgentSoundsEnabled(false);
+        writeAgentSoundsEnabled(true);
 
-        expect(readGameSoundsEnabled()).toBe(true);
+        expect(readAgentSoundsEnabled()).toBe(true);
+    });
+
+    it('keeps the storage key earlier choices were saved under', () => {
+        expect(AGENT_SOUNDS_ENABLED_STORAGE_KEY).toBe('solesonic.gameSoundsEnabled');
+
+        localStorage.setItem('solesonic.gameSoundsEnabled', 'false');
+
+        expect(readAgentSoundsEnabled()).toBe(false);
     });
 
     it('falls back to on when storage throws', () => {
+        writeAgentSoundsEnabled(true);
         vi.stubGlobal('localStorage', createThrowingStorage());
 
-        expect(readGameSoundsEnabled()).toBe(true);
+        expect(readAgentSoundsEnabled()).toBe(true);
     });
 
     it('does not throw when storage refuses a write', () => {
         vi.stubGlobal('localStorage', createThrowingStorage());
 
-        expect(() => writeGameSoundsEnabled(false)).not.toThrow();
+        expect(() => writeAgentSoundsEnabled(false)).not.toThrow();
     });
 });

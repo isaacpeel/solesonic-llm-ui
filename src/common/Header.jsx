@@ -7,6 +7,7 @@ import {PencilSquareIcon} from "@heroicons/react/24/solid/index.js";
 import ChatHistory from "../chat/message/ChatHistory.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import {useChatTurn} from "../context/useChatTurn.jsx";
+import SharedSessionsLink from "../sharedsessions/SharedSessionsLink.jsx";
 
 const Header = () => {
     const {setChatHistory} = useSharedData();
@@ -54,6 +55,7 @@ const Header = () => {
                 >
                     <PencilSquareIcon/>
                 </div>
+                <SharedSessionsLink/>
             </div>
             <div>
                 <UserDialog/>

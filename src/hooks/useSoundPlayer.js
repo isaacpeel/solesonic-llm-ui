@@ -1,6 +1,6 @@
 import {useCallback, useRef, useState} from 'react';
 import {acquireSoundObjectUrl, releaseSoundObjectUrl} from '../util/soundObjectUrlCache.js';
-import {readGameSoundsEnabled} from '../util/soundPreferences.js';
+import {readAgentSoundsEnabled} from '../util/soundPreferences.js';
 
 const MISSING_SOUND_RETRY_DELAY_MILLISECONDS = 500;
 
@@ -218,14 +218,14 @@ function useSoundPlayer() {
             return;
         }
 
-        /* Deduped on the cue, never the clip: the clip hash is the same for every game. */
+        /* Deduped on the cue, never the clip: the clip hash is the same for every session. */
         if (soundCue.playOnce && playedCueIds.has(soundCue.cueId)) {
             return;
         }
 
         playedCueIds.add(soundCue.cueId);
 
-        if (!soundSurfaceMountedRef.current || !readGameSoundsEnabled()) {
+        if (!soundSurfaceMountedRef.current || !readAgentSoundsEnabled()) {
             return;
         }
 

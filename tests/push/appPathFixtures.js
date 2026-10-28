@@ -5,6 +5,9 @@ export const SAFE_APP_PATHS = [
     '/settings/interests',
     '/interests/offers/offer-1',
     '/interests/offers/offer-1?intent=accept',
+    '/shared-sessions',
+    '/shared-sessions/5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e',
+    '/shared-sessions/invites/6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d',
 ];
 
 export const UNSAFE_APP_PATHS = [
@@ -26,6 +29,11 @@ export const UNSAFE_APP_PATHS = [
     '/interests/offers/offer-1?intent=accept?intent=accept',
     '/interests/offers/a%2Fb',
     '/interests/offers//evil.example',
+    '/games',
+    '/shared-sessions/',
+    '/shared-sessions/session-1/stream',
+    '/shared-sessions/invites/invite-1/accept',
+    '/shared-sessions//evil.example',
     '',
     null,
     undefined,
