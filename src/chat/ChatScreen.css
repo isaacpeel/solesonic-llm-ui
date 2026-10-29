@@ -42,7 +42,7 @@
  * Centered horizontally on the full viewport — neither .chat-app nor .chat-content
  * constrains its width, so there's no narrower column to center against. left: 50% alone
  * would offset by the button's own half-width, hence the translateX correction (same idiom
- * as .dots-loader in ChatInput.css). Vertically it rides the same clearance the transcript
+ * as .dots-loader in MessageComposer.css). Vertically it rides the same clearance the transcript
  * uses, so it clears the composer whether or not the attachment tray is open. Fixed rather
  * than absolute because the composer it sits above is fixed too.
  */

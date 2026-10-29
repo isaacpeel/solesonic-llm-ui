@@ -1,12 +1,9 @@
-import {useEffect} from 'react';
-import {ArrowUpIcon, StopIcon} from '@heroicons/react/20/solid';
-import './ChatInput.css';
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
 import ModelPicker from '../command/ModelPicker.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
+import MessageComposer from './MessageComposer.jsx';
 import {ACCEPTED_ATTACHMENT_CONTENT_TYPES} from '../../util/imageValidation.js';
-import useIsMobile from '../../hooks/useIsMobile.js';
 
 function ChatInput({
     loading,
@@ -38,23 +35,6 @@ function ChatInput({
     modelPicker,
 }) {
     const pickerOpen = !!modelPicker?.pickerOpen;
-
-    useEffect(() => {
-        const adjustInputHeight = () => {
-            if (chatInputRef.current) {
-                chatInputRef.current.style.height = "auto";
-                chatInputRef.current.style.height = `${chatInputRef.current.scrollHeight}px`;
-            }
-        };
-
-        adjustInputHeight();
-
-        if (chatInputRef.current && !pickerOpen) {
-            chatInputRef.current.focus();
-        }
-    }, [chatInputRef, inputValue, pickerOpen]);
-
-    const isMobile = useIsMobile();
     const visibleCommandCandidates = loading ? [] : commandCandidates;
     const hasCandidates = visibleCommandCandidates.length > 0;
 
@@ -67,32 +47,60 @@ function ChatInput({
      */
     const canSubmit = !inputLocked && !pickerOpen && (inputValue.trim().length > 0 || (!!selectedCommand && !isPinned));
 
-    const submitMessage = () => {
-        if (!canSubmit) {
-            return;
+    const submitTurn = () => handleSubmit().then((submitted) => {
+        /* A pinned command stays selected so it is resent on the next turn too. */
+        if (submitted && !isPinned) {
+            onDeselect();
         }
 
-        handleSubmit().then((submitted) => {
-            if (!submitted) {
-                return;
-            }
+        return submitted;
+    });
 
-            if (chatInputRef.current) {
-                chatInputRef.current.style.height = "auto";
-            }
-
-            /* A pinned command stays selected so it is resent on the next turn too. */
-            if (!isPinned) {
-                onDeselect();
-            }
-        });
+    const selectCandidate = () => {
+        const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        onCommandSelect(visibleCommandCandidates[targetIndex]);
     };
 
-    /*
-     * Pasting is the primary attach path, and it is the one handler that cannot move into
-     * ComposerAttachments — the paste target has to be the textarea itself. A paste
-     * carrying both text and a file keeps the text.
-     */
+    const handleCommandKeyDown = (event) => {
+        if (hasCandidates && event.key === 'ArrowDown') {
+            event.preventDefault();
+            onArrowDown();
+            return true;
+        }
+
+        if (hasCandidates && event.key === 'ArrowUp') {
+            event.preventDefault();
+            onArrowUp();
+            return true;
+        }
+
+        if (hasCandidates && event.key === 'Tab') {
+            event.preventDefault();
+            selectCandidate();
+            return true;
+        }
+
+        if (hasCandidates && event.key === 'Escape') {
+            event.preventDefault();
+            onDismiss();
+            return true;
+        }
+
+        if (event.key === 'Backspace' && inputValue === '' && selectedCommand) {
+            onDeselect();
+            return true;
+        }
+
+        if (event.key === 'Enter' && !event.shiftKey && hasCandidates && (selectedIndex >= 0 || visibleCommandCandidates.length === 1)) {
+            event.preventDefault();
+            selectCandidate();
+            return true;
+        }
+
+        return false;
+    };
+
+    /* The paste target has to be the textarea itself. A paste carrying both text and a file keeps the text. */
     const handlePaste = (event) => {
         if (loading || !addFiles) {
             return;
@@ -117,148 +125,71 @@ function ChatInput({
         addFiles(attachableFiles);
     };
 
+    const popovers = (
+        <>
+            <SlashCommandList
+                commandCandidates={visibleCommandCandidates}
+                selectedIndex={selectedIndex}
+                onCommandSelect={onCommandSelect}
+            />
+            {pickerOpen && (
+                <ModelPicker
+                    options={modelPicker.options}
+                    loading={modelPicker.loadingOptions}
+                    saving={modelPicker.savingModel}
+                    error={modelPicker.pickerError}
+                    pendingModel={modelPicker.pendingModel}
+                    onChoose={modelPicker.choose}
+                    onResetToDefault={modelPicker.resetToDefault}
+                    onRetry={modelPicker.openPicker}
+                    onClose={modelPicker.closePicker}
+                />
+            )}
+            {selectedCommand && (!loading || isPinned) && (
+                <SelectedCommandChip
+                    selectedCommand={selectedCommand}
+                    isPinned={isPinned}
+                    onTogglePin={onTogglePin}
+                    onDeselect={onDeselect}
+                />
+            )}
+        </>
+    );
+
+    const renderAttachmentRow = (row) => (
+        <ComposerAttachments
+            trayEntries={trayEntries}
+            addFiles={addFiles}
+            removeEntry={removeEntry}
+            retryEntry={retryEntry}
+            setEntryCaption={setEntryCaption}
+            trayError={trayError}
+            loading={loading}
+            onCaptionOpenChange={onCaptionOpenChange}
+        >
+            {row}
+        </ComposerAttachments>
+    );
+
     return (
-        <div className="chat-input-container" ref={composerContainerRef}>
-            <div className="textarea-parent">
-                {/*
-                  * Both popovers live in one absolutely-positioned stack above the composer.
-                  * Previously the chip was an in-flow flex child, so selecting a command
-                  * pushed the textarea out of the row entirely. The chip renders last so it
-                  * sits closest to the input it applies to.
-                  */}
-                <div className="composer-popovers">
-                    <SlashCommandList
-                        commandCandidates={visibleCommandCandidates}
-                        selectedIndex={selectedIndex}
-                        onCommandSelect={onCommandSelect}
-                    />
-                    {pickerOpen && (
-                        <ModelPicker
-                            options={modelPicker.options}
-                            loading={modelPicker.loadingOptions}
-                            saving={modelPicker.savingModel}
-                            error={modelPicker.pickerError}
-                            pendingModel={modelPicker.pendingModel}
-                            onChoose={modelPicker.choose}
-                            onResetToDefault={modelPicker.resetToDefault}
-                            onRetry={modelPicker.openPicker}
-                            onClose={modelPicker.closePicker}
-                        />
-                    )}
-                    {selectedCommand && (!loading || isPinned) && (
-                        <SelectedCommandChip
-                            selectedCommand={selectedCommand}
-                            isPinned={isPinned}
-                            onTogglePin={onTogglePin}
-                            onDeselect={onDeselect}
-                        />
-                    )}
-                </div>
-                <ComposerAttachments
-                    trayEntries={trayEntries}
-                    addFiles={addFiles}
-                    removeEntry={removeEntry}
-                    retryEntry={retryEntry}
-                    setEntryCaption={setEntryCaption}
-                    trayError={trayError}
-                    loading={loading}
-                    onCaptionOpenChange={onCaptionOpenChange}
-                >
-                    <textarea
-                        disabled={inputLocked}
-                        ref={chatInputRef}
-                        value={inputValue}
-                        onChange={handleInputChange}
-                        onPaste={handlePaste}
-                        placeholder={promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Type a message...")}
-                        className="chat-text-input"
-                        rows={1}
-                        onKeyDown={(event) => {
-
-                            if (hasCandidates && event.key === 'ArrowDown') {
-                                event.preventDefault();
-                                onArrowDown();
-                                return;
-                            }
-
-                            if (hasCandidates && event.key === 'ArrowUp') {
-                                event.preventDefault();
-                                onArrowUp();
-                                return;
-                            }
-
-                            if (hasCandidates && event.key === 'Tab') {
-                                event.preventDefault();
-                                const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
-                                onCommandSelect(visibleCommandCandidates[targetIndex]);
-                                return;
-                            }
-
-                            if (hasCandidates && event.key === 'Escape') {
-                                event.preventDefault();
-                                onDismiss();
-                                return;
-                            }
-
-                            if (event.key === 'Backspace' && inputValue === '' && selectedCommand) {
-                                onDeselect();
-                                return;
-                            }
-
-                            if (event.key === 'Enter' && !event.shiftKey) {
-                                if (hasCandidates && (selectedIndex >= 0 || visibleCommandCandidates.length === 1)) {
-                                    event.preventDefault();
-                                    const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
-                                    onCommandSelect(visibleCommandCandidates[targetIndex]);
-                                    return;
-                                }
-
-                                /* On touch devices Enter has no Shift companion, so it inserts a newline; the send button submits. */
-                                if (isMobile) {
-                                    return;
-                                }
-
-                                event.preventDefault();
-                                submitMessage();
-                            }
-                        }}
-                    />
-
-                    {loading && !streamActive && (
-                        <div className="dots-loader">
-                            <div className="dot"></div>
-                            <div className="dot"></div>
-                            <div className="dot"></div>
-                        </div>
-                    )}
-
-                    {streamActive && (
-                        <button
-                            type="button"
-                            className="composer-stop-button"
-                            onClick={onStopChat}
-                            aria-label="Stop response"
-                            title="Stop response"
-                        >
-                            <StopIcon/>
-                        </button>
-                    )}
-
-                    {(!streamActive || promptOpen) && (
-                        <button
-                            type="button"
-                            className="composer-send-button"
-                            onClick={submitMessage}
-                            disabled={!canSubmit}
-                            aria-label="Send message"
-                            title="Send message"
-                        >
-                            <ArrowUpIcon/>
-                        </button>
-                    )}
-                </ComposerAttachments>
-            </div>
-        </div>
+        <MessageComposer
+            inputRef={chatInputRef}
+            inputValue={inputValue}
+            onInputChange={handleInputChange}
+            onSubmit={submitTurn}
+            canSubmit={canSubmit}
+            disabled={inputLocked}
+            placeholder={promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Type a message...")}
+            loading={loading && !streamActive}
+            onStop={streamActive ? onStopChat : null}
+            showSend={!streamActive || promptOpen}
+            focusSuppressed={pickerOpen}
+            onKeyDown={handleCommandKeyDown}
+            onPaste={handlePaste}
+            popovers={popovers}
+            renderRow={renderAttachmentRow}
+            containerRef={composerContainerRef}
+        />
     );
 }
 

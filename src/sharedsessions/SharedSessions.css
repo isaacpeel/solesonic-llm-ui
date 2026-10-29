@@ -1,5 +1,4 @@
 .shared-sessions-screen,
-.shared-session-screen,
 .shared-session-invite-screen {
     max-width: 860px;
     margin: 0 auto;
@@ -7,10 +6,6 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-}
-
-.shared-session-screen {
-    height: calc(100vh - 80px);
 }
 
 .shared-sessions-section-title {
@@ -56,8 +51,7 @@
 }
 
 .shared-sessions-invite-form input,
-.shared-sessions-invite-form select,
-.shared-session-composer textarea {
+.shared-sessions-invite-form select {
     padding: 8px 10px;
     border-radius: 6px;
     border: 1px solid var(--border-color, rgba(128, 128, 128, 0.4));
@@ -95,11 +89,24 @@
     color: var(--error-color, #d64545);
 }
 
+.shared-session-column {
+    width: 45%;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+
 .shared-session-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+}
+
+.shared-session-header-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .shared-session-participants {
@@ -118,9 +125,8 @@
     font-weight: 600;
 }
 
-.shared-session-messages {
-    flex: 1;
-    overflow-y: auto;
+.shared-session-message {
+    width: 100%;
 }
 
 .shared-session-message-sender {
@@ -137,15 +143,10 @@
     justify-content: flex-start;
 }
 
-.shared-session-composer {
-    display: flex;
-    gap: 8px;
-}
-
-.shared-session-composer textarea {
-    flex: 1;
-    resize: none;
-    min-height: 44px;
+@media (max-width: 768px) {
+    .shared-session-column {
+        width: 85%;
+    }
 }
 
 .shared-sessions-link {

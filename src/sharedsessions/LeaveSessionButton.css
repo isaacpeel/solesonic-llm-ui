@@ -1,0 +1,113 @@
+.leave-session {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+}
+
+.leave-session-icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    flex: 0 0 auto;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background-color var(--transition-speed), opacity var(--transition-speed);
+}
+
+.leave-session-icon-button svg {
+    width: 18px;
+    height: 18px;
+}
+
+.leave-session-trigger svg {
+    opacity: 0.75;
+}
+
+.leave-session-icon-button:active:not(:disabled),
+.leave-session-icon-button:hover:not(:disabled) {
+    background-color: var(--icon-hover-bg);
+}
+
+.leave-session-icon-button:hover:not(:disabled) svg {
+    opacity: 1;
+}
+
+.leave-session-icon-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.leave-session-icon-button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.leave-session-icon-button--danger {
+    border-color: #eb5757;
+    background-color: #eb5757;
+    color: #fff;
+}
+
+.leave-session-icon-button--danger:active:not(:disabled),
+.leave-session-icon-button--danger:hover:not(:disabled) {
+    background-color: #d64545;
+}
+
+.leave-session-confirm {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 2px 2px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background-color: var(--primary-color);
+    animation: leave-session-confirm-in 120ms ease-out;
+}
+
+.leave-session-confirm-text {
+    font-size: 13px;
+    white-space: nowrap;
+    color: var(--text-color);
+    margin-right: 4px;
+}
+
+@keyframes leave-session-confirm-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .leave-session-confirm {
+        animation: none;
+    }
+}
+
+@media (pointer: fine) {
+    .leave-session-icon-button {
+        width: 28px;
+        height: 28px;
+    }
+
+    .leave-session-icon-button svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .leave-session-confirm-text {
+        font-size: 12px;
+    }
+}

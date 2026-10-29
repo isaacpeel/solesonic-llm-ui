@@ -1,15 +1,21 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Link, useNavigate, useParams} from 'react-router';
+import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import log from 'loglevel';
 import ChatMessage, {USER} from '../chat/message/ChatMessage.jsx';
+import MessageComposer from '../chat/composer/MessageComposer.jsx';
 import ElicitationPrompt from '../elicitation/ElicitationPrompt.jsx';
 import useSoundPlayer from '../hooks/useSoundPlayer.js';
 import useSharedSessionStream from '../hooks/useSharedSessionStream.js';
+import useScrollToBottom from '../hooks/useScrollToBottom.js';
+import useKeyboardInset from '../hooks/useKeyboardInset.js';
 import sharedSessionService, {SESSION_STATUSES, describeSessionError} from '../service/SharedSessionService.js';
 import authService from '../service/AuthService.js';
 import {resolveElicitationAction} from '../service/ElicitationService.js';
+import LeaveSessionButton from './LeaveSessionButton.jsx';
 import {sharedAgentFor} from './sharedAgents.js';
 import {isPromptForViewer, isViewersTurn, waitingOn} from './sharedSessionTranscript.js';
+import '../chat/ChatScreen.css';
 import './SharedSessions.css';
 
 function statusBanner({session, agent, activeRun, viewerUserId, promptForViewer}) {
@@ -48,11 +54,11 @@ function statusBanner({session, agent, activeRun, viewerUserId, promptForViewer}
 
 function composerPlaceholder({activeRun, banner, otherName, agent}) {
     if (activeRun) {
-        return 'The agent is responding…';
+        return '';
     }
 
     if (banner.forViewer || !otherName) {
-        return 'Your message';
+        return 'Type a message...';
     }
 
     return agent.waitingHint ? `Waiting on ${otherName} (${agent.waitingHint})` : `Waiting on ${otherName}`;
@@ -68,8 +74,8 @@ const SharedSessionScreen = () => {
     const [notice, setNotice] = useState(null);
     const [promptValues, setPromptValues] = useState({});
     const [myRunId, setMyRunId] = useState(null);
-    const [confirmingLeave, setConfirmingLeave] = useState(false);
-    const messagesEndRef = useRef(null);
+    const composerInputRef = useRef(null);
+    const composerRef = useRef(null);
 
     const {playSound, attachSoundSurface} = useSoundPlayer();
 
@@ -97,6 +103,9 @@ const SharedSessionScreen = () => {
         onSoundCue: playSound,
     });
 
+    const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(messages, composerRef);
+    const keyboardInset = useKeyboardInset();
+
     const agent = sharedAgentFor(session?.agentName);
     const promptForViewer = isPromptForViewer(session, viewerUserId);
     const elicitationId = session?.prompt?.elicitationId;
@@ -105,12 +114,10 @@ const SharedSessionScreen = () => {
         setPromptValues({});
     }, [elicitationId]);
 
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView?.({block: 'end'});
-    }, [messages]);
-
     const takesMessages = session?.status === SESSION_STATUSES.ACTIVE || session?.status === SESSION_STATUSES.COMPLETED;
     const banner = statusBanner({session, agent, activeRun, viewerUserId, promptForViewer});
+    const myRunActive = !!activeRun && activeRun.runId === myRunId;
+    const composerLocked = !!activeRun || sending;
 
     const elicitation = useMemo(() => promptForViewer && session?.prompt ? {
         elicitationId: session.prompt.elicitationId,
@@ -136,19 +143,21 @@ const SharedSessionScreen = () => {
         }
     }, []);
 
-    const handleSubmit = useCallback(async (event) => {
-        event?.preventDefault?.();
+    const handleSubmit = useCallback(async () => {
         const text = inputValue.trim();
 
         if (!text || sending) {
-            return;
+            return false;
         }
 
         setInputValue('');
 
         if (!await runSend(() => sharedSessionService.send(sessionId, text))) {
             setInputValue(text);
+            return false;
         }
+
+        return true;
     }, [sessionId, inputValue, runSend, sending]);
 
     const handlePromptSubmit = useCallback(async (overrides) => {
@@ -174,62 +183,54 @@ const SharedSessionScreen = () => {
     }, [sessionId]);
 
     const handleLeave = useCallback(async () => {
-        if (!confirmingLeave) {
-            setConfirmingLeave(true);
-            return;
-        }
-
         try {
             await sharedSessionService.leave(sessionId);
             navigate('/shared-sessions');
         } catch (caughtError) {
             setNotice(describeSessionError(caughtError));
-            setConfirmingLeave(false);
         }
-    }, [confirmingLeave, sessionId, navigate]);
-
-    const handleKeyDown = (event) => {
-        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-            void handleSubmit(event);
-        }
-    };
+    }, [sessionId, navigate]);
 
     if (loadError) {
         return (
-            <div className="shared-session-screen">
-                <p className="shared-sessions-notice shared-sessions-notice--error">This session could not be loaded.</p>
-                <Link to="/shared-sessions">Back to shared sessions</Link>
+            <div className="chat-app shared-session-screen">
+                <div className="chat-content">
+                    <p className="shared-session-column shared-sessions-notice shared-sessions-notice--error">This session could not be loaded.</p>
+                    <Link className="shared-session-column" to="/shared-sessions">Back to shared sessions</Link>
+                </div>
             </div>
         );
     }
 
     if (loading || !session) {
-        return <div className="shared-session-screen"><p className="shared-sessions-notice">Loading…</p></div>;
+        return (
+            <div className="chat-app shared-session-screen">
+                <div className="chat-content">
+                    <p className="shared-session-column shared-sessions-notice">Loading…</p>
+                </div>
+            </div>
+        );
     }
 
     const participants = (session.participants ?? []).map((participant) => participant.name).join(', ');
     const otherName = waitingOn(session, viewerUserId)[0];
 
     return (
-        <div className="shared-session-screen">
-            <div className="shared-session-header">
-                <div>
-                    <Link to="/shared-sessions">Shared sessions</Link>
-                    <span className="shared-session-participants"> · {agent.label} · {participants}</span>
-                    {!connected && <span className="shared-sessions-notice"> · reconnecting…</span>}
+        <div className="chat-app shared-session-screen" style={{'--keyboard-inset': `${keyboardInset}px`}}>
+            <div className="chat-content" ref={scrollContainerRef}>
+                <div className="shared-session-column shared-session-header">
+                    <div className="shared-session-header-title">
+                        <Link to="/shared-sessions">Shared sessions</Link>
+                        <span className="shared-session-participants"> · {agent.label} · {participants}</span>
+                        {!connected && <span className="shared-sessions-notice"> · reconnecting…</span>}
+                    </div>
+                    {takesMessages && <LeaveSessionButton onConfirm={handleLeave}/>}
                 </div>
-                {takesMessages && (
-                    <button type="button" className="shared-sessions-button" onClick={handleLeave}>
-                        {confirmingLeave ? 'End it for everyone?' : 'Leave session'}
-                    </button>
-                )}
-            </div>
 
-            <div className={`shared-session-status-banner ${banner.forViewer ? 'shared-session-status-banner--viewer' : ''}`} role="status">
-                {banner.text}
-            </div>
+                <div className={`shared-session-column shared-session-status-banner ${banner.forViewer ? 'shared-session-status-banner--viewer' : ''}`} role="status">
+                    {banner.text}
+                </div>
 
-            <div className="shared-session-messages">
                 {messages.map((message) => {
                     const fromOther = message.type === USER && !message.mine;
                     const senderLabel = message.type === USER
@@ -237,46 +238,53 @@ const SharedSessionScreen = () => {
                         : null;
 
                     return (
-                        <div key={message._key} className={fromOther ? 'shared-session-message--other' : 'shared-session-message--mine'}>
+                        <div key={message._key} className={`shared-session-message ${fromOther ? 'shared-session-message--other' : 'shared-session-message--mine'}`}>
                             {senderLabel && <div className="shared-session-message-sender">{senderLabel}</div>}
                             <ChatMessage message={message}/>
                         </div>
                     );
                 })}
-                <div ref={messagesEndRef}/>
+
+                {notice && <div className="chat-attachment-notice shared-sessions-notice--error" role="alert">{notice}</div>}
+
+                {elicitation && !activeRun && (
+                    <ElicitationPrompt
+                        elicitation={elicitation}
+                        values={promptValues}
+                        onChange={handlePromptChange}
+                        onSubmit={handlePromptSubmit}
+                        submitting={sending}
+                    />
+                )}
+
+                {takesMessages && (
+                    <MessageComposer
+                        inputRef={composerInputRef}
+                        inputValue={inputValue}
+                        onInputChange={(event) => setInputValue(event.target.value)}
+                        onSubmit={handleSubmit}
+                        canSubmit={!composerLocked && inputValue.trim().length > 0}
+                        disabled={composerLocked}
+                        placeholder={composerPlaceholder({activeRun, banner, otherName, agent})}
+                        ariaLabel="Your message"
+                        loading={sending || (!!activeRun && !myRunActive)}
+                        onStop={myRunActive ? handleCancel : null}
+                        showSend={!myRunActive}
+                        containerRef={composerRef}
+                    />
+                )}
             </div>
 
-            {notice && <p className="shared-sessions-notice shared-sessions-notice--error" role="alert">{notice}</p>}
-
-            {elicitation && !activeRun && (
-                <ElicitationPrompt
-                    elicitation={elicitation}
-                    values={promptValues}
-                    onChange={handlePromptChange}
-                    onSubmit={handlePromptSubmit}
-                    submitting={sending}
-                />
-            )}
-
-            {takesMessages && (
-                <form className="shared-session-composer" onSubmit={handleSubmit}>
-                    <textarea
-                        value={inputValue}
-                        onChange={(event) => setInputValue(event.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={!!activeRun || sending}
-                        aria-label="Your message"
-                        placeholder={composerPlaceholder({activeRun, banner, otherName, agent})}
-                    />
-                    {activeRun && activeRun.runId === myRunId ? (
-                        <button type="button" className="shared-sessions-button" onClick={handleCancel}>Stop</button>
-                    ) : (
-                        <button type="submit" className="shared-sessions-button shared-sessions-button--primary"
-                                disabled={!!activeRun || sending || !inputValue.trim()}>
-                            Send
-                        </button>
-                    )}
-                </form>
+            {isScrolledAwayFromBottom && (
+                <button
+                    type="button"
+                    className="chat-scroll-to-bottom"
+                    onClick={scrollToBottom}
+                    aria-label="Scroll to latest message"
+                    title="Scroll to latest message"
+                >
+                    <ArrowDownIcon/>
+                </button>
             )}
         </div>
     );

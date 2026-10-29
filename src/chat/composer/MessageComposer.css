@@ -10,10 +10,30 @@
     right: 0;
 }
 
-/*
- * Borderless and transparent: the surrounding .chat-input-row is the visible field, so the
- * textarea, the attach button and the send button read as one control.
- */
+.textarea-parent {
+    position: relative;
+    width: 45%;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-input-row {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 6px 6px 6px 8px;
+    border-radius: 22px;
+    box-sizing: border-box;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    transition: border-color var(--transition-speed);
+}
+
+.chat-input-row:focus-within {
+    border-color: #6f6f6f;
+}
+
 .chat-text-input {
     flex: 1 1 auto;
     min-width: 0;
@@ -42,20 +62,7 @@
     opacity: 0.45;
 }
 
-.textarea-parent {
-    position: relative;
-    width: 45%;
-    display: flex;
-    flex-direction: column;
-}
-
-/*
- * The stack that holds SlashCommandList and SelectedCommandChip. Absolute, so neither one
- * can take horizontal space from the textarea; a column, so both can be shown at once
- * without overlapping when a command is already selected and the user types "/" again.
- * Inset left/right by the pill's 22px border-radius (.chat-input-row) so the card's square
- * corners land on the pill's flat edge instead of overhanging its curve.
- */
+/* Inset by the pill's 22px border-radius so the popover's square corners land on its flat edge. */
 .composer-popovers {
     position: absolute;
     bottom: 100%;
@@ -66,8 +73,8 @@
     flex-direction: column;
 }
 
-/* Circular, at the trailing edge of the field — the one affordance that sends the message. */
-.composer-send-button {
+.composer-send-button,
+.composer-stop-button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -89,7 +96,14 @@
     color: var(--text-color);
 }
 
-.composer-send-button:hover:not(:disabled) {
+.composer-stop-button svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-color);
+}
+
+.composer-send-button:hover:not(:disabled),
+.composer-stop-button:hover {
     background-color: var(--icon-hover-bg);
 }
 
@@ -98,38 +112,7 @@
     opacity: 0.4;
 }
 
-.composer-send-button:focus-visible {
-    outline: 2px solid var(--text-color);
-    outline-offset: 2px;
-}
-
-/* Same footprint as the send button — it occupies the same slot, only while a turn is streaming. */
-.composer-stop-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    flex: 0 0 auto;
-    align-self: flex-end;
-    border: 1px solid var(--border-color);
-    border-radius: 50%;
-    background-color: var(--secondary-color);
-    cursor: pointer;
-    transition: background-color var(--transition-speed), opacity var(--transition-speed);
-}
-
-.composer-stop-button svg {
-    width: 16px;
-    height: 16px;
-    color: var(--text-color);
-}
-
-.composer-stop-button:hover {
-    background-color: var(--icon-hover-bg);
-}
-
+.composer-send-button:focus-visible,
 .composer-stop-button:focus-visible {
     outline: 2px solid var(--text-color);
     outline-offset: 2px;
@@ -157,16 +140,12 @@
     animation: blink 1.5s infinite;
 }
 
-.dot:nth-child(1) {
-    animation-delay: 0s; /* First dot starts immediately */
-}
-
 .dot:nth-child(2) {
-    animation-delay: 0.3s; /* Second dot starts 0.3s after the first */
+    animation-delay: 0.3s;
 }
 
 .dot:nth-child(3) {
-    animation-delay: 0.6s; /* Third dot starts 0.6s after the second */
+    animation-delay: 0.6s;
 }
 
 @keyframes blink {

@@ -10,28 +10,6 @@
     outline-offset: 2px;
 }
 
-/*
- * The composer field itself — one rounded pill holding the attach button, the textarea and the
- * send button. Also the positioning context for .dots-loader, so the loader keeps centering on
- * the input alone rather than on tray-plus-textarea.
- */
-.chat-input-row {
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    gap: 4px;
-    padding: 6px 6px 6px 8px;
-    border-radius: 22px;
-    box-sizing: border-box;
-    background-color: var(--primary-color);
-    border: 1px solid var(--border-color);
-    transition: border-color var(--transition-speed);
-}
-
-.chat-input-row:focus-within {
-    border-color: #6f6f6f;
-}
-
 .composer-attachment-caption-row {
     display: flex;
     flex-direction: column;

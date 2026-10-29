@@ -75,10 +75,16 @@ that answers `202 {runId, messageId}`, and the sender's own run arrives on the s
   participant in `prompt.forUserIds`**. Its answer is a message (`{promptAnswer: {elicitationId, action, content}}`),
   never the chat's elicitation-response endpoint.
 - The composer stays open while someone else is being waited on; the agent decides what it accepts out of turn.
+- **The screen is laid out like a chat**: the transcript uses `ChatMessage`, the jump-to-latest button uses
+  `useScrollToBottom`, and the composer is the chat's `chat/composer/MessageComposer.jsx` (the same pill, send
+  and stop buttons, and Enter handling), without slash commands or attachments. Stop shows only to the
+  participant who started the run; the others see the loading dots.
 - One run at a time: while one is in progress the composer waits, and a refused message (`409 RUN_IN_PROGRESS`)
   puts the text back.
 - `COMPLETED` still takes messages, so a participant can start over.
-- **Leave** closes the session for everyone.
+- **Leave** closes the session for everyone. It is a small icon at the end of the header
+  (`LeaveSessionButton`) that expands in place into "End for everyone? ✓ ✕". The pill collapses back after 5 s,
+  on Escape, or on a tap anywhere else.
 
 ## Known limit
 
