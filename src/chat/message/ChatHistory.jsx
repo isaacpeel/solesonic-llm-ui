@@ -12,9 +12,13 @@ import ChatDropActionMenu from "./ChatDropActionMenu.jsx";
 import ChatGroupDialogs from "./ChatGroupDialogs.jsx";
 import ChatGroupSection, {isChatGroupRow} from "./ChatGroupSection.jsx";
 import ChatNameInput from "./ChatNameInput.jsx";
+import ChatHistorySearchInput from "./ChatHistorySearchInput.jsx";
+import ChatSearchResultLabel from "./ChatSearchResultLabel.jsx";
 import DeleteChatDialog from "./DeleteChatDialog.jsx";
 import {useSharedData} from "../../context/useSharedData.jsx";
 import usePagedChatHistory from "../../hooks/usePagedChatHistory.js";
+import useDebouncedValue from "../../hooks/useDebouncedValue.js";
+import {normalizeSearchQuery, SEARCH_DEBOUNCE_MILLISECONDS} from "../../util/chatHistorySearch.js";
 import useChatGroupSections from "../../hooks/useChatGroupSections.js";
 import chatService from "../../service/ChatService.js";
 import {groupChatsByDay, partitionGroupedChats} from "../../util/chatHistoryGrouping.js";
@@ -25,6 +29,7 @@ import {
     chatHistoryRowLabel,
     estimateChatHistoryRowSize,
     flattenChatGroupsToRows,
+    flattenSearchResultsToRows,
 } from "../../util/chatHistoryRows.js";
 import {
     DROP_AFTER,
@@ -76,11 +81,20 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     const drawerRef = useRef(null);
     const scrollContainerRef = useRef(null);
 
+    const [searchText, setSearchText] = useState("");
+    const debouncedSearchText = useDebouncedValue(searchText, SEARCH_DEBOUNCE_MILLISECONDS);
+
+    /* Clearing skips the debounce, so the normal listing comes back the moment the field empties. */
+    const liveSearchQuery = normalizeSearchQuery(searchText);
+    const searchQuery = liveSearchQuery === null ? null : normalizeSearchQuery(debouncedSearchText);
+    const searching = searchQuery !== null;
+
     const {
         chats,
         loading,
         error,
         hasMore,
+        totalElements,
         loadMore,
         retry,
         replaceChat,
@@ -90,6 +104,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         active: drawerOpen,
         reloadTrigger: reloadHistoryTrigger,
         userId,
+        query: searchQuery,
     });
 
     /*
@@ -165,7 +180,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * nothing for a drag to rearrange; ordering belongs to groups, where the server has a column
      * for it and the rendered list can express a position. `sortOrder` is deliberately not read.
      */
-    const dayGroups = useMemo(() => groupChatsByDay(ungrouped), [ungrouped]);
+    const dayGroups = useMemo(
+        () => groupChatsByDay(searching ? chats : ungrouped),
+        [searching, chats, ungrouped],
+    );
 
     const daySections = useMemo(
         () => dayGroups.map((dayGroup) => ({
@@ -200,8 +218,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     }, [setReloadHistoryTrigger]);
 
     const rows = useMemo(
-        () => flattenChatGroupsToRows([...chatGroupSections, ...daySections]),
-        [chatGroupSections, daySections],
+        () => (searching
+            ? flattenSearchResultsToRows(daySections)
+            : flattenChatGroupsToRows([...chatGroupSections, ...daySections])),
+        [searching, chatGroupSections, daySections],
     );
 
     const ungroupedChatCount = ungrouped.length;
@@ -282,7 +302,8 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * this effect, and a ref would not.
      */
     useEffect(() => {
-        if (!drawerOpen || !hasMore || loading) {
+        /* Search pages count only the rows they return, so there is nothing to top up. */
+        if (!drawerOpen || !hasMore || loading || searching) {
             return;
         }
 
@@ -300,7 +321,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
         setEmptyPageAttempts(attempts => attempts + 1);
         loadMore();
-    }, [drawerOpen, hasMore, loading, ungroupedChatCount, emptyPageAttempts, loadMore]);
+    }, [drawerOpen, hasMore, loading, searching, ungroupedChatCount, emptyPageAttempts, loadMore]);
 
     const toggleDaySection = (dayKey) => {
         setCollapsedDayKeys(previousKeys => {
@@ -587,6 +608,33 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             );
         }
 
+        if (row.searchResult) {
+            return (
+                <div
+                    className="chat-item chat-item-search-result"
+                    title={row.fullLabel}
+                    onClick={() => handleChatClick(row.chatId)}
+                >
+                    {row.chatId === renamingChatId ? (
+                        <ChatNameInput
+                            key={`${row.chatId}:${renameSeed.attempt}`}
+                            className="chat-item-rename"
+                            label="Conversation name"
+                            initialValue={renameSeed.value}
+                            placeholder={chatHistoryRowLabel({...row.chat, name: null})}
+                            onCommit={(name) => handleRenameCommit(row, name)}
+                            onCancel={handleRenameCancel}
+                        />
+                    ) : (
+                        <>
+                            <ChatSearchResultLabel label={row.label} match={row.match} query={searchQuery}/>
+                            <ChatRowMenu label={row.fullLabel} actions={buildRowActions(row)}/>
+                        </>
+                    )}
+                </div>
+            );
+        }
+
         return (
             <div
                 className={row.chatGroupId ? "chat-item chat-item-in-group" : "chat-item"}
@@ -636,19 +684,27 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             <div className={outsideDropActive ? "chat-drawer mt-7! chat-drawer-releasing" : "chat-drawer mt-7!"}>
                 <h2>Chat History</h2>
 
+                <ChatHistorySearchInput
+                    value={searchText}
+                    onChange={setSearchText}
+                    onClear={() => setSearchText("")}
+                />
+
                 {/* Pinned under the title and outside the scroll box: anything that scrolls above
                   * the virtualizer's rows offsets every one of them. Also the target for a
                   * conversation dragged onto it, which creates the group around it. */}
-                <button
-                    type="button"
-                    className={newGroupDropActive
-                        ? "chat-history-new-group chat-history-new-group-drop-active"
-                        : "chat-history-new-group"}
-                    onClick={() => chatGroups.requestCreateGroup()}
-                    {...{[NEW_GROUP_DROP_ATTRIBUTE]: "true"}}
-                >
-                    + New group
-                </button>
+                {!searching && (
+                    <button
+                        type="button"
+                        className={newGroupDropActive
+                            ? "chat-history-new-group chat-history-new-group-drop-active"
+                            : "chat-history-new-group"}
+                        onClick={() => chatGroups.requestCreateGroup()}
+                        {...{[NEW_GROUP_DROP_ATTRIBUTE]: "true"}}
+                    >
+                        + New group
+                    </button>
+                )}
 
                 <div className="chat-history-scroll" ref={scrollContainerRef}>
                     <div
@@ -683,8 +739,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     {/* In the scroll box, not the footer: an empty list stands in for the rows
                       * under the title rather than sitting pinned to the drawer's foot. It can
                       * never coexist with a scrollbar, so it cannot disturb one. */}
-                    {!loading && !error && rows.length === 0 && (
-                        <div className="chat-history-status">No chats yet.</div>
+                    {!loading && !error && (rows.length === 0 || (searching && totalElements === 0)) && (
+                        <div className="chat-history-status">
+                            {searching ? "No matching chats." : "No chats yet."}
+                        </div>
                     )}
                 </div>
 
@@ -696,7 +754,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                   */}
                 <div className="chat-history-status-area">
                     {loading && (
-                        <div className="chat-history-status">Loading…</div>
+                        <div className="chat-history-status">{searching ? "Searching…" : "Loading…"}</div>
                     )}
 
                     {!loading && error && (

@@ -1,0 +1,69 @@
+.chat-history-search {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.chat-history-search-icon {
+    position: absolute;
+    left: 9px;
+    width: 16px;
+    height: 16px;
+    color: var(--text-color);
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.chat-history-search-input {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 32px;
+    border: 1px solid var(--border-color);
+    border-radius: 17px;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 16px; /* 16px or more stops iOS Safari zooming the page on focus. */
+    outline: none;
+    transition: border-color var(--transition-speed);
+}
+
+.chat-history-search-input::placeholder {
+    color: var(--text-color);
+    opacity: 0.5;
+}
+
+.chat-history-search-input:focus-visible {
+    border-color: var(--text-color);
+}
+
+.chat-history-search-clear {
+    position: absolute;
+    right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-color);
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.chat-history-search-clear:hover,
+.chat-history-search-clear:focus-visible {
+    opacity: 1;
+    background-color: var(--primary-color);
+}
+
+.chat-history-search-clear svg {
+    width: 16px;
+    height: 16px;
+}

@@ -249,4 +249,72 @@ describe('usePagedChatHistory', () => {
         await waitFor(() => expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-9', 'chat-1']));
         expect(chatService.findChatHistory).toHaveBeenLastCalledWith({page: 0, size: 20});
     });
+
+    it('sends the query and restarts from page 0 when it changes', async () => {
+        chatService.findChatHistory
+            .mockResolvedValueOnce(pageOf(['chat-1', 'chat-2']))
+            .mockResolvedValueOnce({...pageOf(['chat-2'], {last: true}), totalElements: 1});
+
+        const {result, rerender} = renderHook(
+            ({query}) => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1', query}),
+            {initialProps: {query: null}},
+        );
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(2));
+
+        rerender({query: 'unifi'});
+
+        await waitFor(() => expect(result.current.chats.map(chat => chat.id)).toEqual(['chat-2']));
+        expect(chatService.findChatHistory).toHaveBeenLastCalledWith({page: 0, size: 20, query: 'unifi'});
+        expect(result.current.totalElements).toBe(1);
+    });
+
+    it('drops a response for a query that has since changed', async () => {
+        let releaseStaleSearch;
+        chatService.findChatHistory
+            .mockResolvedValueOnce(pageOf(['chat-1']))
+            .mockImplementationOnce(() => new Promise(resolve => {
+                releaseStaleSearch = () => resolve(pageOf(['stale'], {last: true}));
+            }))
+            .mockResolvedValueOnce(pageOf(['fresh'], {last: true}));
+
+        const {result, rerender} = renderHook(
+            ({query}) => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1', query}),
+            {initialProps: {query: null}},
+        );
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(1));
+
+        rerender({query: 'un'});
+        rerender({query: 'unifi'});
+
+        await waitFor(() => expect(result.current.chats.map(chat => chat.id)).toEqual(['fresh']));
+
+        await act(async () => {
+            releaseStaleSearch();
+        });
+
+        expect(result.current.chats.map(chat => chat.id)).toEqual(['fresh']);
+    });
+
+    it('treats a rejected query as no results rather than an error', async () => {
+        const badRequest = Object.assign(new Error('Bad Request'), {status: 400});
+        chatService.findChatHistory
+            .mockResolvedValueOnce(pageOf(['chat-1']))
+            .mockRejectedValueOnce(badRequest);
+
+        const {result, rerender} = renderHook(
+            ({query}) => usePagedChatHistory({active: true, reloadTrigger: 0, userId: 'user-1', query}),
+            {initialProps: {query: null}},
+        );
+
+        await waitFor(() => expect(result.current.chats).toHaveLength(1));
+
+        rerender({query: 'zz'});
+
+        await waitFor(() => expect(result.current.totalElements).toBe(0));
+        expect(result.current.error).toBeNull();
+        expect(result.current.chats).toEqual([]);
+        expect(result.current.hasMore).toBe(false);
+    });
 });

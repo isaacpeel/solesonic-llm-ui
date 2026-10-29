@@ -602,9 +602,15 @@ const chatService = {
      * cursor is the page index — built with `URLSearchParams` rather than `buildUrl` so the service
      * stays callable without a `window`.
      */
-    findChatHistory: async ({page = 0, size = DEFAULT_CHAT_HISTORY_PAGE_SIZE} = {}) => {
+    findChatHistory: async ({page = 0, size = DEFAULT_CHAT_HISTORY_PAGE_SIZE, query = null} = {}) => {
         const userId = await authService.getUserId();
-        const queryString = new URLSearchParams({page: String(page), size: String(size)}).toString();
+        const searchParameters = new URLSearchParams({page: String(page), size: String(size)});
+
+        if (query) {
+            searchParameters.set('q', query);
+        }
+
+        const queryString = searchParameters.toString();
         const response = await apiClient.get(`${config.chatsUri}/users/${userId}?${queryString}`);
 
         return normalizeChatHistoryPage(response, page);

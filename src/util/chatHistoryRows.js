@@ -45,6 +45,9 @@ const ESTIMATED_HEADER_ROW_SPACING = 20;
 
 const ESTIMATED_CHAT_ROW_HEIGHT = 41;
 
+/* The label line plus the snippet line; a result matched only by name keeps the plain row height. */
+const ESTIMATED_SEARCH_RESULT_ROW_HEIGHT = 58;
+
 /*
  * A group header, the empty-group line and the load-more line are all one-line boxes carrying the
  * same padding and separator as a chat row, so they share its height. A group's chat rows are
@@ -223,7 +226,54 @@ function chatRow(chat, chatGroupId) {
     };
 }
 
+/*
+ * Search results are day buckets only — no group sections, since grouped and ungrouped chats come
+ * back together. A result row keeps the chat's own `chatGroupId` so a rename or delete also lands on
+ * that group's cached page, and is keyed apart from the listing so a row's measured height from one
+ * mode is never reused for the other.
+ */
+export function flattenSearchResultsToRows(daySections) {
+    const rows = [];
+
+    for (const section of daySections ?? []) {
+        const expanded = section.expanded !== false;
+
+        rows.push({
+            type: CHAT_HISTORY_HEADER_ROW,
+            key: `searchHeader:${section.key}`,
+            dayKey: section.key,
+            label: section.label,
+            expanded: expanded,
+            firstInList: rows.length === 0,
+        });
+
+        if (!expanded) {
+            continue;
+        }
+
+        for (const chat of section.chats ?? []) {
+            rows.push({
+                type: CHAT_HISTORY_CHAT_ROW,
+                key: `searchResult:${chat.id}`,
+                chatId: chat.id,
+                chatGroupId: chat.chatGroupId ?? null,
+                label: chatHistoryRowFullLabel(chat),
+                fullLabel: chatHistoryRowFullLabel(chat),
+                chat: chat,
+                searchResult: true,
+                match: chat.match ?? null,
+            });
+        }
+    }
+
+    return rows;
+}
+
 export function estimateChatHistoryRowSize(row) {
+    if (row?.searchResult && row.match) {
+        return ESTIMATED_SEARCH_RESULT_ROW_HEIGHT;
+    }
+
     if (row?.type === CHAT_HISTORY_HEADER_ROW) {
         return row.firstInList
             ? ESTIMATED_HEADER_ROW_HEIGHT
