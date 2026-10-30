@@ -14,7 +14,8 @@ import authService from '../service/AuthService.js';
 import {resolveElicitationAction} from '../service/ElicitationService.js';
 import LeaveSessionButton from './LeaveSessionButton.jsx';
 import {sharedAgentFor} from './sharedAgents.js';
-import {isPromptForViewer, isViewersTurn, waitingOn} from './sharedSessionTranscript.js';
+import {isPromptForViewer, isViewersTurn, viewerParticipantName, waitingOn} from './sharedSessionTranscript.js';
+import {presentForViewer} from '../chat/message/hiddenSections.js';
 import '../chat/ChatScreen.css';
 import './SharedSessions.css';
 
@@ -105,6 +106,13 @@ const SharedSessionScreen = () => {
 
     const {scrollContainerRef, isScrolledAwayFromBottom, scrollToBottom} = useScrollToBottom(messages, composerRef);
     const keyboardInset = useKeyboardInset();
+
+    const viewerName = viewerParticipantName(session, viewerUserId);
+
+    const presentedMessages = useMemo(() => messages.map((message) => {
+        const text = presentForViewer(message.text, viewerName);
+        return text === message.text ? message : {...message, text};
+    }), [messages, viewerName]);
 
     const agent = sharedAgentFor(session?.agentName);
     const promptForViewer = isPromptForViewer(session, viewerUserId);
@@ -231,7 +239,7 @@ const SharedSessionScreen = () => {
                     {banner.text}
                 </div>
 
-                {messages.map((message) => {
+                {presentedMessages.map((message) => {
                     const fromOther = message.type === USER && !message.mine;
                     const senderLabel = message.type === USER
                         ? (message.mine ? 'You' : message.senderName ?? 'Someone')

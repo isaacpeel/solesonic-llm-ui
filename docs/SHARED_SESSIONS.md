@@ -86,6 +86,34 @@ that answers `202 {runId, messageId}`, and the sender's own run arrives on the s
   (`LeaveSessionButton`) that expands in place into "End for everyone? ✓ ✕". The pill collapses back after 5 s,
   on Escape, or on a tap anywhere else.
 
+## Hidden sections
+
+A message can hide part of itself from some participants, so Family Feud's Fast Money can keep the first player's
+questions, answers and score from the second player until the recap.
+
+```
+Your questions:
+[[hidden:Sam]]
+1. Name a fruit you peel.
+[[/hidden]]
+```
+
+- **Grammar:** `[[hidden:Name,Name]]` … `[[/hidden]]`. Names are participant names, matched case-insensitively
+  against `viewerParticipantName(session, viewerUserId)`. An unclosed marker hides to the end of the text. The agent
+  writes markers into its replies; the API wraps a participant's own message when the agent said the next one is
+  private. Both arrive as ordinary text, on the stream and from `/messages`.
+- **Who sees what** (`chat/message/hiddenSections.js`, `presentForViewer(text, viewerName)`):
+  - A listed participant sees `🔒 Hidden from you until everyone has played.` in place of the whole section.
+  - Everyone else sees the section under `👁 Hidden from Sam`, so its author knows who can't see it.
+  - A partial marker at the end of a streaming chunk (`[[`, `[[hid`, `[[hidden:Sa`) is dropped until it completes,
+    so no raw marker or name flashes.
+  - **Fail closed:** with no viewer name (the session isn't loaded yet), every section is hidden.
+- **Where:** `SharedSessionScreen` redacts just before render, memoized on the messages and the viewer name. The
+  transcript state stays raw, so the reducer and reconnect/reload behaviour don't change. `ChatMessage` is handed the
+  redacted text, so the markdown, the streaming repair and the copy button only ever see what the viewer may see.
+- **Limit:** the hiding is UI-only. Hidden text is still in the stream and the `/messages` response, where a
+  participant with dev tools can read it.
+
 ## Known limit
 
 A live bubble is matched to the viewer by participant **name**, because `RUN_STARTED`'s `input.messages[0]` carries
