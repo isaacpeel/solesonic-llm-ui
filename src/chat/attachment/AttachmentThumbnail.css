@@ -95,17 +95,25 @@
     }
 }
 
-.attachment-thumbnail-warning {
+.attachment-thumbnail-notice {
     position: absolute;
     left: 2px;
     bottom: 2px;
     display: flex;
 }
 
-.attachment-thumbnail-warning svg {
+.attachment-thumbnail-notice svg {
     width: 14px;
     height: 14px;
+}
+
+.attachment-thumbnail-notice--warning svg {
     color: #f0b429;
+}
+
+.attachment-thumbnail-notice--info svg {
+    color: var(--text-color);
+    opacity: 0.7;
 }
 
 .attachment-thumbnail-remove {

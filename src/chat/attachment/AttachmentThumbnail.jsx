@@ -1,9 +1,32 @@
-import {ArrowPathIcon, DocumentIcon, ExclamationTriangleIcon, XMarkIcon} from '@heroicons/react/20/solid';
+import {
+    ArrowPathIcon,
+    DocumentIcon,
+    ExclamationTriangleIcon,
+    InformationCircleIcon,
+    XMarkIcon,
+} from '@heroicons/react/20/solid';
 import {isImageAttachment} from '../../util/imageValidation.js';
 import './AttachmentThumbnail.css';
 
 const UPLOADING = 'uploading';
 const FAILED = 'failed';
+const INFO = 'info';
+
+function AttachmentNotice({notice, status}) {
+    if (!notice?.text || status === FAILED) {
+        return null;
+    }
+
+    const isInfo = notice.tone === INFO;
+    const NoticeIcon = isInfo ? InformationCircleIcon : ExclamationTriangleIcon;
+    const modifierClass = isInfo ? 'attachment-thumbnail-notice--info' : 'attachment-thumbnail-notice--warning';
+
+    return (
+        <span className={`attachment-thumbnail-notice ${modifierClass}`} role="img" title={notice.text} aria-label={notice.text}>
+            <NoticeIcon/>
+        </span>
+    );
+}
 
 function AttachmentThumbnail({
     objectUrl,
@@ -11,7 +34,7 @@ function AttachmentThumbnail({
     contentType,
     description,
     status,
-    warning,
+    notice,
     unavailable = false,
     onRemove,
     onRetry,
@@ -53,11 +76,7 @@ function AttachmentThumbnail({
                     </button>
                 )}
 
-                {warning && status !== FAILED && (
-                    <span className="attachment-thumbnail-warning" title={warning} aria-label={warning}>
-                        <ExclamationTriangleIcon/>
-                    </span>
-                )}
+                <AttachmentNotice notice={notice} status={status}/>
 
                 {onRemove && (
                     <button
@@ -105,11 +124,7 @@ function AttachmentThumbnail({
                 </button>
             )}
 
-            {warning && status !== FAILED && (
-                <span className="attachment-thumbnail-warning" title={warning} aria-label={warning}>
-                    <ExclamationTriangleIcon/>
-                </span>
-            )}
+            <AttachmentNotice notice={notice} status={status}/>
 
             {onRemove && (
                 <button

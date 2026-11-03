@@ -1222,7 +1222,7 @@ describe('attachment-aware chat history', () => {
         it('finds the attachment on an earlier USER message when the last one does not carry it', () => {
             const {result} = renderHook(() => useChatHistory());
 
-            result.current.updateAttachmentStatus({attachmentId: 'attachment-1', described: false, reason: 'vision model unavailable'});
+            result.current.updateAttachmentStatus({attachmentId: 'attachment-1', described: false, reason: 'VISION_UNAVAILABLE'});
 
             const updater = sharedState.setChatHistory.mock.calls.at(-1)[0];
             const updatedHistory = updater([
@@ -1231,7 +1231,7 @@ describe('attachment-aware chat history', () => {
                 {type: 'USER', text: 'second', _key: 'u2', attachments: []},
             ]);
 
-            expect(updatedHistory[0].attachments[0]).toMatchObject({described: false, reason: 'vision model unavailable'});
+            expect(updatedHistory[0].attachments[0]).toMatchObject({described: false, reason: 'VISION_UNAVAILABLE'});
             expect(updatedHistory[2].attachments).toEqual([]);
         });
 
