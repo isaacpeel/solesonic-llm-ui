@@ -887,6 +887,61 @@ describe('attachment-aware chat history', () => {
         });
     });
 
+    describe('persisted failures', () => {
+        it('come back as the error the user saw, with what Analyze needs', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {id: 'msg-1', messageType: 'USER', message: 'search the web', commands: ['agile']},
+                    {id: 'msg-2', messageType: SYSTEM, message: 'Searching…', progressData: {message: 'Searching…'}},
+                    {
+                        id: 'msg-3',
+                        messageType: SYSTEM,
+                        message: 'An unexpected error occurred. Please try again.',
+                        timestamp: '2026-11-05T17:27:20.200Z',
+                        progressData: {
+                            chatId: 'chat-1', message: 'An unexpected error occurred. Please try again.',
+                            code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z',
+                        },
+                    },
+                    {id: 'msg-4', messageType: 'USER', message: 'again'},
+                    {id: 'msg-5', messageType: AI, message: 'done'},
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const mappedHistory = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(mappedHistory.map((message) => message.type)).toEqual(['USER', 'ERROR', 'USER', AI]);
+            expect(mappedHistory[1]).toMatchObject({
+                text: 'An unexpected error occurred. Please try again.', code: 'internal',
+                occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true, failedCommands: ['agile'],
+            });
+            expect(mappedHistory[3].notifications).toBeUndefined();
+        });
+
+        it('a failure saved before occurredAt existed uses its own timestamp', async () => {
+            sharedState.chatId = 'chat-1';
+            chatService.findChatDetails.mockResolvedValue({
+                chatMessages: [
+                    {
+                        id: 'msg-1', messageType: SYSTEM, message: 'Add a model key.', timestamp: '2026-11-01T10:00:00Z',
+                        progressData: {message: 'Add a model key.', code: 'LLM_KEY_MISSING'},
+                    },
+                ],
+            });
+
+            renderHook(() => useChatHistory());
+
+            await waitFor(() => expect(sharedState.setChatHistory).toHaveBeenCalled());
+
+            const [failure] = sharedState.setChatHistory.mock.calls.at(-1)[0]([]);
+            expect(failure).toMatchObject({type: 'ERROR', occurredAt: '2026-11-01T10:00:00Z', analyzable: false});
+        });
+    });
+
     describe('elicitationResponse mapping', () => {
         it('prefers the resolved summary over the raw action', async () => {
             sharedState.chatId = 'chat-1';

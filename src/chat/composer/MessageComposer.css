@@ -60,6 +60,9 @@
 .chat-text-input::placeholder {
     color: var(--text-color);
     opacity: 0.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Inset by the pill's 22px border-radius so the popover's square corners land on its flat edge. */

@@ -185,7 +185,7 @@ function ChatInput({
             onSubmit={submitTurn}
             canSubmit={canSubmit}
             disabled={inputLocked}
-            placeholder={placeholder ?? (promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Type a message..."))}
+            placeholder={placeholder ?? (promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Message Izzy-Bot"))}
             ariaLabel={ariaLabel}
             maxLength={maxLength}
             loading={loading && !streamActive}

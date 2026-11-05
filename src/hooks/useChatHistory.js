@@ -6,8 +6,10 @@ import {
     appendProgressNotificationText,
     formatProgressNotificationText
 } from '../service/ProgressNotificationService.js';
-import {AI, SYSTEM} from '../chat/message/ChatMessage.jsx';
+import {AI, ERROR, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
+import {commandsOfLastUserMessage, isAnalyzableCode} from '../util/analyzeRequest.js';
 import useChatHistoryMutations from './useChatHistoryMutations.js';
+import {savedToolCalls} from '../chat/activity/toolActivity.js';
 
 function useChatHistory({onChatIdChangedExternally, onChatNotFound, onHydrated} = {}) {
     const {chatId, setChatId, chatHistory, setChatHistory, adoptedChatIdRef} = useSharedData();
@@ -162,11 +164,33 @@ export async function reloadChatHistoryInto(chatId, setChatHistory) {
     return chatDetails;
 }
 
+function failureMessage(chatId, message, index, earlierMessages) {
+    const failure = message.progressData;
+
+    return {
+        type: ERROR,
+        text: failure.message || message.message,
+        code: failure.code,
+        occurredAt: typeof failure.occurredAt === 'string' ? failure.occurredAt : message.timestamp,
+        timestamp: message.timestamp,
+        analyzable: isAnalyzableCode(failure.code),
+        failedCommands: commandsOfLastUserMessage(earlierMessages, USER),
+        messageId: message.id,
+        _key: message.id ?? `${chatId || 'new'}-${index}`,
+    };
+}
+
 function formatChatMessages(chatId, response) {
     const formattedMessages = [];
     let pendingProgressNotifications = [];
 
     response.chatMessages.forEach((message, index) => {
+        if (typeof message.progressData?.code === 'string') {
+            formattedMessages.push(failureMessage(chatId, message, index, formattedMessages));
+            pendingProgressNotifications = [];
+            return;
+        }
+
         if (message.progressData) {
             /*
              * The persisted frame carries the same progress/total the live one did, so a
@@ -190,6 +214,7 @@ function formatChatMessages(chatId, response) {
             /* Persisted alongside model/generatedImages, so a reloaded turn shows it too. */
             responseMetadata: message.responseMetadata ?? null,
             responseMetadataCalls: message.responseMetadataCalls ?? null,
+            ...(savedToolCalls(message.toolCalls) ? {toolCalls: savedToolCalls(message.toolCalls)} : {}),
             messageId: message.id,
             /* ISO-8601 with an offset, same shape as the chat-level one parseChatTimestamp reads. */
             timestamp: message.timestamp,
@@ -234,6 +259,7 @@ function mergeFetchedChatHistoryWithLocalNotifications(fetchedHistory, previousH
 
     const lastLocalMessage = previousHistory[previousHistory.length - 1];
     const localNotifications = Array.isArray(lastLocalMessage?.notifications) ? lastLocalMessage.notifications : [];
+    const localToolCalls = Array.isArray(lastLocalMessage?.toolCalls) ? lastLocalMessage.toolCalls : [];
 
     /*
      * A bubble that is still streaming outranks anything the server can report about it: its
@@ -242,7 +268,7 @@ function mergeFetchedChatHistoryWithLocalNotifications(fetchedHistory, previousH
      */
     const isLastLocalMessageStreaming = lastLocalMessage?.type === AI && !!lastLocalMessage.isStreaming;
     const shouldPreserveLastLocalMessage = lastLocalMessage?.type === AI
-        && (isLastLocalMessageStreaming || localNotifications.length > 0);
+        && (isLastLocalMessageStreaming || localNotifications.length > 0 || localToolCalls.length > 0);
 
     if (!shouldPreserveLastLocalMessage) {
         return fetchedHistory;
@@ -273,12 +299,14 @@ function mergeFetchedChatHistoryWithLocalNotifications(fetchedHistory, previousH
         return [...mergedHistory, {
             ...lastLocalMessage,
             notifications: localNotifications,
+            ...(localToolCalls.length > 0 ? {toolCalls: localToolCalls} : {}),
         }];
     }
 
     mergedHistory[lastFetchedMessageIndex] = {
         ...lastFetchedMessage,
         notifications: localNotifications,
+        ...(localToolCalls.length > 0 ? {toolCalls: localToolCalls} : {}),
     };
 
     return mergedHistory;

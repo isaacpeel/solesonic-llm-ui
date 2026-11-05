@@ -353,6 +353,52 @@ describe('useChatStream', () => {
         expect(payload.commands).toBeUndefined();
     });
 
+    it('sendCommandTurn sends the command and text and leaves the composer alone', async () => {
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'a draft I am typing'}});
+        });
+
+        let sent;
+        await act(async () => {
+            sent = await result.current.sendCommandTurn('logs', 'Analyze the error shown in this chat at 2026-11-05T17:27:20Z');
+        });
+
+        expect(sent).toBe(true);
+        expect(chatService.chatStream.mock.calls[0][0]).toEqual({
+            chatMessage: 'Analyze the error shown in this chat at 2026-11-05T17:27:20Z', commands: ['logs'],
+        });
+        expect(result.current.inputValue).toBe('a draft I am typing');
+        expect(chatInputRef.current.style.height).toBe('20px');
+        const nextHistory = setChatHistory.mock.calls[0][0];
+        expect(nextHistory[0]).toMatchObject({type: 'USER', commands: ['logs']});
+    });
+
+    it('sendCommandTurn refuses while a turn is running', async () => {
+        let resolveStream;
+        chatService.chatStream.mockImplementationOnce(() => new Promise((resolve) => {
+            resolveStream = resolve;
+        }));
+        const {result} = renderHook(() => useChatStream(options));
+
+        act(() => {
+            result.current.handleInputChange({target: {value: 'question'}});
+        });
+        act(() => {
+            result.current.handleSubmit();
+        });
+
+        let sent;
+        await act(async () => {
+            sent = await result.current.sendCommandTurn('logs', 'Analyze');
+        });
+
+        expect(sent).toBe(false);
+        expect(chatService.chatStream).toHaveBeenCalledTimes(1);
+        await act(async () => resolveStream());
+    });
+
     it('sends a bare command with an empty message', async () => {
         options.getSelectedCommandRef = {current: vi.fn(() => 'summarize')};
         const {result} = renderHook(() => useChatStream(options));

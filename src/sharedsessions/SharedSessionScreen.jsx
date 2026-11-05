@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Link, useNavigate, useParams} from 'react-router';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import log from 'loglevel';
@@ -15,11 +16,15 @@ import useAttachmentTray from '../hooks/useAttachmentTray.js';
 import useChatModel from '../hooks/useChatModel.js';
 import useSlashCommands from '../hooks/useSlashCommands.js';
 import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
+import useCommandAvailable from '../hooks/useCommandAvailable.js';
+import {buildAnalyzeRequest, LOGS_COMMAND} from '../util/analyzeRequest.js';
 import sharedSessionService, {SESSION_STATUSES, describeSessionError} from '../service/SharedSessionService.js';
 import authService from '../service/AuthService.js';
 import {useSharedData} from '../context/useSharedData.jsx';
 import {resolveElicitationAction} from '../service/ElicitationService.js';
-import LeaveSessionButton from './LeaveSessionButton.jsx';
+import SharedSessionHeader from './SharedSessionHeader.jsx';
+import ModelSelect from '../chat/header/ModelSelect.jsx';
+import {latestModelName} from '../chat/message/messageIdentity.js';
 import AddPeopleDialog from './AddPeopleDialog.jsx';
 import {isConversationSession, sharedAgentForSession} from './sharedAgents.js';
 import {MAXIMUM_CONVERSATION_MESSAGE_CHARACTERS, MAXIMUM_OTHER_PARTICIPANTS} from './sharedConversationLimits.js';
@@ -62,25 +67,13 @@ function statusBanner({session, agent, activeRun, viewerUserId, promptForViewer}
     return {text: agent.idleHint, forViewer: false};
 }
 
-function conversationBanner({session, activeRun}) {
-    if (session.status === SESSION_STATUSES.CLOSED) {
-        return {text: 'This chat ended.', forViewer: false};
-    }
-
-    if (session.status === SESSION_STATUSES.EXPIRED) {
-        return {text: 'This chat expired.', forViewer: false};
-    }
-
-    return {text: activeRun ? 'The assistant is responding…' : '', forViewer: false};
-}
-
 function composerPlaceholder({activeRun, banner, otherName, agent, conversation}) {
     if (activeRun) {
         return '';
     }
 
     if (conversation) {
-        return 'Message the group…';
+        return 'Message the group';
     }
 
     if (banner.forViewer || !otherName) {
@@ -92,7 +85,13 @@ function composerPlaceholder({activeRun, banner, otherName, agent, conversation}
 
 function leaveCopy(conversation, viewerOwnsChat) {
     if (!conversation) {
-        return {};
+        return {
+            triggerLabel: 'Leave session',
+            confirmText: 'End for everyone?',
+            confirmLabel: 'End the session for everyone',
+            keepLabel: 'Keep the session',
+            endsForEveryone: true,
+        };
     }
 
     return viewerOwnsChat
@@ -101,18 +100,22 @@ function leaveCopy(conversation, viewerOwnsChat) {
             confirmText: 'End sharing for everyone?',
             confirmLabel: 'End sharing for everyone',
             keepLabel: 'Keep sharing',
+            endsForEveryone: true,
         }
         : {
             triggerLabel: 'Leave chat',
             confirmText: 'Leave this chat?',
             confirmLabel: 'Leave chat',
             keepLabel: 'Stay in the chat',
+            endsForEveryone: false,
         };
 }
 
 const SharedSessionScreenBody = ({sessionId}) => {
     const navigate = useNavigate();
-    const setReloadHistoryTrigger = useSharedData()?.setReloadHistoryTrigger;
+    const sharedData = useSharedData();
+    const setReloadHistoryTrigger = sharedData?.setReloadHistoryTrigger;
+    const headerActionsElement = sharedData?.headerActionsElement ?? null;
 
     const [viewerUserId, setViewerUserId] = useState(null);
     const [inputValue, setInputValue] = useState('');
@@ -214,7 +217,7 @@ const SharedSessionScreenBody = ({sessionId}) => {
 
     const takesMessages = session?.status === SESSION_STATUSES.ACTIVE || session?.status === SESSION_STATUSES.COMPLETED;
     const banner = conversation
-        ? conversationBanner({session, activeRun})
+        ? null
         : statusBanner({session, agent, activeRun, viewerUserId, promptForViewer});
     const myRunActive = !!activeRun && activeRun.runId === myRunId;
     const composerLocked = !!activeRun || sending;
@@ -244,6 +247,10 @@ const SharedSessionScreenBody = ({sessionId}) => {
             setSending(false);
         }
     }, []);
+
+    const logsAvailable = useCommandAvailable(conversation ? fetchSharedCommands : null, LOGS_COMMAND);
+    const analyzeError = useCallback((errorMessage) => runSend(() => sharedSessionService.send(
+        sessionId, buildAnalyzeRequest(errorMessage), {commands: [LOGS_COMMAND]})), [sessionId, runSend]);
 
     const handleSubmit = useCallback(async () => {
         const text = inputValue.trim();
@@ -350,7 +357,6 @@ const SharedSessionScreenBody = ({sessionId}) => {
         );
     }
 
-    const participants = (session.participants ?? []).map((participant) => participant.name).join(', ');
     const otherName = waitingOn(session, viewerUserId)[0];
 
     const seatedIds = new Set((session.participants ?? []).map((participant) => participant.userId));
@@ -369,49 +375,32 @@ const SharedSessionScreenBody = ({sessionId}) => {
     return (
         <div className={`chat-app shared-session-screen${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
             <div className="chat-content" ref={scrollContainerRef}>
-                <div className="shared-session-column shared-session-header">
-                    <div className="shared-session-header-title">
-                        <Link to="/shared-sessions">Shared sessions</Link>
-                        {conversation ? (
-                            <>
-                                <span className="shared-session-participants"> · {agent.label}</span>
-                                <ul className="shared-session-participant-chips" role="list">
-                                    {(session.participants ?? []).map((participant) => (
-                                        <li key={participant.userId} className="shared-session-participant-chip">{participant.name}</li>
-                                    ))}
-                                    {pendingInvitees.map((invitee) => (
-                                        <li
-                                            key={invitee.userId}
-                                            className="shared-session-participant-chip shared-session-participant-chip--pending"
-                                            title={invitee.displayName || invitee.username}
-                                        >
-                                            {invitee.username} (invited)
-                                        </li>
-                                    ))}
-                                </ul>
-                            </>
-                        ) : (
-                            <span className="shared-session-participants"> · {agent.label} · {participants}</span>
-                        )}
-                        {!connected && <span className="shared-sessions-notice"> · reconnecting…</span>}
-                    </div>
-                    {viewerOwnsChat && takesMessages && (
-                        <button
-                            type="button"
-                            className="shared-sessions-button"
-                            disabled={seatsLeft <= 0}
-                            title={seatsLeft <= 0 ? 'This chat is full.' : undefined}
-                            onClick={() => setAddingPeople(true)}
-                        >
-                            Add people
-                        </button>
-                    )}
-                    {takesMessages && <LeaveSessionButton onConfirm={handleLeave} {...leaveCopy(conversation, viewerOwnsChat)}/>}
-                </div>
+                <SharedSessionHeader
+                    title={agent.label}
+                    conversation={conversation}
+                    session={session}
+                    activeRun={activeRun}
+                    connected={connected}
+                    participants={session.participants ?? []}
+                    pendingInvitees={conversation ? pendingInvitees : []}
+                    viewerUserId={viewerUserId}
+                    canAddPeople={viewerOwnsChat && takesMessages}
+                    seatsLeft={seatsLeft}
+                    onAddPeople={() => setAddingPeople(true)}
+                    leaveCopy={takesMessages ? leaveCopy(conversation, viewerOwnsChat) : null}
+                    onLeave={handleLeave}
+                />
 
-                <div className={`shared-session-column shared-session-status-banner ${banner.forViewer ? 'shared-session-status-banner--viewer' : ''}`} role="status">
-                    {banner.text}
-                </div>
+                {conversation && takesMessages && headerActionsElement && createPortal(
+                    <ModelSelect chatModel={chatModel} fallbackLabel={latestModelName(messages)}/>,
+                    headerActionsElement,
+                )}
+
+                {banner?.text && (
+                    <div className={`shared-session-column shared-session-status-banner ${banner.forViewer ? 'shared-session-status-banner--viewer' : ''}`} role="status">
+                        {banner.text}
+                    </div>
+                )}
 
                 {presentedMessages.map((message) => {
                     const fromOther = message.type === USER && !message.mine;
@@ -421,8 +410,14 @@ const SharedSessionScreenBody = ({sessionId}) => {
 
                     return (
                         <div key={message._key} className={`shared-session-message ${fromOther ? 'shared-session-message--other' : 'shared-session-message--mine'}`}>
-                            {senderLabel && <div className="shared-session-message-sender">{senderLabel}</div>}
-                            <ChatMessage message={message} onExpandImage={openLightbox}/>
+                            <ChatMessage
+                                message={message}
+                                senderLabel={senderLabel}
+                                assistantLabel={conversation ? undefined : agent.label}
+                                onExpandImage={openLightbox}
+                                onAnalyzeError={logsAvailable && takesMessages ? analyzeError : undefined}
+                                analyzeBusy={!!activeRun || sending}
+                            />
                         </div>
                     );
                 })}

@@ -105,7 +105,7 @@ const streamService = {
     },
     handleStreamError(error, appendErrorMessage, setChatHistory) {
         console.error('[StreamService] Streaming error:', error);
-        appendErrorMessage(describeStreamError(error));
+        appendErrorMessage(describeStreamError(error), {analyzable: !streamService.isTransientStreamDisconnect(error)});
 
         setChatHistory((previousHistory) => {
             const newHistory = [...previousHistory];

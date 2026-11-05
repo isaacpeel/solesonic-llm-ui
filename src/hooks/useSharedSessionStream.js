@@ -61,11 +61,22 @@ function useSharedSessionStream({sessionId, viewerUserId, onSoundCue}) {
             controllerRef.current = controller;
 
             try {
-                const frames = sharedSessionService.watch(sessionId, {signal: controller.signal, lastEventId: cursorRef.current});
+                const markConnected = () => {
+                    if (generation === generationRef.current) {
+                        setConnected(true);
+                        attempt = 0;
+                    }
+                };
+
+                const frames = sharedSessionService.watch(sessionId, {
+                    signal: controller.signal,
+                    lastEventId: cursorRef.current,
+                    onOpen: markConnected,
+                    onActivity: markConnected,
+                });
 
                 for await (const frame of frames) {
-                    setConnected(true);
-                    attempt = 0;
+                    markConnected();
                     handleFrame(frame);
                 }
             } catch (caughtError) {

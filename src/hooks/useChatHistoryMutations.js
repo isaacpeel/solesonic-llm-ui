@@ -2,22 +2,40 @@ import {useCallback} from 'react';
 import {appendProgressNotificationText} from '../service/ProgressNotificationService.js';
 import {AI, ERROR, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
+import {commandsOfLastUserMessage} from '../util/analyzeRequest.js';
+import {applyToolActivity, settledToolCalls} from '../chat/activity/toolActivity.js';
 
 function useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef}) {
-    const appendErrorMessage = useCallback((text) => {
+    const appendErrorMessage = useCallback((text, details = {}) => {
         if (!text || typeof text !== 'string') {
             return;
         }
 
-        setChatHistory((previousHistory) => [
-            ...previousHistory,
-            {
-                type: ERROR,
-                text,
-                _key: generateMessageKey('error'),
-                timestamp: new Date().toISOString(),
-            },
-        ]);
+        const known = Object.fromEntries(Object.entries(details ?? {})
+            .filter(([, value]) => value !== undefined && value !== null));
+
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+            const last = previousHistory[lastIndex];
+
+            if (last?.type === ERROR && last.text === text) {
+                const merged = {...last, ...known, analyzable: !!(last.analyzable || known.analyzable)};
+                return [...previousHistory.slice(0, lastIndex), merged];
+            }
+
+            return [
+                ...previousHistory,
+                {
+                    type: ERROR,
+                    text,
+                    _key: generateMessageKey('error'),
+                    timestamp: new Date().toISOString(),
+                    failedCommands: commandsOfLastUserMessage(previousHistory, USER),
+                    ...known,
+                    analyzable: !!known.analyzable,
+                },
+            ];
+        });
     }, [setChatHistory]);
 
     const appendToLastAIMessage = useCallback((textToAppend) => {
@@ -70,6 +88,7 @@ function useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef}) 
                     text: finalText,
                     responseMetadata: response?.message?.responseMetadata ?? null,
                     responseMetadataCalls: response?.message?.responseMetadataCalls ?? null,
+                    toolCalls: settledToolCalls(newHistory[lastIndex].toolCalls, response?.message?.toolCalls),
                     timestamp: response?.message?.timestamp ?? newHistory[lastIndex].timestamp ?? new Date().toISOString(),
                     isStreaming: false,
                     notifications: seedWasNeverFulfilled ? [] : newHistory[lastIndex].notifications,
@@ -270,6 +289,27 @@ function useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef}) 
         });
     }, [setChatHistory]);
 
+    const recordToolActivityOnLastAIMessage = useCallback((toolActivity) => {
+        setChatHistory((previousHistory) => {
+            const lastIndex = previousHistory.length - 1;
+
+            if (lastIndex < 0 || previousHistory[lastIndex].type !== AI) {
+                return previousHistory;
+            }
+
+            const lastMessage = previousHistory[lastIndex];
+            const toolCalls = applyToolActivity(lastMessage.toolCalls, toolActivity);
+
+            if (toolCalls === lastMessage.toolCalls) {
+                return previousHistory;
+            }
+
+            const newHistory = [...previousHistory];
+            newHistory[lastIndex] = {...lastMessage, toolCalls};
+            return newHistory;
+        });
+    }, [setChatHistory]);
+
     const appendNotificationToLastAIMessage = useCallback((notificationMessageText) => {
         if (!notificationMessageText || typeof notificationMessageText !== 'string') {
             return;
@@ -331,6 +371,7 @@ function useChatHistoryMutations({setChatHistory, setChatId, adoptedChatIdRef}) 
         adoptMessageIdForLastUserMessage,
         updateAttachmentStatus,
         appendNotificationToLastAIMessage,
+        recordToolActivityOnLastAIMessage,
     };
 }
 

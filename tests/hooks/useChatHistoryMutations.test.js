@@ -1,7 +1,7 @@
 import {describe, it, expect, vi} from 'vitest';
 import {renderHook} from '@testing-library/react';
 import useChatHistoryMutations from '../../src/hooks/useChatHistoryMutations.js';
-import {AI, USER} from '../../src/chat/message/ChatMessage.jsx';
+import {AI, ERROR, USER} from '../../src/chat/message/ChatMessage.jsx';
 
 function renderMutations() {
     const setChatHistory = vi.fn();
@@ -61,5 +61,45 @@ describe('mergeMetadataIntoLastAIMessage', () => {
         mutations.mergeMetadataIntoLastAIMessage(['list']);
 
         expect(setChatHistory).not.toHaveBeenCalled();
+    });
+});
+
+describe('appendErrorMessage', () => {
+    const failure = 'An unexpected error occurred. Please try again.';
+
+    it('adds an error with its details and the failed turn\'s commands', () => {
+        const {mutations, applyLastUpdate} = renderMutations();
+        mutations.appendErrorMessage(failure, {code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true});
+
+        const history = applyLastUpdate([{type: USER, text: 'q', commands: ['agile']}, {type: AI, text: ''}]);
+
+        expect(history.at(-1)).toMatchObject({
+            type: ERROR, text: failure, code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z',
+            analyzable: true, failedCommands: ['agile'],
+        });
+    });
+
+    it('merges the RUN_ERROR that repeats a failure frame into one error', () => {
+        const {mutations, applyLastUpdate} = renderMutations();
+        mutations.appendErrorMessage(failure, {code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true});
+        const afterFailureFrame = applyLastUpdate([{type: USER, text: 'q'}]);
+
+        mutations.appendErrorMessage(failure, {code: 'internal', occurredAt: undefined, analyzable: true});
+        const afterRunError = applyLastUpdate(afterFailureFrame);
+
+        expect(afterRunError).toHaveLength(2);
+        expect(afterRunError[1]).toMatchObject({occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true});
+    });
+
+    it('a different error is its own message, and errors without details are not analyzable', () => {
+        const {mutations, applyLastUpdate} = renderMutations();
+        mutations.appendErrorMessage('first');
+        const once = applyLastUpdate([]);
+        mutations.appendErrorMessage('second');
+
+        const history = applyLastUpdate(once);
+
+        expect(history.map((message) => message.text)).toEqual(['first', 'second']);
+        expect(history.every((message) => message.analyzable === false)).toBe(true);
     });
 });

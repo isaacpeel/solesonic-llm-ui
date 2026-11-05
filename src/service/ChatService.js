@@ -5,6 +5,8 @@ import config from "../properties/ApplicationProperties";
 import {getProgressNotificationText} from './ProgressNotificationService.js';
 import {normalizeGeneratedImage} from './ImageGenerationService.js';
 import {SYSTEM as SYSTEM_MESSAGE_TYPE} from '../chat/message/ChatMessage.jsx';
+import {isAnalyzableCode} from '../util/analyzeRequest.js';
+import {TOOL_ACTIVITY_EVENT} from '../chat/activity/toolActivity.js';
 
 export const RUN_STARTED = "RUN_STARTED";
 export const RUN_FINISHED = "RUN_FINISHED";
@@ -22,6 +24,7 @@ export const CUSTOM_ATTACHMENT = "attachment";
 export const CUSTOM_IMAGE = "image";
 export const CUSTOM_FAILURE = "failure";
 export const CUSTOM_CANCEL = "cancel";
+export const CUSTOM_TOOL = TOOL_ACTIVITY_EVENT;
 
 export const TERMINAL_RUN_EVENTS = [RUN_FINISHED, RUN_ERROR];
 
@@ -216,10 +219,17 @@ export function readSoundCue(metadata) {
     return isValidCue ? soundCue : null;
 }
 
-function surfaceErrorText(errorText, appendErrorMessage) {
+function surfaceErrorText(errorText, appendErrorMessage, details) {
     if (typeof errorText === 'string' && errorText.length > 0) {
-        appendErrorMessage(errorText);
+        appendErrorMessage(errorText, details);
     }
+}
+
+function failureDetails(failureData) {
+    const code = typeof failureData?.code === 'string' ? failureData.code : undefined;
+    const occurredAt = typeof failureData?.occurredAt === 'string' ? failureData.occurredAt : undefined;
+
+    return {code, occurredAt, analyzable: isAnalyzableCode(code)};
 }
 
 /*
@@ -361,13 +371,13 @@ function handleRunFinished(runFinishedData, {
 }
 
 function handleRunError(runErrorData, {appendErrorMessage, stopStreamingLastAIMessage, setActiveElicitation, setElicitationSubmitting}) {
-    surfaceErrorText(runErrorData?.message, appendErrorMessage);
+    surfaceErrorText(runErrorData?.message, appendErrorMessage, failureDetails(runErrorData));
     stopStreamingLastAIMessage?.();
     setActiveElicitation(null);
     setElicitationSubmitting(false);
 }
 
-function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, appendErrorMessage}) {
+function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, appendErrorMessage, recordToolActivity}) {
     const customValue = customEventData?.value;
 
     switch (customEventData?.name) {
@@ -392,8 +402,12 @@ function handleCustomEvent(customEventData, {appendNotificationMessage, attachGe
         case CUSTOM_ATTACHMENT:
             updateAttachmentStatus?.(customValue);
             break;
+        case CUSTOM_TOOL:
+            recordToolActivity?.(customValue);
+            break;
         case CUSTOM_FAILURE:
-            surfaceErrorText(readFailureText(customValue), appendErrorMessage);
+            surfaceErrorText(readFailureText(customValue), appendErrorMessage,
+                typeof customValue === 'object' ? failureDetails(customValue) : undefined);
             break;
     }
 }

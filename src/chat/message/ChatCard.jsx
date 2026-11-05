@@ -31,7 +31,7 @@ const isCitationText = (children) => CITATION_TEXT_PATTERN.test(plainText(childr
 
 const joinClassNames = (...classNames) => classNames.filter(Boolean).join(" ");
 
-function ChatCard({message, children, onExpandImage}) {
+function ChatCard({message, children, footer, onExpandImage}) {
     const remarkPlugins = useMemo(() => [remarkGfm, remarkBreaks], []);
 
     const components = useMemo(() => ({
@@ -64,8 +64,6 @@ function ChatCard({message, children, onExpandImage}) {
     }), []);
 
     const typeColors = useMemo(() => ({
-        [USER]: {bgColor: '#e0e0e0', textColor: '#000'},
-        [AI]: {bgColor: '#4a4a4a', textColor: '#dedede'},
         [SYSTEM]: {bgColor: '#3b4d61', textColor: '#ffffff'},
         [ERROR]: {bgColor: '#4a2323', textColor: '#ffd9d9'},
     }), []);
@@ -75,6 +73,7 @@ function ChatCard({message, children, onExpandImage}) {
     const isStreaming = !!message.isStreaming;
     const isAIMessage = message.type === AI;
     const notificationLog = Array.isArray(message.notifications) ? message.notifications : [];
+    const toolCallList = Array.isArray(message.toolCalls) ? message.toolCalls : [];
     const isAIorSystem = isAIMessage || message.type === SYSTEM;
 
     const generatedImageList = Array.isArray(message.generatedImages) ? message.generatedImages : [];
@@ -85,11 +84,11 @@ function ChatCard({message, children, onExpandImage}) {
     const containerType = isElicitation ? SYSTEM : message.type;
     const cardClassName = isElicitation ? `${containerType} elicitation-resolved` : containerType;
     const isInfo = containerType === SYSTEM;
-    const colors = typeColors[containerType] || typeColors[SYSTEM];
+    const colors = containerType === USER || containerType === AI ? null : typeColors[containerType] || typeColors[SYSTEM];
 
     const text = isElicitation ? '' : message.text;
     const hasText = text && text.trim() !== '';
-    const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && !isElicitation;
+    const showPlaceholder = isAIorSystem && !hasText && notificationLog.length === 0 && toolCallList.length === 0 && !isElicitation;
     const showMessageFooter = isAIMessage && !isElicitation && hasText && !isStreaming && !message.ephemeral;
 
     const displayText = useMemo(() => {
@@ -114,21 +113,28 @@ function ChatCard({message, children, onExpandImage}) {
     const card = (
         <div
             className={`message ${cardClassName}`}
-            style={{backgroundColor: colors.bgColor, color: colors.textColor}}
+            style={colors ? {backgroundColor: colors.bgColor, color: colors.textColor} : undefined}
             role={cardRole}
             aria-label={ariaLabel}
         >
             <div className="message-text">
                 {errorHeader}
                 {children}
-                {(displayText || showPlaceholder) && (
+                {displayText && (
                     <div className="markdown-body">
                         <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
-                            {displayText || 'Thinking...'}
+                            {displayText}
                         </ReactMarkdown>
                     </div>
                 )}
+                {!displayText && showPlaceholder && (
+                    <div className="message-thinking" role="status">
+                        <span className="message-thinking-spinner" aria-hidden="true"/>
+                        <span>Thinking</span>
+                    </div>
+                )}
                 {generatedImageFooter}
+                {footer}
             </div>
         </div>
     );
@@ -148,6 +154,7 @@ function ChatCard({message, children, onExpandImage}) {
 ChatCard.propTypes = {
     message: PropTypes.object.isRequired,
     children: PropTypes.node,
+    footer: PropTypes.node,
     onExpandImage: PropTypes.func,
 };
 

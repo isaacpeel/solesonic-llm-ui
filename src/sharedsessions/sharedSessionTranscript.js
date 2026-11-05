@@ -13,6 +13,8 @@ import {
 import {normalizeGeneratedImage} from '../service/ImageGenerationService.js';
 import {appendProgressNotificationText, formatProgressNotificationText} from '../service/ProgressNotificationService.js';
 import {SESSION_STATE_EVENT} from '../service/SharedSessionService.js';
+import {commandsOfLastUserMessage, isAnalyzableCode} from '../util/analyzeRequest.js';
+import {TOOL_ACTIVITY_EVENT, applyToolActivity, savedToolCalls, settledToolCalls} from '../chat/activity/toolActivity.js';
 
 export const EMPTY_TRANSCRIPT = {messages: [], activeRun: null, session: null};
 
@@ -80,6 +82,23 @@ export function transcriptFromMessages(chatMessages, session, viewerUserId) {
     let pendingNotifications = [];
 
     for (const chatMessage of Array.isArray(chatMessages) ? chatMessages : []) {
+        if (typeof chatMessage.progressData?.code === 'string') {
+            const failure = chatMessage.progressData;
+            messages.push({
+                _key: chatMessage.id,
+                messageId: chatMessage.id,
+                type: ERROR,
+                text: failure.message || chatMessage.message || '',
+                timestamp: chatMessage.timestamp,
+                code: failure.code,
+                occurredAt: typeof failure.occurredAt === 'string' ? failure.occurredAt : chatMessage.timestamp,
+                analyzable: isAnalyzableCode(failure.code),
+                failedCommands: commandsOfLastUserMessage(messages, USER),
+            });
+            pendingNotifications = [];
+            continue;
+        }
+
         if (chatMessage.progressData) {
             const notificationText = formatProgressNotificationText({
                 ...chatMessage.progressData,
@@ -116,6 +135,11 @@ export function transcriptFromMessages(chatMessages, session, viewerUserId) {
         if (chatMessage.messageType === AI) {
             message.responseMetadata = chatMessage.responseMetadata ?? null;
             message.responseMetadataCalls = chatMessage.responseMetadataCalls ?? null;
+
+            if (savedToolCalls(chatMessage.toolCalls)) {
+                message.toolCalls = savedToolCalls(chatMessage.toolCalls);
+            }
+
             message.generatedImages = Array.isArray(chatMessage.generatedImages)
                 ? chatMessage.generatedImages.map((generatedImage) => normalizeGeneratedImage(generatedImage))
                 : [];
@@ -199,6 +223,7 @@ function runFinished(state, data) {
         timestamp: finishedMessage?.timestamp ?? message.timestamp,
         responseMetadata: finishedMessage?.responseMetadata ?? message.responseMetadata ?? null,
         responseMetadataCalls: finishedMessage?.responseMetadataCalls ?? message.responseMetadataCalls ?? null,
+        toolCalls: settledToolCalls(message.toolCalls, finishedMessage?.toolCalls),
         generatedImages: withNewImages(message.generatedImages, finishedImages),
         isStreaming: false,
     }));
@@ -246,6 +271,13 @@ export function applyFrame(state, frame, viewerUserId) {
                     : state;
             }
 
+            if (data?.name === TOOL_ACTIVITY_EVENT) {
+                return updateRunMessage(state, (message) => {
+                    const toolCalls = applyToolActivity(message.toolCalls, data.value);
+                    return toolCalls === message.toolCalls ? message : {...message, toolCalls};
+                });
+            }
+
             if (data?.name === CUSTOM_IMAGE) {
                 const streamedImages = extractGeneratedImages(data.value);
 
@@ -263,11 +295,17 @@ export function applyFrame(state, frame, viewerUserId) {
             return runFinished(state, data);
 
         case RUN_ERROR: {
+            const code = typeof data?.code === 'string' ? data.code : undefined;
+            const failedCommands = commandsOfLastUserMessage(state.messages ?? [], USER);
             const failed = updateRunMessage(state, (message) => ({
                 ...message,
                 type: ERROR,
                 text: data?.message || 'The agent could not answer that message. Please try again.',
                 isStreaming: false,
+                code,
+                occurredAt: new Date().toISOString(),
+                analyzable: isAnalyzableCode(code),
+                failedCommands,
             }));
 
             return {...failed, activeRun: null};

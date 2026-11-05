@@ -80,7 +80,8 @@ describe('useChatModel opening the picker', () => {
         expect(result.current.pickerOpen).toBe(false);
         expect(result.current.pendingModel).toBeNull();
         expect(result.current.modelNotice).toBeNull();
-        expect(chatModelService.options).not.toHaveBeenCalled();
+        expect(chatModelService.options).toHaveBeenCalledTimes(1);
+        expect(chatModelService.options).toHaveBeenCalledWith('chat-1');
     });
 
     it('opens loading, then holds the options fetched for the chat', async () => {
@@ -259,7 +260,7 @@ describe('useChatModel choosing for an existing chat', () => {
 
         expect(result.current.pickerOpen).toBe(true);
         expect(result.current.pickerError).toBe(PICKER_ERROR_UNKNOWN_MODEL);
-        expect(chatModelService.options).toHaveBeenCalledTimes(2);
+        expect(chatModelService.options).toHaveBeenCalledTimes(3);
         expect(result.current.modelNotice).toBeNull();
     });
 
@@ -512,5 +513,69 @@ describe('useChatModel following the model of a shared chat', () => {
         rerender({chatId: 'chat-1'});
 
         expect(result.current.modelNotice).toBeNull();
+    });
+});
+
+describe('useChatModel shown model', () => {
+    beforeEach(() => {
+        chatModelService.options.mockResolvedValue({...modelOptions, selectedModel: null});
+        chatModelService.select.mockResolvedValue(null);
+        chatModelService.reset.mockResolvedValue(null);
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows the chat default once the chat opens without a pick', async () => {
+        const {result} = renderChatModel();
+
+        await waitFor(() => expect(result.current.displayModel).toBe(modelOptions.defaultModel));
+    });
+
+    it('shows the chat\'s saved pick once the chat opens', async () => {
+        chatModelService.options.mockResolvedValue({...modelOptions, selectedModel: 'openai/gpt-4o'});
+        const {result} = renderChatModel();
+
+        await waitFor(() => expect(result.current.displayModel).toBe('openai/gpt-4o'));
+    });
+
+    it('follows a pick, then a reset to the default', async () => {
+        const {result} = renderChatModel();
+        await waitFor(() => expect(result.current.displayModel).toBe(modelOptions.defaultModel));
+
+        await act(async () => {
+            await result.current.choose('openai/gpt-4o');
+        });
+        expect(result.current.displayModel).toBe('openai/gpt-4o');
+
+        await act(async () => {
+            await result.current.resetToDefault();
+        });
+        expect(result.current.displayModel).toBe(modelOptions.defaultModel);
+    });
+
+    it('shows the pick a new chat will use before it exists', async () => {
+        const {result} = renderChatModel({chatId: null});
+        await waitFor(() => expect(result.current.displayModel).toBe(modelOptions.defaultModel));
+
+        await act(async () => {
+            await result.current.choose('openai/gpt-4o');
+        });
+
+        expect(result.current.displayModel).toBe('openai/gpt-4o');
+    });
+
+    it('keeps the previous pick when changing it fails', async () => {
+        chatModelService.select.mockRejectedValue(apiError(503, 'MODEL_LIST_UNAVAILABLE'));
+        const {result} = renderChatModel();
+        await waitFor(() => expect(result.current.displayModel).toBe(modelOptions.defaultModel));
+
+        await act(async () => {
+            await result.current.choose('openai/gpt-4o');
+        });
+
+        expect(result.current.displayModel).toBe(modelOptions.defaultModel);
     });
 });

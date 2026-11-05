@@ -1,0 +1,29 @@
+.message-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--text-color);
+}
+
+.message-sender {
+    font-weight: 600;
+    opacity: 0.95;
+}
+
+.message-header .message-model-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.message-header .message-timestamp {
+    font-size: 11px;
+    margin-left: auto;
+}

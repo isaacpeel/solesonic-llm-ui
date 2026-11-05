@@ -243,9 +243,10 @@ const sharedSessionService = {
      * Every frame of every run, whoever started it. Without a cursor the server starts at the run in
      * progress, or at the end; a cursor it no longer holds is a SessionStreamGoneError.
      */
-    watch: async function* (sessionId, {signal, lastEventId, onActivity} = {}) {
+    watch: async function* (sessionId, {signal, lastEventId, onOpen, onActivity} = {}) {
         const response = await openStream(sessionId, {signal, lastEventId});
 
+        onOpen?.();
         yield* parseSseStream(response.body, {onActivity});
     },
 };

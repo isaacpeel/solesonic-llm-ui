@@ -186,7 +186,7 @@ describe('handleStreamError', () => {
 
         streamService.handleStreamError(error, appendErrorMessage, setChatHistory);
 
-        expect(appendErrorMessage).toHaveBeenCalledWith('stream failed');
+        expect(appendErrorMessage).toHaveBeenCalledWith('stream failed', {analyzable: true});
         consoleErrorSpy.mockRestore();
     });
 
@@ -198,7 +198,7 @@ describe('handleStreamError', () => {
 
         streamService.handleStreamError(disconnectError, appendErrorMessage, setChatHistory);
 
-        expect(appendErrorMessage).toHaveBeenCalledWith('Lost connection to the assistant. Please check your connection and try again.');
+        expect(appendErrorMessage).toHaveBeenCalledWith('Lost connection to the assistant. Please check your connection and try again.', {analyzable: false});
         consoleErrorSpy.mockRestore();
     });
 

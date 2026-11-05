@@ -59,4 +59,42 @@ describe('useSharedSessionStream', () => {
 
         expect(result.current.loadError).toBeNull();
     });
+
+    it('counts an open stream with no frames yet as connected', async () => {
+        let release;
+        const held = new Promise((resolve) => {
+            release = resolve;
+        });
+
+        sharedSessionService.watch.mockImplementation(async function* (sessionId, {onOpen}) {
+            onOpen?.();
+            await held;
+        });
+
+        const {result, unmount} = renderHook(() => useSharedSessionStream({sessionId: 'session-1', viewerUserId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.connected).toBe(true));
+
+        unmount();
+        release();
+    });
+
+    it('counts keepalives on an idle stream as connected', async () => {
+        let release;
+        const held = new Promise((resolve) => {
+            release = resolve;
+        });
+
+        sharedSessionService.watch.mockImplementation(async function* (sessionId, {onActivity}) {
+            onActivity?.();
+            await held;
+        });
+
+        const {result, unmount} = renderHook(() => useSharedSessionStream({sessionId: 'session-1', viewerUserId: 'user-1'}));
+
+        await waitFor(() => expect(result.current.connected).toBe(true));
+
+        unmount();
+        release();
+    });
 });

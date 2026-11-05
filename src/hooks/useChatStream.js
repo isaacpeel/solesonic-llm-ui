@@ -73,6 +73,7 @@ function useChatStream({
     adoptMessageIdForLastUserMessage,
     updateAttachmentStatus,
     mergeMetadataIntoLastAIMessage,
+    recordToolActivityOnLastAIMessage,
     playSound,
     activeElicitation,
     setActiveElicitation,
@@ -233,6 +234,7 @@ function useChatStream({
             attachGeneratedImages: attachGeneratedImagesToLastAIMessage,
             updateAttachmentStatus,
             mergeMessageMetadata: mergeMetadataIntoLastAIMessage,
+            recordToolActivity: recordToolActivityOnLastAIMessage,
             playSound,
         });
     }, [
@@ -245,6 +247,7 @@ function useChatStream({
         attachGeneratedImagesToLastAIMessage,
         updateAttachmentStatus,
         mergeMetadataIntoLastAIMessage,
+        recordToolActivityOnLastAIMessage,
         playSound,
         finalizeLastAIMessage,
         stopStreamingLastAIMessage,
@@ -380,6 +383,22 @@ function useChatStream({
         return true;
     };
 
+    const sendCommandTurn = async (command, text) => {
+        if (loading || turnInProgress) {
+            return false;
+        }
+
+        await sendTurn(command, text, {
+            attachmentTray: null,
+            pendingModel: null,
+            rejectPendingModel: null,
+            clearModelNotice: null,
+            keepInput: true,
+        });
+
+        return true;
+    };
+
     /*
      * The open run is parked on the prompt, so the typed text cannot go into it. The prompt is
      * declined, the API ends the run, and the text is sent as an ordinary turn. A typed answer
@@ -422,6 +441,7 @@ function useChatStream({
             pendingModel: turnPendingModel,
             rejectPendingModel: rejectTurnPendingModel,
             clearModelNotice: clearTurnModelNotice,
+            keepInput,
         } = turnComposer;
 
         /* Never rejects; a failed caption keeps the original id rather than blocking the send. */
@@ -471,10 +491,13 @@ function useChatStream({
 
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
-        setInputValue('');
 
-        if (chatInputRef.current) {
-            chatInputRef.current.style.height = 'auto';
+        if (!keepInput) {
+            setInputValue('');
+
+            if (chatInputRef.current) {
+                chatInputRef.current.style.height = 'auto';
+            }
         }
 
         setAttachmentNotice(null);
@@ -563,7 +586,10 @@ function useChatStream({
 
         const restoreComposer = (errorMessage) => {
             setChatHistory(updatedHistory);
-            setInputValue(submittedMessageText);
+
+            if (!keepInput) {
+                setInputValue(submittedMessageText);
+            }
 
             if (settledEntries.length > 0) {
                 turnAttachmentTray?.restoreTray(settledEntries);
@@ -809,6 +835,7 @@ function useChatStream({
         streamActive: streamActive || attachedTurnActive,
         stopChat,
         attachIfInFlight,
+        sendCommandTurn,
     };
 }
 

@@ -73,14 +73,46 @@ describe('ChatMessage', () => {
     });
 
     describe('placeholder', () => {
-        it('shows "Thinking..." when AI message is streaming with no text and no notifications', () => {
+        it('shows "Thinking" when AI message is streaming with no text, notifications or tool calls', () => {
             render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: '', isStreaming: true})}/>);
-            expect(screen.getByText('Thinking...')).toBeDefined();
+            expect(screen.getByText('Thinking')).toBeDefined();
+        });
+
+        it('shows the tool activity instead of the placeholder once a tool is running', () => {
+            render(<ChatMessage message={buildMessage({
+                type: 'ASSISTANT',
+                text: '',
+                isStreaming: true,
+                toolCalls: [{toolCallId: 't1', name: 'web_search', arguments: '{"query":"denver"}', status: 'running', startedAt: Date.now(), durationMs: null}],
+            })}/>);
+
+            expect(screen.queryByText('Thinking')).toBeNull();
+            expect(screen.getByRole('button', {name: /Running web_search/})).toBeDefined();
+            expect(screen.getByText('{"query":"denver"}')).toBeDefined();
+        });
+
+        it('collapses finished tool activity to a summary that expands on demand', () => {
+            render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                toolCalls: [
+                    {toolCallId: 't1', name: 'web_search', arguments: null, status: 'ok', startedAt: 0, durationMs: 15800},
+                    {toolCallId: 't2', name: 'web_extract', arguments: null, status: 'error', startedAt: 0, durationMs: 4100},
+                ],
+            })}/>);
+
+            const summary = screen.getByRole('button', {name: '2 tool calls · 19.9s · 1 failed'});
+            expect(summary.getAttribute('aria-expanded')).toBe('false');
+            expect(screen.queryByText('web_search')).toBeNull();
+
+            fireEvent.click(summary);
+
+            expect(screen.getByText('web_search')).toBeDefined();
+            expect(screen.getByText('failed · 4.1s')).toBeDefined();
         });
 
         it('does not show placeholder when text is present', () => {
             render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Some text', isStreaming: true})}/>);
-            expect(screen.queryByText('Thinking...')).toBeNull();
+            expect(screen.queryByText('Thinking')).toBeNull();
         });
 
         it('does not show placeholder when notifications are present', () => {
@@ -90,7 +122,7 @@ describe('ChatMessage', () => {
                 isStreaming: true,
                 notifications: ['Step 1'],
             })}/>);
-            expect(screen.queryByText('Thinking...')).toBeNull();
+            expect(screen.queryByText('Thinking')).toBeNull();
         });
     });
 
@@ -324,10 +356,34 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.message-model-name').textContent).toBe('legacy-model');
         });
 
-        it('falls back to "AI Assistant" when neither field carries a model', () => {
+        it('shows no model when neither field carries one', () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
-            expect(container.querySelector('.message-model-name').textContent).toBe('AI Assistant');
+            expect(container.querySelector('.message-model-name')).toBeNull();
+        });
+
+        it('labels the assistant and the sender above each message', () => {
+            const {container: assistant} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
+            expect(assistant.querySelector('.message-sender').textContent).toBe('Izzy-Bot');
+
+            const {container: agent} = render(<ChatMessage assistantLabel="Family Feud" message={buildMessage({text: 'the answer'})}/>);
+            expect(agent.querySelector('.message-sender').textContent).toBe('Family Feud');
+
+            const {container: mine} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'hi'})}/>);
+            expect(mine.querySelector('.message-sender').textContent).toBe('You');
+
+            const {container: theirs} = render(<ChatMessage senderLabel="Sam" message={buildMessage({type: 'USER', text: 'hi'})}/>);
+            expect(theirs.querySelector('.message-sender').textContent).toBe('Sam');
+        });
+
+        it('shows only tokens per second in the footer', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {tokensPerSecond: 38.27, totalTokens: 1284, totalMillis: 21400, modelCalls: 3},
+            })}/>);
+
+            const metadata = Array.from(container.querySelectorAll('.message-response-metadata')).map((node) => node.textContent);
+            expect(metadata).toEqual(['38.2 tok/s']);
         });
 
         it('falls back to responseMetadata.routedModel when the top-level model is absent', () => {
@@ -633,5 +689,65 @@ describe('ChatMessage', () => {
             await waitFor(() => expect(writeText).toHaveBeenCalled());
             expect(container.querySelector('.message-copy-button--copied')).toBeNull();
         });
+    });
+});
+
+describe('ChatMessage Analyze button', () => {
+    const failure = {
+        type: 'ERROR', text: 'An unexpected error occurred. Please try again.', _key: 'error-1',
+        code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true, failedCommands: [],
+    };
+
+    it('is offered on an analyzable error when the handler is given', async () => {
+        const onAnalyzeError = vi.fn().mockResolvedValue(true);
+        const {rerender} = render(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError}/>);
+
+        fireEvent.click(screen.getByRole('button', {name: 'Analyze this error'}));
+
+        expect(onAnalyzeError).toHaveBeenCalledWith(failure);
+        await waitFor(() => expect(screen.getByRole('button', {name: 'Analyze this error'}).textContent).toBe('Analyzing…'));
+        rerender(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError} analyzeBusy/>);
+        expect(screen.getByRole('button', {name: 'Analyze this error'}).textContent).toBe('Analyzing…');
+        expect(screen.getByRole('button', {name: 'Analyze this error'}).disabled).toBe(true);
+
+        rerender(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError} analyzeBusy={false}/>);
+        await waitFor(() => expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull());
+    });
+
+    it('comes back when the request was not sent', async () => {
+        const onAnalyzeError = vi.fn().mockResolvedValue(false);
+        render(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError}/>);
+
+        fireEvent.click(screen.getByRole('button', {name: 'Analyze this error'}));
+
+        await waitFor(() => expect(screen.getByRole('button', {name: 'Analyze this error'}).textContent).toBe('Analyze'));
+    });
+
+    it('is disabled while another turn is running', () => {
+        render(<ChatMessage message={failure} onAnalyzeError={vi.fn()} analyzeBusy/>);
+
+        expect(screen.getByRole('button', {name: 'Analyze this error'}).disabled).toBe(true);
+    });
+
+    it('is not offered without a handler, for other codes, or for a failed /logs turn', () => {
+        const {rerender} = render(<ChatMessage message={failure}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+
+        rerender(<ChatMessage message={{...failure, analyzable: false}} onAnalyzeError={vi.fn()}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+
+        rerender(<ChatMessage message={{...failure, failedCommands: ['logs']}} onAnalyzeError={vi.fn()}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+
+        rerender(<ChatMessage message={{...failure, type: 'ASSISTANT'}} onAnalyzeError={vi.fn()}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+    });
+
+    it('sits under the error text', () => {
+        const {container} = render(<ChatMessage message={failure} onAnalyzeError={vi.fn()}/>);
+        const text = container.querySelector('.markdown-body');
+        const button = screen.getByRole('button', {name: 'Analyze this error'});
+
+        expect(text.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 });

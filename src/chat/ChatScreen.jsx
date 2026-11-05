@@ -1,11 +1,15 @@
 import {useCallback, useRef, useState, useEffect} from 'react';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
+import {createPortal} from 'react-dom';
 import {toast} from 'react-toastify';
 import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
 
-import ChatMessage from "./message/ChatMessage.jsx";
+import ChatMessage, {USER} from "./message/ChatMessage.jsx";
+import ChatHeader from "./header/ChatHeader.jsx";
+import ModelSelect from "./header/ModelSelect.jsx";
+import {ASSISTANT_NAME, latestModelName} from "./message/messageIdentity.js";
 import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
 import AttachmentLightbox from "./attachment/AttachmentLightbox.jsx";
@@ -25,10 +29,13 @@ import useAttachmentTray from '../hooks/useAttachmentTray.js';
 import useScrollToBottom from '../hooks/useScrollToBottom.js';
 import useKeyboardInset from '../hooks/useKeyboardInset.js';
 import {isDismissibleElicitation} from '../service/ElicitationService.js';
+import slashCommandService from '../service/SlashCommandService.js';
+import useCommandAvailable from '../hooks/useCommandAvailable.js';
+import {buildAnalyzeRequest, LOGS_COMMAND} from '../util/analyzeRequest.js';
 
 
 function ChatScreen() {
-    const {chatInputRef} = useSharedData();
+    const {chatInputRef, headerActionsElement} = useSharedData();
 
     useEffect(() => {
         const handleCopy = (event) => {
@@ -67,13 +74,19 @@ function ChatScreen() {
     }, [clearOpenChat]);
 
     const chatTurn = useChatTurn();
+    const [hydratedChat, setHydratedChat] = useState({chatId: null, name: null});
+
+    const handleHydrated = useCallback((hydratedChatId, chatDetails) => {
+        setHydratedChat({chatId: hydratedChatId, name: chatDetails?.name ?? null});
+        chatTurn.attachIfInFlight(hydratedChatId, chatDetails);
+    }, [chatTurn]);
 
     const {chatId, chatHistory, setChatHistory, appendErrorMessage} = useChatHistory({
         onChatIdChangedExternally: () => {
             chatSwitchResetRef.current?.();
         },
         onChatNotFound: handleChatNotFound,
-        onHydrated: chatTurn.attachIfInFlight,
+        onHydrated: handleHydrated,
     });
     const [isCaptionRowOpen, setIsCaptionRowOpen] = useState(false);
     const [lightboxAttachment, setLightboxAttachment] = useState(null);
@@ -121,6 +134,12 @@ function ChatScreen() {
     } = chatTurn;
 
     const {attachSoundSurface} = soundPlayer;
+
+    const logsAvailable = useCommandAvailable(slashCommandService.fetchCommands, LOGS_COMMAND);
+    const analyzeError = useCallback(
+        (errorMessage) => chatTurn.sendCommandTurn(LOGS_COMMAND, buildAnalyzeRequest(errorMessage)),
+        [chatTurn],
+    );
 
     useEffect(attachSoundSurface, [attachSoundSurface]);
 
@@ -192,6 +211,13 @@ function ChatScreen() {
         return handleElicitationSubmit(overrideFields);
     };
 
+    const firstUserText = chatHistory.find((entry) => entry.type === USER && entry.text?.trim())?.text.trim();
+    const chatTitle = (hydratedChat.chatId === chatId && hydratedChat.name)
+        || (firstUserText && firstUserText.length > 60 ? `${firstUserText.slice(0, 59)}…` : firstUserText)
+        || 'New chat';
+    const modelFallback = latestModelName(chatHistory);
+    const emptyConversation = isEmptyNewConversation(chatId, chatHistory);
+
     const trayStateClassName = attachmentTray.trayEntries.length > 0
         ? (isCaptionRowOpen ? ' chat-app--caption-open' : ' chat-app--tray-open')
         : '';
@@ -199,13 +225,31 @@ function ChatScreen() {
     return (
         <div className={`chat-app${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
             <div className="chat-content" ref={scrollContainerRef}>
+                <ChatHeader
+                    title={chatTitle}
+                    subtitle={loading ? `${ASSISTANT_NAME} is responding…` : null}
+                    busy={loading}
+                />
+
+                {headerActionsElement && createPortal(
+                    <ModelSelect chatModel={chatModel} fallbackLabel={modelFallback}/>,
+                    headerActionsElement,
+                )}
+
                 <NewsUpdateBanner update={interestUpdate}/>
 
+
                 {chatHistory.map((entry) => (
-                    <ChatMessage key={entry._key} message={entry} onExpandImage={openLightbox}/>
+                    <ChatMessage
+                        key={entry._key}
+                        message={entry}
+                        onExpandImage={openLightbox}
+                        onAnalyzeError={logsAvailable ? analyzeError : undefined}
+                        analyzeBusy={loading}
+                    />
                 ))}
 
-                <InterestOfferBanner showing={isEmptyNewConversation(chatId, chatHistory)}/>
+                <InterestOfferBanner showing={emptyConversation}/>
 
                 {attachmentNotice && (
                     <div className="chat-attachment-notice" role="status">{attachmentNotice}</div>

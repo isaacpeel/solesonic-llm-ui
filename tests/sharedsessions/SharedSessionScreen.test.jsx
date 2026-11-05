@@ -20,6 +20,7 @@ vi.mock('../../src/service/SharedSessionService.js', async (importOriginal) => (
     ...await importOriginal(),
     default: {
         send: vi.fn(),
+        commands: vi.fn().mockResolvedValue([]),
         cancel: vi.fn(),
         leave: vi.fn(),
         answerPrompt: vi.fn(),
@@ -188,7 +189,9 @@ async function renderConversation({session = CONVERSATION, viewerUserId = ALEX, 
     return rendered.container;
 }
 
-const banner = (container) => container.querySelector('.shared-session-status-banner').textContent;
+const subtitle = (container) => container.querySelector('.chat-header-subtitle').textContent;
+const openMenu = () => fireEvent.click(screen.getByRole('button', {name: 'Chat options'}));
+const peopleNames = (container) => Array.from(container.querySelectorAll('.shared-session-person-name')).map((node) => node.textContent);
 
 describe('SharedSessionScreen conversation mode', () => {
     beforeEach(() => {
@@ -198,29 +201,52 @@ describe('SharedSessionScreen conversation mode', () => {
     it('shows the chat name and who is in it, with pending invitees marked', async () => {
         const container = await renderConversation();
 
-        expect(container.querySelector('.shared-session-header').textContent).toContain('Trip planning');
+        expect(screen.getByRole('heading', {name: 'Trip planning'})).toBeTruthy();
+        expect(subtitle(container)).toBe('2 people · 1 invited');
 
-        const chips = Array.from(container.querySelectorAll('.shared-session-participant-chip')).map((chip) => chip.textContent);
-        expect(chips).toEqual(['Alex', 'Sam', 'riley (invited)']);
-        expect(container.querySelector('.shared-session-participant-chip--pending').title).toBe('Riley Reed');
+        openMenu();
+
+        expect(peopleNames(container)).toEqual(['Alex', 'Sam', 'riley']);
+        expect(container.querySelector('.shared-session-person--pending').title).toBe('Riley Reed');
     });
 
-    it('shows no turn banner, only the assistant responding', async () => {
+    it('links back to the shared chats list', async () => {
+        await renderConversation();
+
+        expect(screen.getByRole('link', {name: 'Back to shared chats'}).getAttribute('href')).toBe('/shared-sessions');
+    });
+
+    it('shows status in the header subtitle instead of a banner', async () => {
         const idle = await renderConversation();
-        expect(banner(idle)).toBe('');
+        expect(idle.querySelector('.shared-session-status-banner')).toBeNull();
+        expect(idle.querySelector('.chat-header-progress--active')).toBeNull();
         cleanup();
 
         const running = await renderConversation({activeRun: {runId: 'run-1'}});
-        expect(banner(running)).toBe('The assistant is responding…');
+        expect(subtitle(running)).toBe('Assistant is responding…');
+        expect(running.querySelector('.chat-header-progress--active')).not.toBeNull();
+        expect(running.querySelector('.shared-session-status-banner')).toBeNull();
     });
 
     it('says when the chat ended or expired', async () => {
         const closed = await renderConversation({session: {...CONVERSATION, status: 'CLOSED'}});
-        expect(banner(closed)).toBe('This chat ended.');
+        expect(subtitle(closed)).toBe('Ended · read only');
         cleanup();
 
         const expired = await renderConversation({session: {...CONVERSATION, status: 'EXPIRED'}});
-        expect(banner(expired)).toBe('This chat expired.');
+        expect(subtitle(expired)).toBe('Expired · read only');
+    });
+
+    it('says when it is reconnecting', async () => {
+        authService.getUserId.mockResolvedValue(ALEX);
+        useSharedSessionStream.mockReturnValue({session: CONVERSATION, messages: [], activeRun: null, loading: false, loadError: null, connected: false});
+        const {container} = render(
+            <MemoryRouter initialEntries={['/shared-sessions/session-1']}>
+                <Routes><Route path="/shared-sessions/:sessionId" element={<SharedSessionScreen/>}/></Routes>
+            </MemoryRouter>
+        );
+
+        await waitFor(() => expect(subtitle(container)).toBe('Reconnecting…'));
     });
 
     it('invites the group to message and limits the message length', async () => {
@@ -228,7 +254,7 @@ describe('SharedSessionScreen conversation mode', () => {
 
         const input = screen.getByLabelText('Your message');
 
-        expect(input.getAttribute('placeholder')).toBe('Message the group…');
+        expect(input.getAttribute('placeholder')).toBe('Message the group');
         expect(input.maxLength).toBe(8000);
     });
 
@@ -248,17 +274,46 @@ describe('SharedSessionScreen conversation mode', () => {
         await waitFor(() => expect(sharedSessionService.send).toHaveBeenCalledWith('session-1', 'hello all', {attachmentIds: [], commands: []}));
     });
 
+    it('offers Analyze on a failure when the session allows /logs, and sends it through the session', async () => {
+        const failure = {
+            _key: 'e1', type: 'ERROR', text: 'An unexpected error occurred. Please try again.', code: 'internal',
+            occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true, failedCommands: [],
+        };
+        sharedSessionService.commands.mockResolvedValue([{command: 'logs', name: 'logs'}]);
+        sharedSessionService.send.mockResolvedValue({runId: 'run-3'});
+        await renderConversation({messages: [failure]});
+
+        fireEvent.click(await screen.findByRole('button', {name: 'Analyze this error'}));
+
+        await waitFor(() => expect(sharedSessionService.send).toHaveBeenCalledWith('session-1',
+            expect.stringMatching(/^Analyze the error shown in this chat at 2026-11-05T17:27:20Z: /), {commands: ['logs']}));
+        expect(sharedSessionService.commands).toHaveBeenCalledWith('session-1', 'logs');
+    });
+
+    it('offers no Analyze when the session does not allow /logs', async () => {
+        sharedSessionService.commands.mockResolvedValue([]);
+        await renderConversation({messages: [{
+            _key: 'e1', type: 'ERROR', text: 'An unexpected error occurred.', code: 'internal', analyzable: true,
+        }]});
+
+        await waitFor(() => expect(sharedSessionService.commands).toHaveBeenCalled());
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+    });
+
     it('offers the owner Add people and the others nothing', async () => {
         await renderConversation();
+        openMenu();
         expect(screen.getByRole('button', {name: 'Add people'})).toBeTruthy();
         cleanup();
 
         await renderConversation({viewerUserId: SAM});
+        openMenu();
         expect(screen.queryByRole('button', {name: 'Add people'})).toBeNull();
     });
 
     it('does not offer Add people in an agent session', async () => {
         await renderConversation({session: {...SESSION, ownerUserId: ALEX}});
+        openMenu();
 
         expect(screen.queryByRole('button', {name: 'Add people'})).toBeNull();
     });
@@ -266,6 +321,7 @@ describe('SharedSessionScreen conversation mode', () => {
     it('disables Add people when the chat is full', async () => {
         const people = Array.from({length: 6}, (unused, index) => ({userId: `u-${index}`, seat: index + 2, name: `P${index}`}));
         await renderConversation({session: {...CONVERSATION, participants: [...CONVERSATION.participants, ...people]}});
+        openMenu();
 
         const button = screen.getByRole('button', {name: 'Add people'});
 
@@ -278,6 +334,7 @@ describe('SharedSessionScreen conversation mode', () => {
         sharedSessionService.inviteToSession.mockResolvedValue([]);
         const container = await renderConversation();
 
+        openMenu();
         fireEvent.click(screen.getByRole('button', {name: 'Add people'}));
         const dialog = screen.getByRole('dialog');
         fireEvent.focus(within(dialog).getByRole('combobox'));
@@ -286,8 +343,9 @@ describe('SharedSessionScreen conversation mode', () => {
 
         await waitFor(() => expect(sharedSessionService.inviteToSession).toHaveBeenCalledWith('session-1', ['carol']));
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-        const chips = Array.from(container.querySelectorAll('.shared-session-participant-chip')).map((chip) => chip.textContent);
-        expect(chips).toEqual(['Alex', 'Sam', 'riley (invited)', 'carol (invited)']);
+        expect(subtitle(container)).toBe('2 people · 2 invited');
+        openMenu();
+        expect(peopleNames(container)).toEqual(['Alex', 'Sam', 'riley', 'carol']);
     });
 
     it('drops locally invited people once the server sends a new session state', async () => {
@@ -304,37 +362,76 @@ describe('SharedSessionScreen conversation mode', () => {
         const {container, rerender} = render(tree());
         await waitFor(() => expect(useSharedSessionStream).toHaveBeenLastCalledWith(expect.objectContaining({viewerUserId: ALEX})));
 
+        openMenu();
         fireEvent.click(screen.getByRole('button', {name: 'Add people'}));
         const dialog = screen.getByRole('dialog');
         fireEvent.focus(within(dialog).getByRole('combobox'));
         fireEvent.click(await within(dialog).findByRole('option', {name: /carol/}));
         fireEvent.click(within(dialog).getByRole('button', {name: /^Invit/}));
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-        const chipTexts = () => Array.from(container.querySelectorAll('.shared-session-participant-chip')).map((chip) => chip.textContent);
-        expect(chipTexts()).toContain('carol (invited)');
+        openMenu();
+        expect(peopleNames(container)).toContain('carol');
 
         useSharedSessionStream.mockReturnValue(stream({...CONVERSATION, pendingInvitees: []}));
         rerender(tree());
 
-        expect(chipTexts()).toEqual(['Alex', 'Sam']);
+        expect(peopleNames(container)).toEqual(['Alex', 'Sam']);
     });
 
     it('tells the owner they end sharing for everyone', async () => {
-        const container = await renderConversation();
+        await renderConversation();
+        openMenu();
 
-        expect(container.querySelector('.leave-session-trigger').getAttribute('aria-label')).toBe('End sharing for everyone');
+        expect(screen.getByRole('button', {name: 'End sharing for everyone'})).toBeTruthy();
+        expect(screen.queryByRole('button', {name: 'Leave chat'})).toBeNull();
     });
 
     it('tells others they are only leaving', async () => {
-        const container = await renderConversation({viewerUserId: SAM});
+        await renderConversation({viewerUserId: SAM});
+        openMenu();
 
-        expect(container.querySelector('.leave-session-trigger').getAttribute('aria-label')).toBe('Leave chat');
+        expect(screen.getByRole('button', {name: 'Leave chat'})).toBeTruthy();
+        expect(screen.queryByRole('button', {name: 'End sharing for everyone'})).toBeNull();
     });
 
     it('keeps the agent wording for an agent session', async () => {
-        const container = await renderAs(SAM);
+        await renderAs(SAM);
+        openMenu();
 
-        expect(container.querySelector('.leave-session-trigger').getAttribute('aria-label')).toBe('Leave session');
+        expect(screen.getByRole('button', {name: 'Leave session'})).toBeTruthy();
+    });
+
+    it('asks before leaving, and goes back to the list once left', async () => {
+        sharedSessionService.leave.mockResolvedValue(undefined);
+        await renderConversation({viewerUserId: SAM});
+        openMenu();
+
+        fireEvent.click(screen.getByRole('button', {name: 'Leave chat'}));
+        expect(sharedSessionService.leave).not.toHaveBeenCalled();
+        expect(screen.getByText('Leave this chat?')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', {name: 'Leave chat'}));
+
+        await waitFor(() => expect(sharedSessionService.leave).toHaveBeenCalledWith('session-1'));
+        await waitFor(() => expect(screen.getByText('list')).toBeTruthy());
+    });
+
+    it('keeps the chat when the confirmation is declined', async () => {
+        await renderConversation();
+        openMenu();
+
+        fireEvent.click(screen.getByRole('button', {name: 'End sharing for everyone'}));
+        fireEvent.click(screen.getByRole('button', {name: 'Keep sharing'}));
+
+        expect(sharedSessionService.leave).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', {name: 'End sharing for everyone'})).toBeTruthy();
+    });
+
+    it('offers no leave action once the chat has ended', async () => {
+        await renderConversation({session: {...CONVERSATION, status: 'CLOSED'}});
+        openMenu();
+
+        expect(screen.queryByRole('button', {name: 'End sharing for everyone'})).toBeNull();
     });
 
     it('labels messages by who sent them and shows the assistant like a private chat', async () => {
@@ -346,8 +443,8 @@ describe('SharedSessionScreen conversation mode', () => {
             ],
         });
 
-        const senders = Array.from(container.querySelectorAll('.shared-session-message-sender')).map((node) => node.textContent);
-        expect(senders).toEqual(['Sam', 'You']);
+        const senders = Array.from(container.querySelectorAll('.message-sender')).map((node) => node.textContent);
+        expect(senders).toEqual(['Sam', 'You', 'Izzy-Bot']);
     });
 
     const stopButton = () => screen.queryByRole('button', {name: 'Stop response'});

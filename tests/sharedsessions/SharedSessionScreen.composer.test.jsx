@@ -460,6 +460,7 @@ describe('SharedSessionScreen leaving', () => {
             </MemoryRouter>
         );
 
+        fireEvent.click(await screen.findByRole('button', {name: 'Chat options'}));
         fireEvent.click(await screen.findByRole('button', {name: 'Leave chat'}));
         fireEvent.click(await screen.findByRole('button', {name: 'Leave chat'}));
 

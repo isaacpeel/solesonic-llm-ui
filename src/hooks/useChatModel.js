@@ -38,6 +38,8 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
     const [modelNotice, setModelNotice] = useState(null);
     const [trackedChatId, setTrackedChatId] = useState(chatId);
     const [trackedModel, setTrackedModel] = useState(currentModel);
+    const [selectedModel, setSelectedModel] = useState(currentModel);
+    const [defaultModel, setDefaultModel] = useState(null);
 
     const chatIdRef = useRef(chatId);
     const requestGenerationRef = useRef(0);
@@ -53,10 +55,12 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
         setPickerError(null);
         setPendingModel(null);
         setModelNotice(null);
+        setSelectedModel(currentModel);
     }
 
     if (trackedModel !== currentModel) {
         setTrackedModel(currentModel);
+        setSelectedModel(currentModel);
 
         if (!chatChanged && trackedModel !== undefined && currentModel !== undefined) {
             setOptions((previousOptions) => (previousOptions ? {...previousOptions, selectedModel: currentModel} : previousOptions));
@@ -66,6 +70,28 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
 
     useEffect(() => {
         chatIdRef.current = chatId;
+    }, [chatId]);
+
+    useEffect(() => {
+        let active = true;
+
+        chatModelService.options(chatId)
+            .then((fetchedOptions) => {
+                if (!active || chatIdRef.current !== chatId) {
+                    return;
+                }
+
+                setDefaultModel(fetchedOptions?.defaultModel ?? null);
+
+                if (chatId) {
+                    setSelectedModel(fetchedOptions?.selectedModel ?? null);
+                }
+            })
+            .catch(() => undefined);
+
+        return () => {
+            active = false;
+        };
     }, [chatId]);
 
     const isCurrentRequest = useCallback((generation, requestChatId) => {
@@ -90,6 +116,11 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
 
             if (isCurrentRequest(generation, requestChatId)) {
                 setOptions(fetchedOptions);
+                setDefaultModel(fetchedOptions?.defaultModel ?? null);
+
+                if (requestChatId) {
+                    setSelectedModel(fetchedOptions?.selectedModel ?? null);
+                }
             }
         } catch (caughtError) {
             if (!isCurrentRequest(generation, requestChatId)) {
@@ -120,7 +151,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
         void loadOptions(chatIdRef.current);
     }, [loadOptions]);
 
-    const applyToChat = useCallback(async (requestChatId, applyRequest, successNotice) => {
+    const applyToChat = useCallback(async (requestChatId, applyRequest, successNotice, appliedModel) => {
         const generation = requestGenerationRef.current;
         setSavingModel(true);
         setPickerError(null);
@@ -129,12 +160,15 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
             await applyRequest();
 
             if (requestChatId === chatIdRef.current) {
+                setSelectedModel(appliedModel);
                 setModelNotice(successNotice);
                 closePicker();
             }
+
+            return true;
         } catch (caughtError) {
             if (!isCurrentRequest(generation, requestChatId)) {
-                return;
+                return false;
             }
 
             setSavingModel(false);
@@ -142,7 +176,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
             if (caughtError?.status === 404) {
                 closePicker();
                 onChatNotFound?.();
-                return;
+                return false;
             }
 
             log.error('[useChatModel] Failed to change the chat model:', caughtError);
@@ -152,8 +186,15 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
             if (nextPickerError === PICKER_ERROR_UNKNOWN_MODEL) {
                 void loadOptions(requestChatId);
             }
+
+            return false;
         }
     }, [closePicker, isCurrentRequest, loadOptions, onChatNotFound]);
+
+    const refreshOptions = useCallback(() => {
+        setPickerError(null);
+        void loadOptions(chatIdRef.current);
+    }, [loadOptions]);
 
     const choose = useCallback(async (modelId) => {
         const requestChatId = chatIdRef.current;
@@ -162,33 +203,35 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
             setPendingModel(modelId);
             setModelNotice(`Your first message will use ${modelId}.`);
             closePicker();
-            return;
+            return true;
         }
 
-        await applyToChat(
+        return await applyToChat(
             requestChatId,
             () => chatModelService.select(requestChatId, modelId),
             `Model set to ${modelId}.`,
+            modelId,
         );
     }, [applyToChat, closePicker]);
 
     const resetToDefault = useCallback(async () => {
         const requestChatId = chatIdRef.current;
-        const defaultModel = options?.defaultModel;
+        const defaultModelName = options?.defaultModel ?? defaultModel;
 
         if (!requestChatId) {
             setPendingModel(null);
-            setModelNotice(defaultModelNotice('Your first message will use the default model', defaultModel));
+            setModelNotice(defaultModelNotice('Your first message will use the default model', defaultModelName));
             closePicker();
-            return;
+            return true;
         }
 
-        await applyToChat(
+        return await applyToChat(
             requestChatId,
             () => chatModelService.reset(requestChatId),
-            defaultModelNotice('Using the default model', defaultModel),
+            defaultModelNotice('Using the default model', defaultModelName),
+            null,
         );
-    }, [applyToChat, closePicker, options]);
+    }, [applyToChat, closePicker, options, defaultModel]);
 
     const rejectPendingModel = useCallback(() => {
         setPendingModel(null);
@@ -203,8 +246,15 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
         setModelNotice(null);
     }, []);
 
+    const displayModel = pendingModel
+        ?? (chatId && selectedModel === undefined ? undefined : selectedModel ?? defaultModel ?? undefined);
+
     return {
         pickerOpen,
+        selectedModel,
+        defaultModel,
+        displayModel,
+        refreshOptions,
         options,
         loadingOptions,
         savingModel,

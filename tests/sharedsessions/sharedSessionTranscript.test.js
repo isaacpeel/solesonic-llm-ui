@@ -289,3 +289,29 @@ describe('sharedSessionTranscript', () => {
         expect(fromStranger.messages[0].mine).toBe(false);
     });
 });
+
+
+describe('failures and the Analyze button', () => {
+    it('a failed run keeps its code and the commands of the turn that failed', () => {
+        let state = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, runStarted('run-1', 'm9', 'towel', 'Alex'), ALEX);
+        state = applyFrame(state, frame('RUN_ERROR', {message: 'An unexpected error occurred.', code: 'internal'}), ALEX);
+
+        expect(state.messages.at(-1)).toMatchObject({type: 'ERROR', code: 'internal', analyzable: true});
+        expect(typeof state.messages.at(-1).occurredAt).toBe('string');
+    });
+
+    it('a saved failure comes back as an error, not a progress step', () => {
+        const {messages} = transcriptFromMessages([
+            {id: 'u1', messageType: 'USER', message: 'why?', senderUserId: ALEX, commands: ['logs']},
+            {
+                id: 's1', messageType: 'SYSTEM', message: 'An unexpected error occurred.', timestamp: '2026-11-05T17:27:21Z',
+                progressData: {message: 'An unexpected error occurred.', code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z'},
+            },
+        ], SESSION, ALEX);
+
+        expect(messages.at(-1)).toMatchObject({
+            type: 'ERROR', code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true,
+            failedCommands: ['logs'],
+        });
+    });
+});

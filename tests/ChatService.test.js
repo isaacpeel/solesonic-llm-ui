@@ -566,7 +566,7 @@ describe('handleStreamChunk', () => {
         chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message: 'The model timed out.', code: 'timeout'}), callbacks);
 
         expect(callbacks.appendErrorMessage).toHaveBeenCalledOnce();
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('The model timed out.');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('The model timed out.', {code: 'timeout', occurredAt: undefined, analyzable: true});
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
     });
 
@@ -587,7 +587,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message, code: 'LLM_KEY_MISSING'}), callbacks);
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith(message);
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith(message, {code: 'LLM_KEY_MISSING', occurredAt: undefined, analyzable: false});
         expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });
@@ -671,7 +671,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the model refused'}), callbacks);
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the model refused');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the model refused', {code: undefined, occurredAt: undefined, analyzable: false});
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
         expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
     });
@@ -684,7 +684,7 @@ describe('handleStreamChunk', () => {
             callbacks,
         );
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('image generation timed out');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('image generation timed out', {code: 'GENERATION_TIMEOUT', occurredAt: undefined, analyzable: false});
     });
 
     it('CUSTOM failure prefers content when both are present', () => {
@@ -692,7 +692,20 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the real one', message: 'the other one'}), callbacks);
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the real one');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the real one', {code: undefined, occurredAt: undefined, analyzable: false});
+    });
+
+    it('a chat failure carries its code and the server time for the Analyze button', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {
+            chatId: 'chat-1', message: 'An unexpected error occurred. Please try again.', code: 'internal',
+            occurredAt: '2026-11-05T17:27:20.138Z',
+        }), callbacks);
+
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('An unexpected error occurred. Please try again.', {
+            code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true,
+        });
     });
 
     it('CUSTOM failure stays quiet when it carries no text', () => {

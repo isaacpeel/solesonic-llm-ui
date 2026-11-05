@@ -6,19 +6,11 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    padding: 4px 16px 0;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 4px 0 0;
 }
 
-.message-model-name {
-    font-size: 12px;
-    opacity: 0.55;
-    margin-right: auto;
-}
-
-@media (max-width: 768px) {
-    .message-actions {
-        padding: 4px 12px 0;
-    }
+.message-actions > :last-child {
+    margin-left: auto;
 }

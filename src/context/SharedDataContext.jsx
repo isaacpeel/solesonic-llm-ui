@@ -15,6 +15,7 @@ export function SharedDataProvider({children}) {
      * completion and write a message onto a conversation that no longer exists.
      */
     const [streamingChatId, setStreamingChatId] = useState(null);
+    const [headerActionsElement, setHeaderActionsElement] = useState(null);
 
     return (
         <SharedDataContext.Provider value={{
@@ -23,6 +24,7 @@ export function SharedDataProvider({children}) {
             drawerOpen, setDrawerOpen,
             reloadHistoryTrigger, setReloadHistoryTrigger,
             streamingChatId, setStreamingChatId,
+            headerActionsElement, setHeaderActionsElement,
             chatInputRef: useRef(),
             adoptedChatIdRef: useRef(null),
         }}>

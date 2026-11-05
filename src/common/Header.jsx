@@ -14,6 +14,7 @@ const Header = () => {
     const {setChatHistory} = useSharedData();
     const {setChatId} = useSharedData();
     const {drawerOpen, setDrawerOpen} = useSharedData();
+    const {setHeaderActionsElement} = useSharedData();
     const sharedRef = useSharedData(SharedDataContext);
     const chatTurn = useChatTurn();
     const navigate = useNavigate();
@@ -59,7 +60,8 @@ const Header = () => {
                 <SharedSessionsLink/>
                 <ShareChatButton/>
             </div>
-            <div>
+            <div className="header-right">
+                <div className="header-chat-actions" ref={setHeaderActionsElement}/>
                 <UserDialog/>
             </div>
         </div>
