@@ -1,0 +1,84 @@
+/* Above the drawer (1000) and the portalled row menu (2000), like the group dialogs. */
+.share-chat-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+.share-chat-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 440px;
+    max-height: 100%;
+    padding: 20px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.share-chat-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.share-chat-input {
+    padding: 8px 10px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font: inherit;
+    outline: none;
+}
+
+.share-chat-input:focus-visible {
+    border-color: var(--text-color);
+}
+
+.share-chat-note {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-color);
+    opacity: 0.75;
+}
+
+.share-chat-error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #e57373;
+}
+
+.share-chat-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.share-chat-actions button {
+    padding: 6px 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.share-chat-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.share-chat-confirm:not(:disabled) {
+    background-color: var(--primary-color);
+    border-color: var(--text-color);
+}

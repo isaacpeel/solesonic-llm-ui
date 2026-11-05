@@ -4,7 +4,13 @@ import './LeaveSessionButton.css';
 
 const CONFIRM_TIMEOUT_MILLISECONDS = 5000;
 
-function LeaveSessionButton({onConfirm}) {
+function LeaveSessionButton({
+    onConfirm,
+    triggerLabel = 'Leave session',
+    confirmText = 'End for everyone?',
+    confirmLabel = 'End the session for everyone',
+    keepLabel = 'Keep the session',
+}) {
     const [confirming, setConfirming] = useState(false);
     const [leaving, setLeaving] = useState(false);
     const containerRef = useRef(null);
@@ -74,14 +80,14 @@ function LeaveSessionButton({onConfirm}) {
         <div className="leave-session" ref={containerRef}>
             {confirming ? (
                 <div className="leave-session-confirm" role="group" aria-labelledby="leave-session-confirm-text">
-                    <span id="leave-session-confirm-text" className="leave-session-confirm-text">End for everyone?</span>
+                    <span id="leave-session-confirm-text" className="leave-session-confirm-text">{confirmText}</span>
                     <button
                         type="button"
                         className="leave-session-icon-button leave-session-icon-button--danger"
                         onClick={handleConfirm}
                         disabled={leaving}
-                        aria-label="End the session for everyone"
-                        title="End the session for everyone"
+                        aria-label={confirmLabel}
+                        title={confirmLabel}
                     >
                         <CheckIcon/>
                     </button>
@@ -91,8 +97,8 @@ function LeaveSessionButton({onConfirm}) {
                         className="leave-session-icon-button"
                         onClick={dismiss}
                         disabled={leaving}
-                        aria-label="Keep the session"
-                        title="Keep the session"
+                        aria-label={keepLabel}
+                        title={keepLabel}
                     >
                         <XMarkIcon/>
                     </button>
@@ -103,8 +109,8 @@ function LeaveSessionButton({onConfirm}) {
                     ref={leaveButtonRef}
                     className="leave-session-icon-button leave-session-trigger"
                     onClick={() => setConfirming(true)}
-                    aria-label="Leave session"
-                    title="Leave session"
+                    aria-label={triggerLabel}
+                    title={triggerLabel}
                 >
                     <ArrowRightStartOnRectangleIcon/>
                 </button>

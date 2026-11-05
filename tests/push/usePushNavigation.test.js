@@ -40,6 +40,15 @@ describe('usePushNavigation', () => {
         expect(navigate).toHaveBeenCalledWith('/chat/chat-1');
     });
 
+    it('navigates to a shared session a group chat message came from', () => {
+        const navigate = vi.fn();
+        renderHook(() => usePushNavigation(navigate));
+
+        postFromWorker({type: 'push:navigate', url: '/shared-sessions/5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e'});
+
+        expect(navigate).toHaveBeenCalledWith('/shared-sessions/5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e');
+    });
+
     it.each(['https://evil.example/x', '//evil.example', 'javascript:alert(1)', 42])('ignores the unsafe url %s', (url) => {
         const navigate = vi.fn();
         renderHook(() => usePushNavigation(navigate));

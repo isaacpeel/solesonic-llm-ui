@@ -15,6 +15,7 @@ import ChatNameInput from "./ChatNameInput.jsx";
 import ChatHistorySearchInput from "./ChatHistorySearchInput.jsx";
 import ChatSearchResultLabel from "./ChatSearchResultLabel.jsx";
 import DeleteChatDialog from "./DeleteChatDialog.jsx";
+import ShareChatDialog from "../../sharedsessions/ShareChatDialog.jsx";
 import {useSharedData} from "../../context/useSharedData.jsx";
 import usePagedChatHistory from "../../hooks/usePagedChatHistory.js";
 import useDebouncedValue from "../../hooks/useDebouncedValue.js";
@@ -55,6 +56,7 @@ const INITIAL_SCROLL_RECT = {width: 250, height: 600};
 
 /* Rendered as the disabled item's title, so the user learns why rather than just being blocked. */
 const STREAMING_DELETE_REASON = "Wait for the response to finish.";
+const STREAMING_SHARE_REASON = STREAMING_DELETE_REASON;
 
 /*
  * Ceiling on the top-up below. A user whose entire history is filed under groups would otherwise
@@ -152,6 +154,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * knows which group's cached page the row also has to come out of.
      */
     const [deleteRequest, setDeleteRequest] = useState(null);
+    const [shareRequest, setShareRequest] = useState(null);
 
     /* null when closed; `{chat, point}` for a conversation released clear of the drawer. */
     const [dropActionRequest, setDropActionRequest] = useState(null);
@@ -550,15 +553,24 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     };
 
     /*
-     * Two items, and no arranging among them. Filing, unfiling and ordering are all drag gestures
+     * Three items, and no arranging among them. Filing, unfiling and ordering are all drag gestures
      * now — an action that duplicates a gesture is a second place for the two to disagree.
      */
+    const buildShareAction = (row) => ({
+        key: "share",
+        label: "Share…",
+        disabled: !!streamingChatId && row.chatId === streamingChatId,
+        disabledReason: STREAMING_SHARE_REASON,
+        onSelect: () => setShareRequest({chatId: row.chatId, chatName: row.chat?.name ?? ""}),
+    });
+
     const buildRowActions = (row) => ([
         {
             key: "rename",
             label: "Rename",
             onSelect: () => handleRenameStart(row.chat),
         },
+        buildShareAction(row),
         buildDeleteAction(row),
     ]);
 
@@ -801,6 +813,18 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                 )}
 
                 <ChatGroupDialogs {...chatGroups.dialogProps} streamingChatId={streamingChatId}/>
+
+                {shareRequest && (
+                    <ShareChatDialog
+                        sourceChatId={shareRequest.chatId}
+                        chatName={shareRequest.chatName}
+                        onCancel={() => setShareRequest(null)}
+                        onShared={() => {
+                            setShareRequest(null);
+                            setDrawerOpen(false);
+                        }}
+                    />
+                )}
 
                 {deleteRequest && (
                     <DeleteChatDialog

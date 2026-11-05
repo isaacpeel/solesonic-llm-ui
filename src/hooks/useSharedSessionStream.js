@@ -86,6 +86,13 @@ function useSharedSessionStream({sessionId, viewerUserId, onSoundCue}) {
                     continue;
                 }
 
+                if (caughtError?.status === 404) {
+                    log.info('[useSharedSessionStream] The session is no longer available to this viewer');
+                    setConnected(false);
+                    setLoadError(caughtError);
+                    return;
+                }
+
                 log.warn('[useSharedSessionStream] The session stream dropped', caughtError);
             }
 

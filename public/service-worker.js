@@ -12,6 +12,8 @@ const ENABLE_ACTION = 'enable';
 const DISMISS_ACTION = 'dismiss';
 const ALLOWED_ACTIONS = new Set([ENABLE_ACTION, DISMISS_ACTION]);
 const INTEREST_OFFER_TYPE = 'INTEREST_OFFER';
+const SHARED_CHAT_MESSAGE_TYPE = 'shared_chat_message';
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const ACCEPT_INTENT_QUERY = '?intent=accept';
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -63,6 +65,20 @@ function safePath(url) {
     }
 }
 
+function payloadUrl(payload) {
+    if (payload.url !== undefined && payload.url !== null) {
+        return payload.url;
+    }
+
+    if (payload.type === SHARED_CHAT_MESSAGE_TYPE
+        && typeof payload.sessionId === 'string'
+        && SESSION_ID_PATTERN.test(payload.sessionId)) {
+        return `/shared-sessions/${payload.sessionId}`;
+    }
+
+    return undefined;
+}
+
 function clickTarget(action, data) {
     const path = safePath(data?.url);
 
@@ -100,7 +116,7 @@ function showPushNotification(payload) {
         tag,
         icon: ICON,
         badge: BADGE,
-        data: {url: safePath(payload.url), type: textOrDefault(payload.type, undefined)},
+        data: {url: safePath(payloadUrl(payload)), type: textOrDefault(payload.type, undefined)},
         timestamp: Date.parse(payload.timestamp) || Date.now(),
         renotify: Boolean(tag),
     };

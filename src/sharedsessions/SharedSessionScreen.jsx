@@ -13,7 +13,9 @@ import sharedSessionService, {SESSION_STATUSES, describeSessionError} from '../s
 import authService from '../service/AuthService.js';
 import {resolveElicitationAction} from '../service/ElicitationService.js';
 import LeaveSessionButton from './LeaveSessionButton.jsx';
-import {sharedAgentFor} from './sharedAgents.js';
+import AddPeopleDialog from './AddPeopleDialog.jsx';
+import {isConversationSession, sharedAgentForSession} from './sharedAgents.js';
+import {MAXIMUM_CONVERSATION_MESSAGE_CHARACTERS, MAXIMUM_OTHER_PARTICIPANTS} from './sharedConversationLimits.js';
 import {isPromptForViewer, isViewersTurn, viewerParticipantName, waitingOn} from './sharedSessionTranscript.js';
 import {presentForViewer} from '../chat/message/hiddenSections.js';
 import '../chat/ChatScreen.css';
@@ -53,9 +55,25 @@ function statusBanner({session, agent, activeRun, viewerUserId, promptForViewer}
     return {text: agent.idleHint, forViewer: false};
 }
 
-function composerPlaceholder({activeRun, banner, otherName, agent}) {
+function conversationBanner({session, activeRun}) {
+    if (session.status === SESSION_STATUSES.CLOSED) {
+        return {text: 'This chat ended.', forViewer: false};
+    }
+
+    if (session.status === SESSION_STATUSES.EXPIRED) {
+        return {text: 'This chat expired.', forViewer: false};
+    }
+
+    return {text: activeRun ? 'The assistant is responding…' : '', forViewer: false};
+}
+
+function composerPlaceholder({activeRun, banner, otherName, agent, conversation}) {
     if (activeRun) {
         return '';
+    }
+
+    if (conversation) {
+        return 'Message the group…';
     }
 
     if (banner.forViewer || !otherName) {
@@ -65,8 +83,27 @@ function composerPlaceholder({activeRun, banner, otherName, agent}) {
     return agent.waitingHint ? `Waiting on ${otherName} (${agent.waitingHint})` : `Waiting on ${otherName}`;
 }
 
-const SharedSessionScreen = () => {
-    const {sessionId} = useParams();
+function leaveCopy(conversation, viewerOwnsChat) {
+    if (!conversation) {
+        return {};
+    }
+
+    return viewerOwnsChat
+        ? {
+            triggerLabel: 'End sharing for everyone',
+            confirmText: 'End sharing for everyone?',
+            confirmLabel: 'End sharing for everyone',
+            keepLabel: 'Keep sharing',
+        }
+        : {
+            triggerLabel: 'Leave chat',
+            confirmText: 'Leave this chat?',
+            confirmLabel: 'Leave chat',
+            keepLabel: 'Stay in the chat',
+        };
+}
+
+const SharedSessionScreenBody = ({sessionId}) => {
     const navigate = useNavigate();
 
     const [viewerUserId, setViewerUserId] = useState(null);
@@ -75,6 +112,8 @@ const SharedSessionScreen = () => {
     const [notice, setNotice] = useState(null);
     const [promptValues, setPromptValues] = useState({});
     const [myRunId, setMyRunId] = useState(null);
+    const [addingPeople, setAddingPeople] = useState(false);
+    const [invitedLocally, setInvitedLocally] = useState({people: [], session: null});
     const composerInputRef = useRef(null);
     const composerRef = useRef(null);
 
@@ -114,7 +153,8 @@ const SharedSessionScreen = () => {
         return text === message.text ? message : {...message, text};
     }), [messages, viewerName]);
 
-    const agent = sharedAgentFor(session?.agentName);
+    const conversation = isConversationSession(session);
+    const agent = sharedAgentForSession(session);
     const promptForViewer = isPromptForViewer(session, viewerUserId);
     const elicitationId = session?.prompt?.elicitationId;
 
@@ -123,9 +163,13 @@ const SharedSessionScreen = () => {
     }, [elicitationId]);
 
     const takesMessages = session?.status === SESSION_STATUSES.ACTIVE || session?.status === SESSION_STATUSES.COMPLETED;
-    const banner = statusBanner({session, agent, activeRun, viewerUserId, promptForViewer});
+    const banner = conversation
+        ? conversationBanner({session, activeRun})
+        : statusBanner({session, agent, activeRun, viewerUserId, promptForViewer});
     const myRunActive = !!activeRun && activeRun.runId === myRunId;
     const composerLocked = !!activeRun || sending;
+    const lastUserMessage = [...messages].reverse().find((message) => message.type === USER);
+    const viewerMayStop = !isConversationSession(session) || session?.ownerUserId === viewerUserId || myRunActive || !!lastUserMessage?.mine;
 
     const elicitation = useMemo(() => promptForViewer && session?.prompt ? {
         elicitationId: session.prompt.elicitationId,
@@ -223,16 +267,56 @@ const SharedSessionScreen = () => {
     const participants = (session.participants ?? []).map((participant) => participant.name).join(', ');
     const otherName = waitingOn(session, viewerUserId)[0];
 
+    const seatedIds = new Set((session.participants ?? []).map((participant) => participant.userId));
+    const locallyInvited = invitedLocally.session === session ? invitedLocally.people : [];
+    const pendingInvitees = [...(session.pendingInvitees ?? []), ...locallyInvited]
+        .filter((invitee, index, all) => !seatedIds.has(invitee.userId)
+            && all.findIndex((candidate) => candidate.userId === invitee.userId) === index);
+
+    const viewerOwnsChat = conversation && !!viewerUserId && session.ownerUserId === viewerUserId;
+    const seatsLeft = MAXIMUM_OTHER_PARTICIPANTS - Math.max((session.participants ?? []).length - 1, 0) - pendingInvitees.length;
+
     return (
         <div className="chat-app shared-session-screen" style={{'--keyboard-inset': `${keyboardInset}px`}}>
             <div className="chat-content" ref={scrollContainerRef}>
                 <div className="shared-session-column shared-session-header">
                     <div className="shared-session-header-title">
                         <Link to="/shared-sessions">Shared sessions</Link>
-                        <span className="shared-session-participants"> · {agent.label} · {participants}</span>
+                        {conversation ? (
+                            <>
+                                <span className="shared-session-participants"> · {agent.label}</span>
+                                <ul className="shared-session-participant-chips" role="list">
+                                    {(session.participants ?? []).map((participant) => (
+                                        <li key={participant.userId} className="shared-session-participant-chip">{participant.name}</li>
+                                    ))}
+                                    {pendingInvitees.map((invitee) => (
+                                        <li
+                                            key={invitee.userId}
+                                            className="shared-session-participant-chip shared-session-participant-chip--pending"
+                                            title={invitee.displayName || invitee.username}
+                                        >
+                                            {invitee.username} (invited)
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        ) : (
+                            <span className="shared-session-participants"> · {agent.label} · {participants}</span>
+                        )}
                         {!connected && <span className="shared-sessions-notice"> · reconnecting…</span>}
                     </div>
-                    {takesMessages && <LeaveSessionButton onConfirm={handleLeave}/>}
+                    {viewerOwnsChat && takesMessages && (
+                        <button
+                            type="button"
+                            className="shared-sessions-button"
+                            disabled={seatsLeft <= 0}
+                            title={seatsLeft <= 0 ? 'This chat is full.' : undefined}
+                            onClick={() => setAddingPeople(true)}
+                        >
+                            Add people
+                        </button>
+                    )}
+                    {takesMessages && <LeaveSessionButton onConfirm={handleLeave} {...leaveCopy(conversation, viewerOwnsChat)}/>}
                 </div>
 
                 <div className={`shared-session-column shared-session-status-banner ${banner.forViewer ? 'shared-session-status-banner--viewer' : ''}`} role="status">
@@ -273,15 +357,29 @@ const SharedSessionScreen = () => {
                         onSubmit={handleSubmit}
                         canSubmit={!composerLocked && inputValue.trim().length > 0}
                         disabled={composerLocked}
-                        placeholder={composerPlaceholder({activeRun, banner, otherName, agent})}
+                        placeholder={composerPlaceholder({activeRun, banner, otherName, agent, conversation})}
+                        maxLength={conversation ? MAXIMUM_CONVERSATION_MESSAGE_CHARACTERS : undefined}
                         ariaLabel="Your message"
                         loading={sending || (!!activeRun && !myRunActive)}
-                        onStop={myRunActive ? handleCancel : null}
-                        showSend={!myRunActive}
+                        onStop={viewerMayStop && (conversation ? !!activeRun : myRunActive) ? handleCancel : null}
+                        showSend={!(viewerMayStop && (conversation ? !!activeRun : myRunActive))}
                         containerRef={composerRef}
                     />
                 )}
             </div>
+
+            {addingPeople && (
+                <AddPeopleDialog
+                    sessionId={sessionId}
+                    excludeUserIds={[...seatedIds, ...pendingInvitees.map((invitee) => invitee.userId)]}
+                    maxPeople={seatsLeft}
+                    onCancel={() => setAddingPeople(false)}
+                    onInvited={(people) => {
+                        setInvitedLocally({people: [...locallyInvited, ...people], session});
+                        setAddingPeople(false);
+                    }}
+                />
+            )}
 
             {isScrolledAwayFromBottom && (
                 <button
@@ -296,6 +394,12 @@ const SharedSessionScreen = () => {
             )}
         </div>
     );
+};
+
+const SharedSessionScreen = () => {
+    const {sessionId} = useParams();
+
+    return <SharedSessionScreenBody key={sessionId} sessionId={sessionId}/>;
 };
 
 export default SharedSessionScreen;

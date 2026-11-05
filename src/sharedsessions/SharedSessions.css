@@ -162,3 +162,45 @@
     border-radius: 50%;
     background: var(--accent-color, #2f7de1);
 }
+
+.shared-sessions-invitee {
+    flex: 1 1 260px;
+    min-width: 220px;
+}
+
+.shared-sessions-start {
+    margin-top: 12px;
+}
+
+.share-chat-button {
+    background: transparent;
+    border: none;
+    color: inherit;
+}
+
+.share-chat-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.shared-session-participant-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 0 8px;
+    padding: 0;
+    list-style: none;
+    vertical-align: middle;
+}
+
+.shared-session-participant-chip {
+    padding: 1px 10px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.4));
+    border-radius: 999px;
+    font-size: 0.85rem;
+}
+
+.shared-session-participant-chip--pending {
+    opacity: 0.6;
+    border-style: dashed;
+}

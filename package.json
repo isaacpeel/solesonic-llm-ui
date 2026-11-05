@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host=localhost --port=3000",
     "build": "vite build",
+    "test": "vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

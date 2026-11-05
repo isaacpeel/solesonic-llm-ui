@@ -78,4 +78,24 @@ describe('LeaveSessionButton', () => {
 
         expect(container.querySelector('.leave-session-confirm')).toBeNull();
     });
+
+    it('takes its wording from the caller', () => {
+        const {container} = render(
+            <LeaveSessionButton
+                onConfirm={vi.fn()}
+                triggerLabel="Leave chat"
+                confirmText="Leave this chat?"
+                confirmLabel="Leave chat now"
+                keepLabel="Stay in the chat"
+            />,
+        );
+
+        expect(container.querySelector('.leave-session-trigger').getAttribute('aria-label')).toBe('Leave chat');
+
+        openConfirm(container);
+
+        expect(container.querySelector('.leave-session-confirm-text').textContent).toBe('Leave this chat?');
+        expect(container.querySelector('.leave-session-icon-button--danger').getAttribute('aria-label')).toBe('Leave chat now');
+        expect(document.activeElement.getAttribute('aria-label')).toBe('Stay in the chat');
+    });
 });

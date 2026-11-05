@@ -12,6 +12,11 @@ export const SESSION_STATUSES = {
     EXPIRED: 'EXPIRED',
 };
 
+export const SESSION_MODES = {
+    AGENT: 'AGENT',
+    CONVERSATION: 'CONVERSATION',
+};
+
 export const INVITE_STATUSES = {
     PENDING: 'PENDING',
 };
@@ -27,6 +32,11 @@ export const SESSION_ERROR_CODES = {
     RUN_IN_PROGRESS: 'RUN_IN_PROGRESS',
     NOT_YOUR_TURN: 'NOT_YOUR_TURN',
     MESSAGE_TOO_LONG: 'MESSAGE_TOO_LONG',
+    TOO_MANY_PARTICIPANTS: 'TOO_MANY_PARTICIPANTS',
+    NOT_SESSION_OWNER: 'NOT_SESSION_OWNER',
+    CHAT_STREAMING: 'CHAT_STREAMING',
+    COMMAND_NOT_ALLOWED: 'COMMAND_NOT_ALLOWED',
+    SESSION_LIMIT_REACHED: 'SESSION_LIMIT_REACHED',
 };
 
 const ERROR_MESSAGES = {
@@ -40,6 +50,11 @@ const ERROR_MESSAGES = {
     [SESSION_ERROR_CODES.RUN_IN_PROGRESS]: 'Still answering the last message.',
     [SESSION_ERROR_CODES.NOT_YOUR_TURN]: 'That question is for someone else.',
     [SESSION_ERROR_CODES.MESSAGE_TOO_LONG]: 'That message is too long.',
+    [SESSION_ERROR_CODES.TOO_MANY_PARTICIPANTS]: 'That would be too many people in one chat.',
+    [SESSION_ERROR_CODES.NOT_SESSION_OWNER]: 'Only the owner of this chat can do that.',
+    [SESSION_ERROR_CODES.CHAT_STREAMING]: 'Wait for the response to finish, then try again.',
+    [SESSION_ERROR_CODES.COMMAND_NOT_ALLOWED]: 'Commands are not available in shared chats.',
+    [SESSION_ERROR_CODES.SESSION_LIMIT_REACHED]: 'You have too many active shared chats.',
 };
 
 /* The stream's cursor is older than anything it still holds: reload the transcript and read on from the end. */
@@ -50,7 +65,23 @@ export class SessionStreamGoneError extends Error {
     }
 }
 
+export function unknownUsernamesFrom(caughtError) {
+    if (caughtError instanceof ApiError
+        && caughtError.code === SESSION_ERROR_CODES.PARTICIPANT_NOT_FOUND
+        && Array.isArray(caughtError.usernames)) {
+        return caughtError.usernames;
+    }
+
+    return [];
+}
+
 export function describeSessionError(caughtError) {
+    const unknownUsernames = unknownUsernamesFrom(caughtError);
+
+    if (unknownUsernames.length > 0) {
+        return `No one with the username ${unknownUsernames.join(', ')}.`;
+    }
+
     if (caughtError instanceof ApiError && ERROR_MESSAGES[caughtError.code]) {
         return ERROR_MESSAGES[caughtError.code];
     }
@@ -94,6 +125,7 @@ async function openStream(sessionId, {signal, lastEventId}) {
             uri,
             code: errorBody.code,
             serverMessage: errorBody.message,
+            usernames: errorBody.usernames,
         });
     }
 
@@ -103,6 +135,14 @@ async function openStream(sessionId, {signal, lastEventId}) {
 const sharedSessionService = {
     invite: async (username, agentName, openingMessage) => {
         return await apiClient.post(config.sharedSessionInvitesUri, {username, agentName, openingMessage});
+    },
+
+    shareConversation: async ({sourceChatId = null, usernames, name}) => {
+        return await apiClient.post(config.sharedSessionsUri, {sourceChatId, usernames, name});
+    },
+
+    inviteToSession: async (sessionId, usernames) => {
+        return await apiClient.post(`${sessionUri(sessionId)}/invites`, {usernames});
     },
 
     incomingInvites: async () => {

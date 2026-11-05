@@ -8,6 +8,7 @@ import ChatHistory from "../chat/message/ChatHistory.jsx";
 import {SharedDataContext} from "../context/SharedDataContext.jsx";
 import {useChatTurn} from "../context/useChatTurn.jsx";
 import SharedSessionsLink from "../sharedsessions/SharedSessionsLink.jsx";
+import ShareChatButton from "../sharedsessions/ShareChatButton.jsx";
 
 const Header = () => {
     const {setChatHistory} = useSharedData();
@@ -56,6 +57,7 @@ const Header = () => {
                     <PencilSquareIcon/>
                 </div>
                 <SharedSessionsLink/>
+                <ShareChatButton/>
             </div>
             <div>
                 <UserDialog/>

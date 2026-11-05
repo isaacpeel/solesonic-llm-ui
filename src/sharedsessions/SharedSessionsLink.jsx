@@ -4,7 +4,7 @@ import log from 'loglevel';
 import {UserGroupIcon} from '@heroicons/react/24/solid/index.js';
 import sharedSessionService from '../service/SharedSessionService.js';
 import {PUSH_NAVIGATED_EVENT} from '../push/usePushNavigation.js';
-import {forKnownSharedAgents} from './sharedAgents.js';
+import {forSupportedSessions, isConversationSession} from './sharedAgents.js';
 import './SharedSessions.css';
 
 const RECHECK_AFTER_MILLISECONDS = 60 * 1000;
@@ -17,7 +17,7 @@ const SharedSessionsLink = () => {
         try {
             const [sessions, invites] = await Promise.all([sharedSessionService.sessions(), sharedSessionService.incomingInvites()]);
 
-            setWaiting(forKnownSharedAgents(sessions).some((session) => session.yourTurn) || forKnownSharedAgents(invites).length > 0);
+            setWaiting(forSupportedSessions(sessions).some((session) => session.yourTurn && !isConversationSession(session)) || forSupportedSessions(invites).length > 0);
         } catch (caughtError) {
             log.debug('[SharedSessionsLink] Could not check for shared sessions', caughtError);
         }

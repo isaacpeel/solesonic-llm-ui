@@ -135,4 +135,100 @@ describe('sharedSessionTranscript', () => {
         expect(isPromptForViewer(asking, SAM)).toBe(false);
         expect(isPromptForViewer(SESSION, ALEX)).toBe(false);
     });
+
+    it('carries generated images, response metadata and the time through from stored messages', () => {
+        const transcript = transcriptFromMessages([
+            {
+                id: 'a1',
+                messageType: 'ASSISTANT',
+                message: 'Here you go',
+                timestamp: '2026-11-05T12:00:00Z',
+                responseMetadata: {model: 'm'},
+                responseMetadataCalls: 2,
+                generatedImages: [{imageId: 'img-1', prompt: 'a cat'}],
+            },
+        ], SESSION, ALEX);
+
+        expect(transcript.messages[0]).toMatchObject({
+            timestamp: '2026-11-05T12:00:00Z',
+            responseMetadata: {model: 'm'},
+            responseMetadataCalls: 2,
+        });
+        expect(transcript.messages[0].generatedImages).toHaveLength(1);
+        expect(transcript.messages[0].generatedImages[0]).toMatchObject({imageId: 'img-1', prompt: 'a cat'});
+    });
+
+    it('hangs stored tool progress on the reply that follows it', () => {
+        const transcript = transcriptFromMessages([
+            {id: 'p1', messageType: 'SYSTEM', message: 'Searching the web', progressData: {message: 'Searching the web'}},
+            {id: 'a1', messageType: 'ASSISTANT', message: 'Found it'},
+        ], SESSION, ALEX);
+
+        expect(transcript.messages).toHaveLength(1);
+        expect(transcript.messages[0].notifications).toEqual(['Searching the web']);
+    });
+
+    it('streams a generated image into the reply, once', () => {
+        let state = {...EMPTY_TRANSCRIPT, session: SESSION};
+        const imageFrame = frame('CUSTOM', {name: 'image', value: {imageId: 'img-1', prompt: 'a cat'}});
+
+        state = applyFrame(state, runStarted('run-1', 'm9', 'draw a cat', 'Sam'), ALEX);
+        state = applyFrame(state, imageFrame, ALEX);
+        state = applyFrame(state, imageFrame, ALEX);
+
+        const reply = state.messages.find((message) => message._key === 'run-run-1');
+        expect(reply.generatedImages.map((image) => image.imageId)).toEqual(['img-1']);
+    });
+
+    it('merges start-of-message metadata into the reply', () => {
+        let state = {...EMPTY_TRANSCRIPT, session: SESSION};
+
+        state = applyFrame(state, runStarted('run-1', 'm9', 'hi', 'Sam'), ALEX);
+        state = applyFrame(state, frame('TEXT_MESSAGE_START', {metadata: {a: 1}}), ALEX);
+        state = applyFrame(state, frame('TEXT_MESSAGE_START', {metadata: {b: 2}}), ALEX);
+
+        expect(state.messages.find((message) => message._key === 'run-run-1').metadata).toEqual({a: 1, b: 2});
+    });
+
+    it('shows tool progress with its percentage and collapses repeats of one step', () => {
+        let state = {...EMPTY_TRANSCRIPT, session: SESSION};
+        const progress = (value) => frame('CUSTOM', {name: 'progress', value});
+
+        state = applyFrame(state, runStarted('run-1', 'm9', 'hi', 'Sam'), ALEX);
+        state = applyFrame(state, progress({message: 'Generating image', progress: 10, total: 100}), ALEX);
+        state = applyFrame(state, progress({message: 'Generating image', progress: 60, total: 100}), ALEX);
+        state = applyFrame(state, progress({message: 'Searching the web'}), ALEX);
+
+        expect(state.messages.find((message) => message._key === 'run-run-1').notifications)
+            .toEqual(['Generating image 60%', 'Searching the web']);
+    });
+
+    it('takes images, metadata and the time from the finished run', () => {
+        let state = {...EMPTY_TRANSCRIPT, session: SESSION};
+
+        state = applyFrame(state, runStarted('run-1', 'm9', 'draw', 'Sam'), ALEX);
+        state = applyFrame(state, frame('RUN_FINISHED', {
+            result: {message: {
+                messageType: 'ASSISTANT',
+                message: 'Done',
+                timestamp: '2026-11-05T12:00:00Z',
+                responseMetadata: {model: 'm'},
+                generatedImages: [{imageId: 'img-2'}],
+            }},
+        }), ALEX);
+
+        const reply = state.messages.find((message) => message._key === 'run-run-1');
+        expect(reply).toMatchObject({text: 'Done', isStreaming: false, timestamp: '2026-11-05T12:00:00Z', responseMetadata: {model: 'm'}});
+        expect(reply.generatedImages.map((image) => image.imageId)).toEqual(['img-2']);
+    });
+
+    it('does not hang progress from before a user message on the reply after it', () => {
+        const transcript = transcriptFromMessages([
+            {id: 'p1', messageType: 'SYSTEM', message: 'Searching', progressData: {message: 'Searching'}},
+            {id: 'u1', messageType: 'USER', message: 'next', senderUserId: SAM},
+            {id: 'a1', messageType: 'ASSISTANT', message: 'Reply'},
+        ], SESSION, ALEX);
+
+        expect(transcript.messages[1].notifications).toBeUndefined();
+    });
 });

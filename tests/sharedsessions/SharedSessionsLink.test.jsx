@@ -58,4 +58,22 @@ describe('SharedSessionsLink', () => {
 
         expect(container.querySelector('.shared-sessions-link-dot')).toBeNull();
     });
+
+    it('shows the dot for an invite into a conversation', async () => {
+        sharedSessionService.sessions.mockResolvedValue([]);
+        sharedSessionService.incomingInvites.mockResolvedValue([{id: 'invite-1', mode: 'CONVERSATION', agentName: null, sessionName: 'Trip'}]);
+
+        const container = await renderLink();
+
+        expect(container.querySelector('.shared-sessions-link-dot')).not.toBeNull();
+    });
+
+    it('ignores yourTurn on a conversation session', async () => {
+        sharedSessionService.sessions.mockResolvedValue([{id: 's', mode: 'CONVERSATION', agentName: null, yourTurn: true}]);
+        sharedSessionService.incomingInvites.mockResolvedValue([]);
+
+        const container = await renderLink();
+
+        expect(container.querySelector('.shared-sessions-link-dot')).toBeNull();
+    });
 });

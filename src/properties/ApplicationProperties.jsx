@@ -21,6 +21,7 @@ config.addressesUri = `${config.apiBaseUri}/addresses`;
 config.pushUri = `${config.apiBaseUri}/push`;
 config.llmKeysUri = `${config.apiBaseUri}/llm-keys`;
 config.sharedSessionsUri = `${config.apiBaseUri}/shared-sessions`;
+config.userDirectoryUri = `${config.usersUri}/directory`;
 config.sharedSessionInvitesUri = `${config.sharedSessionsUri}/invites`;
 config.authFailureUri = `${config.uiBaseUri}/authFailure`;
 

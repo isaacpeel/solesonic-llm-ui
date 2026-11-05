@@ -65,6 +65,15 @@ beforeEach(() => {
     pushSubscriptionService.deleteSubscription.mockResolvedValue(null);
 });
 
+describe('NotificationSettings preferences', () => {
+    it('labels the shared-session toggle as activity, not only turns', async () => {
+        await renderSettingsInState('on');
+
+        expect(screen.getByText('Shared sessions activity')).toBeDefined();
+        expect(screen.queryByText("When it's my turn in a shared session")).toBeNull();
+    });
+});
+
 describe('NotificationSettings device card', () => {
     it('shows a spinner while checking', () => {
         pushSubscriptionService.fetchPublicKey.mockReturnValue(new Promise(() => {}));
@@ -201,6 +210,8 @@ describe('NotificationSettings preferences', () => {
                 elicitation: true,
                 interestOffers: true,
                 interestUpdates: true,
+                sessionInvites: true,
+                sessionTurns: true,
             });
         });
     });
@@ -237,6 +248,8 @@ describe('NotificationSettings preferences', () => {
                 elicitation: true,
                 interestOffers: true,
                 interestUpdates: false,
+                sessionInvites: true,
+                sessionTurns: true,
             });
         });
         expect(screen.getByLabelText('News on interests I follow').checked).toBe(false);

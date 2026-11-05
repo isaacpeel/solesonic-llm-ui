@@ -112,6 +112,31 @@ describe('ApiClient', () => {
         expect(error.serverMessage).toBe('The model server did not accept this key.');
     });
 
+    it('carries the usernames listed in the error body', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(404, {code: 'PARTICIPANT_NOT_FOUND', message: 'No such user', usernames: ['zed', 'yan']}));
+
+        const error = await apiClient.post('/api/shared-sessions', {usernames: ['zed']}).catch((caughtError) => caughtError);
+
+        expect(error.usernames).toEqual(['zed', 'yan']);
+    });
+
+    it('leaves usernames undefined when the error body has none or not a list', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(404, {code: 'X', usernames: 'zed'}));
+
+        const error = await apiClient.get('/api/x').catch((caughtError) => caughtError);
+
+        expect(error.usernames).toBeUndefined();
+    });
+
+    it('passes an abort signal through to fetch', async () => {
+        vi.mocked(fetch).mockResolvedValue(makeResponse(200, []));
+        const controller = new AbortController();
+
+        await apiClient.get('/api/x', {signal: controller.signal});
+
+        expect(vi.mocked(fetch).mock.calls[0][1].signal).toBe(controller.signal);
+    });
+
     it('leaves the error code undefined when the error body is not JSON', async () => {
         vi.mocked(fetch).mockResolvedValue({
             ok: false,

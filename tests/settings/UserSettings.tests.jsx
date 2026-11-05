@@ -203,7 +203,7 @@ describe('General profile panel', () => {
 
         expect(screen.getByText('ada@example.com')).toBeDefined();
         expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThan(0);
-        expect(document.querySelector('.general-settings-profile-grid input')).toBeNull();
+        expect(document.querySelector('.general-settings-profile-grid input:not(.agent-sounds-setting-toggle)')).toBeNull();
     });
 
     it('renders one chip per assigned role', () => {

@@ -120,6 +120,45 @@ describe('service worker push', () => {
         });
     });
 
+    it('opens the shared session for a shared chat message that names it', async () => {
+        await dispatch('push', pushEventWith({
+            version: 1,
+            type: 'shared_chat_message',
+            title: 'Solesonic',
+            body: 'Sam sent a message',
+            chatId: 'chat-7',
+            sessionId: '5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e',
+            runId: 'run-1',
+        }));
+
+        expect(showNotification.mock.calls[0][1].data).toEqual({
+            url: '/shared-sessions/5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e',
+            type: 'shared_chat_message',
+        });
+    });
+
+    it('prefers the url the payload carries over the session it names', async () => {
+        await dispatch('push', pushEventWith({
+            type: 'shared_chat_message',
+            url: '/shared-sessions/aaa',
+            sessionId: 'bbb',
+        }));
+
+        expect(showNotification.mock.calls[0][1].data.url).toBe('/shared-sessions/aaa');
+    });
+
+    it.each(['../evil', 'a/b', '', 42, null])('falls back to home for a shared chat message naming the session %s', async (sessionId) => {
+        await dispatch('push', pushEventWith({type: 'shared_chat_message', sessionId}));
+
+        expect(showNotification.mock.calls[0][1].data.url).toBe('/');
+    });
+
+    it('does not build a session path for other push types', async () => {
+        await dispatch('push', pushEventWith({type: 'TURN_FINISHED', sessionId: 'abc'}));
+
+        expect(showNotification.mock.calls[0][1].data.url).toBe('/');
+    });
+
     it('shows the two offer actions and keeps the offer url and type', async () => {
         await dispatch('push', pushEventWith(OFFER_PAYLOAD));
 

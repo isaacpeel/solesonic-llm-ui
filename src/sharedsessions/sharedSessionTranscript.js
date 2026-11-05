@@ -1,5 +1,17 @@
 import {AI, ERROR, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
-import {CUSTOM, CUSTOM_PROGRESS, RUN_ERROR, RUN_FINISHED, RUN_STARTED, TEXT_MESSAGE_CONTENT} from '../service/ChatService.js';
+import {
+    CUSTOM,
+    CUSTOM_IMAGE,
+    CUSTOM_PROGRESS,
+    RUN_ERROR,
+    RUN_FINISHED,
+    RUN_STARTED,
+    TEXT_MESSAGE_CONTENT,
+    TEXT_MESSAGE_START,
+    extractGeneratedImages,
+} from '../service/ChatService.js';
+import {normalizeGeneratedImage} from '../service/ImageGenerationService.js';
+import {appendProgressNotificationText, formatProgressNotificationText} from '../service/ProgressNotificationService.js';
 import {SESSION_STATE_EVENT} from '../service/SharedSessionService.js';
 
 export const EMPTY_TRANSCRIPT = {messages: [], activeRun: null, session: null};
@@ -64,11 +76,29 @@ export function waitingOn(session, viewerUserId) {
 
 export function transcriptFromMessages(chatMessages, session, viewerUserId) {
     const names = participantNames(session);
+    const messages = [];
+    let pendingNotifications = [];
 
-    const messages = (Array.isArray(chatMessages) ? chatMessages : [])
-        .filter((chatMessage) => !chatMessage.progressData)
-        .filter((chatMessage) => [USER, AI, SYSTEM].includes(chatMessage.messageType))
-        .map((chatMessage) => ({
+    for (const chatMessage of Array.isArray(chatMessages) ? chatMessages : []) {
+        if (chatMessage.progressData) {
+            const notificationText = formatProgressNotificationText({
+                ...chatMessage.progressData,
+                message: chatMessage.progressData.message || chatMessage.message,
+            });
+
+            pendingNotifications = appendProgressNotificationText(pendingNotifications, notificationText);
+            continue;
+        }
+
+        if (![USER, AI, SYSTEM].includes(chatMessage.messageType)) {
+            continue;
+        }
+
+        if (chatMessage.messageType === USER) {
+            pendingNotifications = [];
+        }
+
+        const message = {
             _key: chatMessage.id,
             messageId: chatMessage.id,
             type: chatMessage.messageType,
@@ -76,7 +106,23 @@ export function transcriptFromMessages(chatMessages, session, viewerUserId) {
             timestamp: chatMessage.timestamp,
             senderName: chatMessage.messageType === USER ? names.get(chatMessage.senderUserId) ?? null : null,
             mine: chatMessage.messageType === USER && chatMessage.senderUserId === viewerUserId,
-        }));
+        };
+
+        if (chatMessage.messageType === AI) {
+            message.responseMetadata = chatMessage.responseMetadata ?? null;
+            message.responseMetadataCalls = chatMessage.responseMetadataCalls ?? null;
+            message.generatedImages = Array.isArray(chatMessage.generatedImages)
+                ? chatMessage.generatedImages.map((generatedImage) => normalizeGeneratedImage(generatedImage))
+                : [];
+
+            if (pendingNotifications.length > 0) {
+                message.notifications = pendingNotifications;
+                pendingNotifications = [];
+            }
+        }
+
+        messages.push(message);
+    }
 
     return {messages, activeRun: null, session};
 }
@@ -92,6 +138,13 @@ function updateRunMessage(state, update) {
         ...state,
         messages: state.messages.map((message) => message._key === key ? update(message) : message),
     };
+}
+
+function withNewImages(existing, incoming) {
+    const known = Array.isArray(existing) ? existing : [];
+    const knownIds = new Set(known.map((image) => image.imageId));
+
+    return [...known, ...incoming.filter((image) => !knownIds.has(image.imageId))];
 }
 
 function runStarted(state, data, viewerUserId) {
@@ -127,16 +180,26 @@ function runFinished(state, data) {
     const finishedText = data?.result?.message?.message;
     const finishedType = data?.result?.message?.messageType;
 
+    const finishedMessage = data?.result?.message;
+    const finishedImages = extractGeneratedImages(finishedMessage);
+
     const finished = updateRunMessage(state, (message) => ({
         ...message,
         type: finishedType === SYSTEM ? SYSTEM : message.type,
         text: typeof finishedText === 'string' && finishedText.length > 0 ? finishedText : message.text,
+        timestamp: finishedMessage?.timestamp ?? message.timestamp,
+        responseMetadata: finishedMessage?.responseMetadata ?? message.responseMetadata ?? null,
+        responseMetadataCalls: finishedMessage?.responseMetadataCalls ?? message.responseMetadataCalls ?? null,
+        generatedImages: withNewImages(message.generatedImages, finishedImages),
         isStreaming: false,
     }));
 
     return {
         ...finished,
-        messages: finished.messages.filter((message) => message.isStreaming || message.type !== AI || message.text),
+        messages: finished.messages.filter((message) => message.isStreaming
+            || message.type !== AI
+            || message.text
+            || message.generatedImages?.length > 0),
         activeRun: null,
     };
 }
@@ -148,6 +211,11 @@ export function applyFrame(state, frame, viewerUserId) {
         case RUN_STARTED:
             return runStarted(state, data, viewerUserId);
 
+        case TEXT_MESSAGE_START:
+            return data?.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+                ? updateRunMessage(state, (message) => ({...message, metadata: {...message.metadata, ...data.metadata}}))
+                : state;
+
         case TEXT_MESSAGE_CONTENT:
             return typeof data?.delta === 'string'
                 ? updateRunMessage(state, (message) => ({...message, text: message.text + data.delta}))
@@ -158,11 +226,26 @@ export function applyFrame(state, frame, viewerUserId) {
                 return {...state, session: data.value};
             }
 
-            if (data?.name === CUSTOM_PROGRESS && typeof data.value?.message === 'string') {
-                return updateRunMessage(state, (message) => ({
-                    ...message,
-                    notifications: [...(message.notifications ?? []), data.value.message],
-                }));
+            if (data?.name === CUSTOM_PROGRESS) {
+                const notificationText = formatProgressNotificationText(data.value);
+
+                return notificationText
+                    ? updateRunMessage(state, (message) => ({
+                        ...message,
+                        notifications: appendProgressNotificationText(message.notifications, notificationText),
+                    }))
+                    : state;
+            }
+
+            if (data?.name === CUSTOM_IMAGE) {
+                const streamedImages = extractGeneratedImages(data.value);
+
+                return streamedImages.length > 0
+                    ? updateRunMessage(state, (message) => ({
+                        ...message,
+                        generatedImages: withNewImages(message.generatedImages, streamedImages),
+                    }))
+                    : state;
             }
 
             return state;

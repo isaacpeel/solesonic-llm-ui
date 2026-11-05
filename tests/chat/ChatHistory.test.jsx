@@ -30,6 +30,11 @@ vi.mock('../../src/service/ChatGroupService.js', () => ({
     },
 }));
 
+vi.mock('../../src/service/UserDirectoryService.js', () => ({
+    default: {search: vi.fn().mockResolvedValue([])},
+    DIRECTORY_PAGE_SIZE: 20,
+}));
+
 vi.mock('react-toastify', () => ({
     toast: Object.assign(vi.fn(), {error: vi.fn()}),
     ToastContainer: () => null,
@@ -619,7 +624,7 @@ describe('ChatHistory row actions', () => {
         const menu = openRowMenu(container, 2);
 
         expect(menu).not.toBeNull();
-        expect(menuItemLabels(menu)).toEqual(['Rename', 'Delete']);
+        expect(menuItemLabels(menu)).toEqual(['Rename', 'Share…', 'Delete']);
         expect(setChatId).not.toHaveBeenCalled();
         expect(setDrawerOpen).not.toHaveBeenCalled();
         expect(navigateSpy).not.toHaveBeenCalled();
@@ -631,7 +636,7 @@ describe('ChatHistory row actions', () => {
 
         openRowMenu(container, 0);
 
-        expect(menuItemLabels()).toEqual(['Rename', 'Delete']);
+        expect(menuItemLabels()).toEqual(['Rename', 'Share…', 'Delete']);
     });
 });
 
@@ -2228,6 +2233,48 @@ describe('ChatHistory delete', () => {
 
         fireEvent.click(deleteItem);
         expect(document.body.querySelector('.delete-chat-dialog')).toBeNull();
+    });
+
+    it('offers Share… on a conversation and opens the share dialog for it', () => {
+        const {container} = renderChatHistory({chats: chatsOf(2, 'Trip planning'), hasMore: false});
+
+        openRowMenu(container, 1);
+        clickMenuItem('Share…');
+
+        const dialog = document.body.querySelector('[role="dialog"]');
+        expect(dialog.getAttribute('aria-labelledby')).toBe(dialog.querySelector('h3').id);
+        expect(dialog.querySelector('h3').textContent).toBe('Share this chat');
+        expect(dialog.querySelector('input[aria-label="Chat name"]').value).toContain('Trip planning');
+    });
+
+    it('closes the share dialog on cancel', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
+
+        openRowMenu(container, 0);
+        clickMenuItem('Share…');
+        fireEvent.click(document.body.querySelector('.share-chat-cancel'));
+
+        expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it('disables Share… for the conversation that is streaming, with a reason', () => {
+        const {container} = renderChatHistory({
+            chats: chatsOf(2),
+            hasMore: false,
+            streamingChatId: 'chat-1',
+        });
+
+        openRowMenu(container, 1);
+
+        const shareItem = menuItems().find(
+            item => item.querySelector('.chat-row-menu-item-label').textContent === 'Share…'
+        );
+
+        expect(shareItem.disabled).toBe(true);
+        expect(shareItem.getAttribute('title')).toBe('Wait for the response to finish.');
+
+        fireEvent.click(shareItem);
+        expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     });
 
     it('leaves Delete alone for a conversation that is not the streaming one', () => {

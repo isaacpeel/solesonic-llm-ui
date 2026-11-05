@@ -27,7 +27,7 @@ const PREFERENCE_TOGGLES = [
     {key: "interestOffers", label: "Suggestions to follow an interest"},
     {key: "interestUpdates", label: "News on interests I follow"},
     {key: "sessionInvites", label: "Invitations to a shared session"},
-    {key: "sessionTurns", label: "When it's my turn in a shared session"},
+    {key: "sessionTurns", label: "Shared sessions activity"},
 ];
 
 const DEFAULT_PREFERENCES = {

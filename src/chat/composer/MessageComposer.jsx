@@ -23,6 +23,7 @@ function MessageComposer({
     popovers = null,
     renderRow = renderPlainRow,
     containerRef,
+    maxLength,
 }) {
     const isMobile = useIsMobile();
 
@@ -82,6 +83,7 @@ function MessageComposer({
                             onKeyDown={handleKeyDown}
                             placeholder={placeholder}
                             aria-label={ariaLabel}
+                            maxLength={maxLength}
                             className="chat-text-input"
                             rows={1}
                         />

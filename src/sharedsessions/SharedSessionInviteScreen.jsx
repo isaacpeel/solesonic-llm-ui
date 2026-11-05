@@ -68,7 +68,7 @@ const SharedSessionInviteScreen = () => {
             {invite && invite.status === INVITE_STATUSES.PENDING ? (
                 <>
                     <h2 className="shared-sessions-section-title">
-                        {inviter} invited you to {describeInvitation(invite.agentName, invite.openingMessage)}
+                        {inviter} invited you to {describeInvitation(invite.agentName, invite.openingMessage, invite.mode, invite.sessionName)}
                     </h2>
                     <div className="shared-sessions-list-item-actions">
                         <button type="button" className="shared-sessions-button shared-sessions-button--primary" disabled={busy} onClick={handleAccept}>
