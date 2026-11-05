@@ -28,7 +28,7 @@ function defaultModelNotice(prefix, defaultModel) {
     return defaultModel ? `${prefix}, ${defaultModel}.` : `${prefix}.`;
 }
 
-function useChatModel({chatId, onChatNotFound}) {
+function useChatModel({chatId, onChatNotFound, currentModel}) {
     const [pickerOpen, setPickerOpen] = useState(false);
     const [options, setOptions] = useState(null);
     const [loadingOptions, setLoadingOptions] = useState(false);
@@ -37,11 +37,14 @@ function useChatModel({chatId, onChatNotFound}) {
     const [pendingModel, setPendingModel] = useState(null);
     const [modelNotice, setModelNotice] = useState(null);
     const [trackedChatId, setTrackedChatId] = useState(chatId);
+    const [trackedModel, setTrackedModel] = useState(currentModel);
 
     const chatIdRef = useRef(chatId);
     const requestGenerationRef = useRef(0);
 
-    if (trackedChatId !== chatId) {
+    const chatChanged = trackedChatId !== chatId;
+
+    if (chatChanged) {
         setTrackedChatId(chatId);
         setPickerOpen(false);
         setOptions(null);
@@ -50,6 +53,15 @@ function useChatModel({chatId, onChatNotFound}) {
         setPickerError(null);
         setPendingModel(null);
         setModelNotice(null);
+    }
+
+    if (trackedModel !== currentModel) {
+        setTrackedModel(currentModel);
+
+        if (!chatChanged && trackedModel !== undefined && currentModel !== undefined) {
+            setOptions((previousOptions) => (previousOptions ? {...previousOptions, selectedModel: currentModel} : previousOptions));
+            setModelNotice(currentModel ? `Model set to ${currentModel}.` : 'Using the default model.');
+        }
     }
 
     useEffect(() => {

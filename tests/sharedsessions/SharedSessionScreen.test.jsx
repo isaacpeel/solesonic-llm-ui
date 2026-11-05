@@ -245,7 +245,7 @@ describe('SharedSessionScreen conversation mode', () => {
         fireEvent.change(screen.getByLabelText('Your message'), {target: {value: 'hello all'}});
         fireEvent.keyDown(screen.getByLabelText('Your message'), {key: 'Enter'});
 
-        await waitFor(() => expect(sharedSessionService.send).toHaveBeenCalledWith('session-1', 'hello all'));
+        await waitFor(() => expect(sharedSessionService.send).toHaveBeenCalledWith('session-1', 'hello all', {attachmentIds: [], commands: []}));
     });
 
     it('offers the owner Add people and the others nothing', async () => {

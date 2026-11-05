@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {useNavigate} from "react-router";
+import {useMatch, useNavigate} from "react-router";
 import {useVirtualizer} from "@tanstack/react-virtual";
 import {ChevronRightIcon} from "@heroicons/react/24/solid";
 import {MdDragIndicator} from "react-icons/md";
@@ -16,6 +16,10 @@ import ChatHistorySearchInput from "./ChatHistorySearchInput.jsx";
 import ChatSearchResultLabel from "./ChatSearchResultLabel.jsx";
 import DeleteChatDialog from "./DeleteChatDialog.jsx";
 import ShareChatDialog from "../../sharedsessions/ShareChatDialog.jsx";
+import LeaveSharedChatDialog from "../../sharedsessions/LeaveSharedChatDialog.jsx";
+import SharedChatMarkers from "../../sharedsessions/SharedChatMarkers.jsx";
+import {isSharedChat, isSharedChatOwner} from "../../util/sharedChats.js";
+import authService from "../../service/AuthService.js";
 import {useSharedData} from "../../context/useSharedData.jsx";
 import usePagedChatHistory from "../../hooks/usePagedChatHistory.js";
 import useDebouncedValue from "../../hooks/useDebouncedValue.js";
@@ -68,7 +72,30 @@ const DRAG_HANDLE_HINT = "Drag onto a group, or out of the drawer";
 
 const GROUPED_DRAG_HANDLE_HINT = "Drag to reorder, or use the arrow keys";
 
-function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
+function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
+    const [resolvedUserId, setResolvedUserId] = useState(null);
+    const userId = userIdProp ?? resolvedUserId;
+
+    useEffect(() => {
+        if (userIdProp) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        authService.getUserId()
+            .then((viewerUserId) => {
+                if (!cancelled) {
+                    setResolvedUserId(viewerUserId ?? null);
+                }
+            })
+            .catch((caughtError) => log.error("[ChatHistory] Could not read the signed-in user", caughtError));
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userIdProp]);
+
     const {
         reloadHistoryTrigger,
         chatId: openChatId,
@@ -79,6 +106,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         setReloadHistoryTrigger,
     } = useSharedData();
     const navigate = useNavigate();
+    const openSharedSessionId = useMatch("/shared-sessions/:sessionId")?.params.sessionId ?? null;
 
     const drawerRef = useRef(null);
     const scrollContainerRef = useRef(null);
@@ -155,6 +183,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      */
     const [deleteRequest, setDeleteRequest] = useState(null);
     const [shareRequest, setShareRequest] = useState(null);
+    const [leaveRequest, setLeaveRequest] = useState(null);
 
     /* null when closed; `{chat, point}` for a conversation released clear of the drawer. */
     const [dropActionRequest, setDropActionRequest] = useState(null);
@@ -340,9 +369,17 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         });
     };
 
-    const handleChatClick = (chatId) => {
+    const handleChatClick = (chatId, chat) => {
         /* A row being renamed is an editor, not a link — clicking its padding must not navigate. */
         if (chatId === renamingChatId) {
+            return;
+        }
+
+        if (isSharedChat(chat)) {
+            setChatHistory([]);
+            setChatId(null);
+            setDrawerOpen(false);
+            navigate(`/shared-sessions/${encodeURIComponent(chat.sharedSessionId)}`);
             return;
         }
 
@@ -564,7 +601,63 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         onSelect: () => setShareRequest({chatId: row.chatId, chatName: row.chat?.name ?? ""}),
     });
 
-    const buildRowActions = (row) => ([
+    const handleSharedChatLeft = () => {
+        const request = leaveRequest;
+
+        removeChat(request.chatId);
+
+        if (request.chatGroupId) {
+            chatGroups.removeGroupChat(request.chatGroupId, request.chatId);
+        }
+
+        setLeaveRequest(null);
+        toast(request.owner ? "Sharing ended" : "You left the chat");
+
+        if (openSharedSessionId === request.sharedSessionId) {
+            navigate("/");
+        }
+    };
+
+    const buildSharedRowActions = (row) => {
+        if (!userId) {
+            return [];
+        }
+
+        const owner = isSharedChatOwner(row.chat, userId);
+
+        const leaveAction = {
+            key: "leave",
+            label: owner ? "End sharing" : "Leave chat",
+            onSelect: () => setLeaveRequest({
+                chatId: row.chatId,
+                chatGroupId: row.chatGroupId ?? null,
+                sharedSessionId: row.chat.sharedSessionId,
+                label: row.fullLabel,
+                owner,
+            }),
+        };
+
+        if (!owner) {
+            return [leaveAction];
+        }
+
+        return [
+            {
+                key: "rename",
+                label: "Rename",
+                onSelect: () => handleRenameStart(row.chat),
+            },
+            leaveAction,
+        ];
+    };
+
+    const renderRowMenu = (row) => {
+        const actions = buildRowActions(row);
+
+        return actions.length > 0 ? <ChatRowMenu label={row.fullLabel} actions={actions}/> : null;
+    };
+
+    const buildRowActions = (row) => isSharedChat(row.chat) ? buildSharedRowActions(row) : ([
         {
             key: "rename",
             label: "Rename",
@@ -623,9 +716,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         if (row.searchResult) {
             return (
                 <div
-                    className="chat-item chat-item-search-result"
+                    className={chatItemClassName("chat-item chat-item-search-result", row, openSharedSessionId)}
+                    aria-current={isOpenSharedRow(row, openSharedSessionId) ? "true" : undefined}
                     title={row.fullLabel}
-                    onClick={() => handleChatClick(row.chatId)}
+                    onClick={() => handleChatClick(row.chatId, row.chat)}
                 >
                     {row.chatId === renamingChatId ? (
                         <ChatNameInput
@@ -640,7 +734,8 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     ) : (
                         <>
                             <ChatSearchResultLabel label={row.label} match={row.match} query={searchQuery}/>
-                            <ChatRowMenu label={row.fullLabel} actions={buildRowActions(row)}/>
+                            {isSharedChat(row.chat) && <SharedChatMarkers participants={row.chat.participants}/>}
+                            {renderRowMenu(row)}
                         </>
                     )}
                 </div>
@@ -649,9 +744,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
         return (
             <div
-                className={row.chatGroupId ? "chat-item chat-item-in-group" : "chat-item"}
+                className={chatItemClassName(row.chatGroupId ? "chat-item chat-item-in-group" : "chat-item", row, openSharedSessionId)}
+                aria-current={isOpenSharedRow(row, openSharedSessionId) ? "true" : undefined}
                 title={row.fullLabel}
-                onClick={() => handleChatClick(row.chatId)}
+                onClick={() => handleChatClick(row.chatId, row.chat)}
             >
                 {row.chatId === renamingChatId ? (
                     <ChatNameInput
@@ -665,6 +761,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     />
                 ) : (
                     <>
+                        {(!isSharedChat(row.chat) || isSharedChatOwner(row.chat, userId)) && (
                         <button
                             type="button"
                             className="chat-history-drag-handle"
@@ -680,9 +777,11 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                         >
                             <MdDragIndicator aria-hidden="true"/>
                         </button>
+                        )}
 
                         <span className="chat-item-label">{row.label}</span>
-                        <ChatRowMenu label={row.fullLabel} actions={buildRowActions(row)}/>
+                        {isSharedChat(row.chat) && <SharedChatMarkers participants={row.chat.participants}/>}
+                        {renderRowMenu(row)}
                     </>
                 )}
             </div>
@@ -800,7 +899,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                             setDropActionRequest(null);
                             void chatGroups.handleMoveToGroup(chat, chatGroupId);
                         }}
-                        onDelete={() => {
+                        onDelete={isSharedChat(dropActionRequest.chat) ? undefined : () => {
                             setDeleteRequest({
                                 chatId: dropActionRequest.chat.id,
                                 chatGroupId: dropActionRequest.chat.chatGroupId ?? null,
@@ -826,6 +925,16 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     />
                 )}
 
+                {leaveRequest && (
+                    <LeaveSharedChatDialog
+                        sharedSessionId={leaveRequest.sharedSessionId}
+                        label={leaveRequest.label}
+                        owner={leaveRequest.owner}
+                        onCancel={() => setLeaveRequest(null)}
+                        onLeft={handleSharedChatLeft}
+                    />
+                )}
+
                 {deleteRequest && (
                     <DeleteChatDialog
                         chatId={deleteRequest.chatId}
@@ -838,6 +947,14 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             </div>
         </div>
     );
+}
+
+function isOpenSharedRow(row, openSharedSessionId) {
+    return !!openSharedSessionId && isSharedChat(row.chat) && row.chat.sharedSessionId === openSharedSessionId;
+}
+
+function chatItemClassName(baseClassName, row, openSharedSessionId) {
+    return isOpenSharedRow(row, openSharedSessionId) ? `${baseClassName} chat-item-active` : baseClassName;
 }
 
 function rowClassName(row, {dragging, dropEdge} = {}) {

@@ -205,4 +205,63 @@ describe('SharedSessionService', () => {
         expect(SESSION_ERROR_CODES.SESSION_LIMIT_REACHED).toBe('SESSION_LIMIT_REACHED');
         expect(describeSessionError(limit)).toBe('You have too many active shared chats.');
     });
+
+    it('shows the server message when the chat model is not available to the sender', () => {
+        const withMessage = new ApiError({
+            message: 'x',
+            status: 409,
+            code: SESSION_ERROR_CODES.MODEL_NOT_AVAILABLE,
+            serverMessage: "This chat is set to openai/gpt-4o, which your account can't use. Pick another model for the chat and send again.",
+        });
+        const withoutMessage = new ApiError({message: 'x', status: 409, code: SESSION_ERROR_CODES.MODEL_NOT_AVAILABLE});
+
+        expect(describeSessionError(withMessage)).toBe("This chat is set to openai/gpt-4o, which your account can't use. Pick another model for the chat and send again.");
+        expect(describeSessionError(withoutMessage)).toBe("Your account can't use this chat's model. Pick another model and send again.");
+    });
+
+    it('sends attachment ids and commands with a conversation message', async () => {
+        await sharedSessionService.send('session-1', '', {attachmentIds: ['att-1', 'att-2'], commands: ['web_search']});
+
+        expect(apiClient.post).toHaveBeenCalledWith(`${SESSIONS_URI}/session-1/messages`, {
+            text: '',
+            attachmentIds: ['att-1', 'att-2'],
+            commands: ['web_search'],
+        });
+    });
+
+    it('always sends both lists when the caller supplies options, even empty ones', async () => {
+        await sharedSessionService.send('session-1', 'hi', {attachmentIds: [], commands: []});
+
+        expect(apiClient.post).toHaveBeenCalledWith(`${SESSIONS_URI}/session-1/messages`, {text: 'hi', attachmentIds: [], commands: []});
+    });
+
+    it('reads the shared command catalogue, narrowed by what has been typed', async () => {
+        const commands = [{command: 'web_search', name: 'web_search'}];
+        apiClient.get.mockResolvedValue({commands});
+
+        expect(await sharedSessionService.commands('session-1', 'web')).toEqual(commands);
+        expect(apiClient.get).toHaveBeenCalledWith(`${SESSIONS_URI}/session-1/commands?command=web`);
+
+        await sharedSessionService.commands('session-1');
+        expect(apiClient.get).toHaveBeenLastCalledWith(`${SESSIONS_URI}/session-1/commands`);
+    });
+
+    it('answers an empty catalogue when the commands cannot be read', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        apiClient.get.mockRejectedValue(new Error('down'));
+
+        expect(await sharedSessionService.commands('session-1', 'web')).toEqual([]);
+        vi.restoreAllMocks();
+    });
+
+    it('shows the server message that names a refused command', () => {
+        const refused = new ApiError({
+            message: 'x',
+            status: 400,
+            code: SESSION_ERROR_CODES.COMMAND_NOT_ALLOWED,
+            serverMessage: 'The command /gmail is not allowed in shared chats.',
+        });
+
+        expect(describeSessionError(refused)).toBe('The command /gmail is not allowed in shared chats.');
+    });
 });

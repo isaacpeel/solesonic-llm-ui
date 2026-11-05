@@ -244,3 +244,34 @@ describe('ChatInput while a prompt is open', () => {
         expect(container.querySelector('.composer-attach-button').disabled).toBe(true);
     });
 });
+
+describe('ChatInput shared chat options', () => {
+    const readyEntry = {trayKey: 't1', fileName: 'a.png', localObjectUrl: 'blob:a', caption: '', status: 'ready', warning: null, errorMessage: null};
+
+    it('does not treat attachments alone as a message by default', () => {
+        const {container} = renderChatInput({trayEntries: [readyEntry]});
+
+        expect(container.querySelector('.composer-send-button').disabled).toBe(true);
+    });
+
+    it('lets attachments alone be sent when the chat allows it', () => {
+        const {container} = renderChatInput({trayEntries: [readyEntry], attachmentsAloneSubmit: true});
+
+        expect(container.querySelector('.composer-send-button').disabled).toBe(false);
+    });
+
+    it('still refuses an empty composer when attachments alone are allowed', () => {
+        const {container} = renderChatInput({attachmentsAloneSubmit: true});
+
+        expect(container.querySelector('.composer-send-button').disabled).toBe(true);
+    });
+
+    it('takes its placeholder, label and length limit from the caller', () => {
+        const {container} = renderChatInput({placeholder: 'Message the group…', ariaLabel: 'Your message', maxLength: 8000});
+        const textarea = container.querySelector('textarea');
+
+        expect(textarea.getAttribute('placeholder')).toBe('Message the group…');
+        expect(textarea.getAttribute('aria-label')).toBe('Your message');
+        expect(textarea.maxLength).toBe(8000);
+    });
+});

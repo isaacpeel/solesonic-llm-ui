@@ -79,4 +79,19 @@ describe('useSlashCommands', () => {
         expect(slashCommandService.fetchCommands).toHaveBeenCalledTimes(1);
         expect(slashCommandService.fetchCommands).toHaveBeenCalledWith('agi');
     });
+
+    it('reads candidates from a supplied catalogue instead of the private one', async () => {
+        const sharedCommands = [{command: 'web_search', name: 'web_search', description: 'search'}];
+        const fetchCommands = vi.fn().mockResolvedValue(sharedCommands);
+
+        const {result} = renderHook(
+            ({inputValue}) => useSlashCommands({inputValue, setInputValue: vi.fn(), fetchCommands}),
+            {initialProps: {inputValue: '/we'}},
+        );
+        await waitForDebounce();
+
+        expect(fetchCommands).toHaveBeenCalledWith('we');
+        expect(slashCommandService.fetchCommands).not.toHaveBeenCalled();
+        expect(result.current.commandCandidates).toEqual(sharedCommands);
+    });
 });

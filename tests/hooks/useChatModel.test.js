@@ -462,3 +462,55 @@ describe('useChatModel on a chat change', () => {
         expect(result.current.pickerOpen).toBe(false);
     });
 });
+
+describe('useChatModel following the model of a shared chat', () => {
+    beforeEach(() => {
+        chatModelService.options.mockResolvedValue(modelOptions);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.clearAllMocks();
+    });
+
+    it('stays quiet when the model is first reported', () => {
+        const {result, rerender} = renderChatModel({chatId: 'chat-1', currentModel: undefined});
+
+        rerender({chatId: 'chat-1', currentModel: 'openai/gpt-4o'});
+
+        expect(result.current.modelNotice).toBeNull();
+    });
+
+    it('announces a change that arrives from someone else', () => {
+        const {result, rerender} = renderChatModel({chatId: 'chat-1', currentModel: 'qwen3-8b'});
+
+        rerender({chatId: 'chat-1', currentModel: 'openai/gpt-4o'});
+
+        expect(result.current.modelNotice).toBe('Model set to openai/gpt-4o.');
+    });
+
+    it('announces a return to the default model', () => {
+        const {result, rerender} = renderChatModel({chatId: 'chat-1', currentModel: 'openai/gpt-4o'});
+
+        rerender({chatId: 'chat-1', currentModel: null});
+
+        expect(result.current.modelNotice).toBe('Using the default model.');
+    });
+
+    it('updates the selection of a picker that is already open', async () => {
+        const {result, rerender} = renderChatModel({chatId: 'chat-1', currentModel: 'qwen3-8b'});
+        await openLoadedPicker(result);
+
+        rerender({chatId: 'chat-1', currentModel: 'openai/gpt-4o'});
+
+        expect(result.current.options.selectedModel).toBe('openai/gpt-4o');
+    });
+
+    it('ignores the model of a chat that does not report one', () => {
+        const {result, rerender} = renderChatModel({chatId: 'chat-1'});
+
+        rerender({chatId: 'chat-1'});
+
+        expect(result.current.modelNotice).toBeNull();
+    });
+});

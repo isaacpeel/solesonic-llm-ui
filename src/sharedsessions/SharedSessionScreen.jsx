@@ -4,13 +4,20 @@ import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import log from 'loglevel';
 import ChatMessage, {USER} from '../chat/message/ChatMessage.jsx';
 import MessageComposer from '../chat/composer/MessageComposer.jsx';
+import ChatInput from '../chat/composer/ChatInput.jsx';
+import AttachmentLightbox from '../chat/attachment/AttachmentLightbox.jsx';
 import ElicitationPrompt from '../elicitation/ElicitationPrompt.jsx';
 import useSoundPlayer from '../hooks/useSoundPlayer.js';
 import useSharedSessionStream from '../hooks/useSharedSessionStream.js';
 import useScrollToBottom from '../hooks/useScrollToBottom.js';
 import useKeyboardInset from '../hooks/useKeyboardInset.js';
+import useAttachmentTray from '../hooks/useAttachmentTray.js';
+import useChatModel from '../hooks/useChatModel.js';
+import useSlashCommands from '../hooks/useSlashCommands.js';
+import useSlashCommandSelection from '../hooks/useSlashCommandSelection.js';
 import sharedSessionService, {SESSION_STATUSES, describeSessionError} from '../service/SharedSessionService.js';
 import authService from '../service/AuthService.js';
+import {useSharedData} from '../context/useSharedData.jsx';
 import {resolveElicitationAction} from '../service/ElicitationService.js';
 import LeaveSessionButton from './LeaveSessionButton.jsx';
 import AddPeopleDialog from './AddPeopleDialog.jsx';
@@ -105,6 +112,7 @@ function leaveCopy(conversation, viewerOwnsChat) {
 
 const SharedSessionScreenBody = ({sessionId}) => {
     const navigate = useNavigate();
+    const setReloadHistoryTrigger = useSharedData()?.setReloadHistoryTrigger;
 
     const [viewerUserId, setViewerUserId] = useState(null);
     const [inputValue, setInputValue] = useState('');
@@ -114,8 +122,11 @@ const SharedSessionScreenBody = ({sessionId}) => {
     const [myRunId, setMyRunId] = useState(null);
     const [addingPeople, setAddingPeople] = useState(false);
     const [invitedLocally, setInvitedLocally] = useState({people: [], session: null});
+    const [isCaptionRowOpen, setIsCaptionRowOpen] = useState(false);
+    const [lightboxAttachment, setLightboxAttachment] = useState(null);
     const composerInputRef = useRef(null);
     const composerRef = useRef(null);
+    const lightboxInvokerRef = useRef(null);
 
     const {playSound, attachSoundSurface} = useSoundPlayer();
 
@@ -155,6 +166,45 @@ const SharedSessionScreenBody = ({sessionId}) => {
 
     const conversation = isConversationSession(session);
     const agent = sharedAgentForSession(session);
+    const chatId = conversation ? session.chatId ?? null : null;
+
+    const attachmentTray = useAttachmentTray({chatId, persistDraft: !!chatId});
+    const chatModel = useChatModel({
+        chatId,
+        currentModel: conversation && session && 'model' in session ? session.model ?? null : undefined,
+    });
+
+    const fetchSharedCommands = useCallback((command) => sharedSessionService.commands(sessionId, command), [sessionId]);
+    const {commandCandidates} = useSlashCommands({
+        inputValue: conversation ? inputValue : '',
+        setInputValue,
+        fetchCommands: fetchSharedCommands,
+    });
+    const {
+        selectedIndex,
+        selectedCommand,
+        isPinned,
+        handleArrowDown,
+        handleArrowUp,
+        handleCommandSelect,
+        handleDismiss,
+        handlePinToggle,
+    } = useSlashCommandSelection({
+        commandCandidates,
+        setInputValue,
+        onSettingCommandSelect: chatModel.openPicker,
+    });
+
+    const openLightbox = useCallback((attachment) => {
+        lightboxInvokerRef.current = document.activeElement;
+        setLightboxAttachment(attachment);
+    }, []);
+
+    const closeLightbox = useCallback(() => {
+        setLightboxAttachment(null);
+        lightboxInvokerRef.current?.focus?.();
+        lightboxInvokerRef.current = null;
+    }, []);
     const promptForViewer = isPromptForViewer(session, viewerUserId);
     const elicitationId = session?.prompt?.elicitationId;
 
@@ -212,6 +262,41 @@ const SharedSessionScreenBody = ({sessionId}) => {
         return true;
     }, [sessionId, inputValue, runSend, sending]);
 
+    const handleConversationSubmit = useCallback(async () => {
+        if (sending || attachmentTray.hasPendingUploads) {
+            return false;
+        }
+
+        const text = inputValue.trim();
+        const command = selectedCommand?.command ?? null;
+
+        if (!text && !command && attachmentTray.stagedAttachmentIds.length === 0) {
+            return false;
+        }
+
+        setInputValue('');
+        setSending(true);
+        setNotice(null);
+        chatModel.clearModelNotice();
+
+        const settledEntries = await attachmentTray.commitCaptions();
+        const attachmentIds = settledEntries.map((entry) => entry.attachmentId).filter(Boolean);
+
+        const sent = await runSend(() => sharedSessionService.send(sessionId, text, {
+            attachmentIds,
+            commands: command ? [command] : [],
+        }));
+
+        if (!sent) {
+            setInputValue(text);
+            return false;
+        }
+
+        attachmentTray.clearTray();
+
+        return true;
+    }, [sessionId, inputValue, selectedCommand, sending, runSend, attachmentTray, chatModel]);
+
     const handlePromptSubmit = useCallback(async (overrides) => {
         if (!elicitationId) {
             return;
@@ -237,11 +322,12 @@ const SharedSessionScreenBody = ({sessionId}) => {
     const handleLeave = useCallback(async () => {
         try {
             await sharedSessionService.leave(sessionId);
+            setReloadHistoryTrigger?.((trigger) => trigger + 1);
             navigate('/shared-sessions');
         } catch (caughtError) {
             setNotice(describeSessionError(caughtError));
         }
-    }, [sessionId, navigate]);
+    }, [sessionId, navigate, setReloadHistoryTrigger]);
 
     if (loadError) {
         return (
@@ -276,8 +362,12 @@ const SharedSessionScreenBody = ({sessionId}) => {
     const viewerOwnsChat = conversation && !!viewerUserId && session.ownerUserId === viewerUserId;
     const seatsLeft = MAXIMUM_OTHER_PARTICIPANTS - Math.max((session.participants ?? []).length - 1, 0) - pendingInvitees.length;
 
+    const trayStateClassName = conversation && attachmentTray.trayEntries.length > 0
+        ? (isCaptionRowOpen ? ' chat-app--caption-open' : ' chat-app--tray-open')
+        : '';
+
     return (
-        <div className="chat-app shared-session-screen" style={{'--keyboard-inset': `${keyboardInset}px`}}>
+        <div className={`chat-app shared-session-screen${trayStateClassName}`} style={{'--keyboard-inset': `${keyboardInset}px`}}>
             <div className="chat-content" ref={scrollContainerRef}>
                 <div className="shared-session-column shared-session-header">
                     <div className="shared-session-header-title">
@@ -332,12 +422,26 @@ const SharedSessionScreenBody = ({sessionId}) => {
                     return (
                         <div key={message._key} className={`shared-session-message ${fromOther ? 'shared-session-message--other' : 'shared-session-message--mine'}`}>
                             {senderLabel && <div className="shared-session-message-sender">{senderLabel}</div>}
-                            <ChatMessage message={message}/>
+                            <ChatMessage message={message} onExpandImage={openLightbox}/>
                         </div>
                     );
                 })}
 
                 {notice && <div className="chat-attachment-notice shared-sessions-notice--error" role="alert">{notice}</div>}
+
+                <div aria-live="polite">
+                    {conversation && attachmentTray.hasPendingUploads && (
+                        <div className="chat-attachment-notice">Wait for uploads to finish.</div>
+                    )}
+                </div>
+
+                {conversation && chatModel.modelNotice && (
+                    <div className="chat-attachment-notice chat-model-notice" role="status">{chatModel.modelNotice}</div>
+                )}
+
+                {lightboxAttachment && (
+                    <AttachmentLightbox attachment={lightboxAttachment} onClose={closeLightbox}/>
+                )}
 
                 {elicitation && !activeRun && (
                     <ElicitationPrompt
@@ -349,7 +453,43 @@ const SharedSessionScreenBody = ({sessionId}) => {
                     />
                 )}
 
-                {takesMessages && (
+                {takesMessages && conversation && (
+                    <ChatInput
+                        loading={composerLocked}
+                        streamActive={viewerMayStop && !!activeRun}
+                        onStopChat={handleCancel}
+                        inputValue={inputValue}
+                        handleInputChange={(event) => setInputValue(event.target.value)}
+                        handleSubmit={handleConversationSubmit}
+                        chatInputRef={composerInputRef}
+                        commandCandidates={commandCandidates}
+                        selectedIndex={selectedIndex}
+                        selectedCommand={selectedCommand}
+                        isPinned={isPinned}
+                        onTogglePin={handlePinToggle}
+                        onCommandSelect={handleCommandSelect}
+                        onArrowUp={handleArrowUp}
+                        onArrowDown={handleArrowDown}
+                        onDismiss={handleDismiss}
+                        onDeselect={handleDismiss}
+                        trayEntries={attachmentTray.trayEntries}
+                        addFiles={attachmentTray.addFiles}
+                        removeEntry={attachmentTray.removeEntry}
+                        retryEntry={attachmentTray.retryEntry}
+                        setEntryCaption={attachmentTray.setEntryCaption}
+                        trayError={attachmentTray.trayError}
+                        onCaptionOpenChange={setIsCaptionRowOpen}
+                        composerContainerRef={composerRef}
+                        modelPicker={chatModel}
+                        placeholder={composerPlaceholder({activeRun, banner, otherName, agent, conversation})}
+                        ariaLabel="Your message"
+                        maxLength={MAXIMUM_CONVERSATION_MESSAGE_CHARACTERS}
+                        attachmentsAloneSubmit
+                        submitBlocked={attachmentTray.hasPendingUploads}
+                    />
+                )}
+
+                {takesMessages && !conversation && (
                     <MessageComposer
                         inputRef={composerInputRef}
                         inputValue={inputValue}
@@ -358,11 +498,10 @@ const SharedSessionScreenBody = ({sessionId}) => {
                         canSubmit={!composerLocked && inputValue.trim().length > 0}
                         disabled={composerLocked}
                         placeholder={composerPlaceholder({activeRun, banner, otherName, agent, conversation})}
-                        maxLength={conversation ? MAXIMUM_CONVERSATION_MESSAGE_CHARACTERS : undefined}
                         ariaLabel="Your message"
                         loading={sending || (!!activeRun && !myRunActive)}
-                        onStop={viewerMayStop && (conversation ? !!activeRun : myRunActive) ? handleCancel : null}
-                        showSend={!(viewerMayStop && (conversation ? !!activeRun : myRunActive))}
+                        onStop={viewerMayStop && myRunActive ? handleCancel : null}
+                        showSend={!(viewerMayStop && myRunActive)}
                         containerRef={composerRef}
                     />
                 )}

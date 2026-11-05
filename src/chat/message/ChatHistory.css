@@ -302,6 +302,11 @@
     opacity: 0.5;
 }
 
+.chat-item-active {
+    background-color: var(--secondary-color);
+    box-shadow: inset 3px 0 0 var(--text-color);
+}
+
 /* Hover effect on chat items */
 .chat-item:hover {
     background-color: var(--secondary-color); /* Slight highlight on hover */

@@ -108,6 +108,11 @@ export function transcriptFromMessages(chatMessages, session, viewerUserId) {
             mine: chatMessage.messageType === USER && chatMessage.senderUserId === viewerUserId,
         };
 
+        if (chatMessage.messageType === USER) {
+            message.attachments = Array.isArray(chatMessage.attachments) ? chatMessage.attachments : [];
+            message.commands = Array.isArray(chatMessage.commands) ? chatMessage.commands : [];
+        }
+
         if (chatMessage.messageType === AI) {
             message.responseMetadata = chatMessage.responseMetadata ?? null;
             message.responseMetadataCalls = chatMessage.responseMetadataCalls ?? null;
@@ -154,9 +159,11 @@ function runStarted(state, data, viewerUserId) {
         return state;
     }
 
-    const viewerName = viewerParticipantName(state.session, viewerUserId);
     const userMessage = Array.isArray(data?.input?.messages) ? data.input.messages[0] : null;
     const messages = [...state.messages];
+    const senderUserId = userMessage?.senderUserId
+        ?? (userMessage?.name ? participantsOf(state.session).find((participant) => participant.name === userMessage.name)?.userId : null)
+        ?? null;
 
     if (userMessage && !messages.some((message) => message.messageId === userMessage.id)) {
         messages.push({
@@ -165,7 +172,9 @@ function runStarted(state, data, viewerUserId) {
             type: USER,
             text: userMessage.content ?? '',
             senderName: userMessage.name ?? null,
-            mine: !!viewerName && userMessage.name === viewerName,
+            mine: !!viewerUserId && senderUserId === viewerUserId,
+            attachments: Array.isArray(userMessage.attachments) ? userMessage.attachments : [],
+            commands: Array.isArray(userMessage.commands) ? userMessage.commands : [],
         });
     }
 

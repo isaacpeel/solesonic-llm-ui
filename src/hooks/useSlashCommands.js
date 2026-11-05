@@ -9,9 +9,15 @@ function isTypingSlashCommand(inputValue) {
     return /^\/\S*$/.test(inputValue);
 }
 
-function useSlashCommands({inputValue, setInputValue}) {
+function useSlashCommands({inputValue, setInputValue, fetchCommands = slashCommandService.fetchCommands}) {
     const [commandCandidates, setCommandCandidates] = useState([]);
     const debounceTimerRef = useRef(null);
+    const fetchCommandsRef = useRef(fetchCommands);
+
+
+    useEffect(() => {
+        fetchCommandsRef.current = fetchCommands;
+    }, [fetchCommands]);
 
     useEffect(() => {
 
@@ -44,7 +50,7 @@ function useSlashCommands({inputValue, setInputValue}) {
         let activeRequest = true;
 
         debounceTimerRef.current = setTimeout(async () => {
-            const fetchedCommands = await slashCommandService.fetchCommands(partialCommandText);
+            const fetchedCommands = await fetchCommandsRef.current(partialCommandText);
 
             if (activeRequest) {
                 setCommandCandidates(fetchedCommands);

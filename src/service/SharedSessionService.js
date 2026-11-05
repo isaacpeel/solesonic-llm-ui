@@ -37,7 +37,13 @@ export const SESSION_ERROR_CODES = {
     CHAT_STREAMING: 'CHAT_STREAMING',
     COMMAND_NOT_ALLOWED: 'COMMAND_NOT_ALLOWED',
     SESSION_LIMIT_REACHED: 'SESSION_LIMIT_REACHED',
+    MODEL_NOT_AVAILABLE: 'MODEL_NOT_AVAILABLE',
 };
+
+const CODES_WITH_SERVER_MESSAGE = new Set([
+    SESSION_ERROR_CODES.COMMAND_NOT_ALLOWED,
+    SESSION_ERROR_CODES.MODEL_NOT_AVAILABLE,
+]);
 
 const ERROR_MESSAGES = {
     [SESSION_ERROR_CODES.PARTICIPANT_NOT_FOUND]: 'No one with that username.',
@@ -55,6 +61,7 @@ const ERROR_MESSAGES = {
     [SESSION_ERROR_CODES.CHAT_STREAMING]: 'Wait for the response to finish, then try again.',
     [SESSION_ERROR_CODES.COMMAND_NOT_ALLOWED]: 'Commands are not available in shared chats.',
     [SESSION_ERROR_CODES.SESSION_LIMIT_REACHED]: 'You have too many active shared chats.',
+    [SESSION_ERROR_CODES.MODEL_NOT_AVAILABLE]: "Your account can't use this chat's model. Pick another model and send again.",
 };
 
 /* The stream's cursor is older than anything it still holds: reload the transcript and read on from the end. */
@@ -80,6 +87,12 @@ export function describeSessionError(caughtError) {
 
     if (unknownUsernames.length > 0) {
         return `No one with the username ${unknownUsernames.join(', ')}.`;
+    }
+
+    if (caughtError instanceof ApiError
+        && CODES_WITH_SERVER_MESSAGE.has(caughtError.code)
+        && caughtError.serverMessage) {
+        return caughtError.serverMessage;
     }
 
     if (caughtError instanceof ApiError && ERROR_MESSAGES[caughtError.code]) {
@@ -188,8 +201,30 @@ const sharedSessionService = {
         return await apiClient.get(`${sessionUri(sessionId)}/messages`) ?? [];
     },
 
-    send: async (sessionId, text) => {
-        return await apiClient.post(`${sessionUri(sessionId)}/messages`, {text});
+    send: async (sessionId, text, {attachmentIds, commands} = {}) => {
+        const body = {text};
+
+        if (attachmentIds || commands) {
+            body.attachmentIds = attachmentIds ?? [];
+            body.commands = commands ?? [];
+        }
+
+        return await apiClient.post(`${sessionUri(sessionId)}/messages`, body);
+    },
+
+    commands: async (sessionId, command) => {
+        const uri = command
+            ? buildUrl(`${sessionUri(sessionId)}/commands`, {command})
+            : `${sessionUri(sessionId)}/commands`;
+
+        try {
+            const response = await apiClient.get(uri);
+
+            return response?.commands || [];
+        } catch (caughtError) {
+            console.error('[SharedSessionService] Failed to fetch commands:', caughtError);
+            return [];
+        }
     },
 
     answerPrompt: async (sessionId, elicitationId, action, content) => {

@@ -1,0 +1,36 @@
+.chat-item-shared-badge {
+    flex-shrink: 0;
+    padding: 0 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    font-size: 0.65rem;
+    line-height: 1.4;
+    opacity: 0.85;
+}
+
+.chat-item-participants {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.chat-item-participant,
+.chat-item-participant-overflow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 3px;
+    margin-left: -4px;
+    box-sizing: border-box;
+    border: 1px solid var(--primary-color);
+    border-radius: 999px;
+    background-color: var(--secondary-color);
+    font-size: 0.55rem;
+    line-height: 1;
+}
+
+.chat-item-participants > :first-child {
+    margin-left: 0;
+}

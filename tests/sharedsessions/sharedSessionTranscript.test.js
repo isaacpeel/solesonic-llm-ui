@@ -231,4 +231,61 @@ describe('sharedSessionTranscript', () => {
 
         expect(transcript.messages[1].notifications).toBeUndefined();
     });
+
+    it('carries the attachments and commands of stored rows, for the sender and for everyone else', () => {
+        const attachment = {id: 'att-1', fileName: 'chart.png', contentType: 'image/png', description: 'a chart'};
+        const transcript = transcriptFromMessages([
+            {id: 'u1', messageType: 'USER', message: 'look', senderUserId: SAM, attachments: [attachment], commands: ['web_search']},
+            {id: 'u2', messageType: 'USER', message: 'plain', senderUserId: ALEX},
+        ], SESSION, ALEX);
+
+        expect(transcript.messages[0].attachments).toEqual([attachment]);
+        expect(transcript.messages[0].commands).toEqual(['web_search']);
+        expect(transcript.messages[0].mine).toBe(false);
+        expect(transcript.messages[1].attachments).toEqual([]);
+        expect(transcript.messages[1].commands).toEqual([]);
+    });
+
+    it('carries the attachments of the run echo', () => {
+        const attachment = {id: 'att-2', fileName: 'notes.pdf', contentType: 'application/pdf'};
+        const state = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, frame('RUN_STARTED', {
+            runId: 'run-7',
+            input: {messages: [{id: 'm7', content: 'see attached', name: 'Sam', attachments: [attachment], commands: ['generate_image']}]},
+        }), ALEX);
+
+        const echoed = state.messages.find((message) => message.messageId === 'm7');
+        expect(echoed.attachments).toEqual([attachment]);
+        expect(echoed.commands).toEqual(['generate_image']);
+    });
+
+    it('treats an echo without attachments as having none', () => {
+        const state = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, runStarted('run-8', 'm8', 'hi', 'Sam'), ALEX);
+
+        expect(state.messages.find((message) => message.messageId === 'm8').attachments).toEqual([]);
+    });
+
+    it('marks an echo as the viewer\'s own by sender id when the echo carries one', () => {
+        const echo = (extra) => frame('RUN_STARTED', {
+            runId: 'run-9',
+            input: {messages: [{id: 'm9', content: 'hi', name: 'Someone Else', ...extra}]},
+        });
+
+        const mine = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, echo({senderUserId: ALEX}), ALEX);
+        const theirs = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, echo({senderUserId: SAM, name: 'Alex'}), ALEX);
+
+        expect(mine.messages.find((message) => message.messageId === 'm9').mine).toBe(true);
+        expect(theirs.messages.find((message) => message.messageId === 'm9').mine).toBe(false);
+    });
+
+    it('falls back to the seat of the named participant, and is not mine for an unseated name', () => {
+        const echoFrom = (name) => frame('RUN_STARTED', {runId: 'run-9', input: {messages: [{id: 'm9', content: 'hi', name}]}});
+
+        const fromAlex = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, echoFrom('Alex'), ALEX);
+        const fromSam = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, echoFrom('Sam'), ALEX);
+        const fromStranger = applyFrame({...EMPTY_TRANSCRIPT, session: SESSION}, echoFrom('Zed'), ALEX);
+
+        expect(fromAlex.messages[0].mine).toBe(true);
+        expect(fromSam.messages[0].mine).toBe(false);
+        expect(fromStranger.messages[0].mine).toBe(false);
+    });
 });

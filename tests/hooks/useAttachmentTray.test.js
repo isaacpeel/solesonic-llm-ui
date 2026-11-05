@@ -531,3 +531,38 @@ describe('commitCaptions', () => {
         expect(attachmentService.deleteAttachment).not.toHaveBeenCalled();
     });
 });
+
+describe('draft persistence switched off', () => {
+    it('neither restores nor saves a draft', async () => {
+        const {result} = renderHook(() => useAttachmentTray({chatId: null, persistDraft: false}));
+
+        await act(async () => {
+            result.current.addFiles([fakeFile()]);
+        });
+
+        await waitFor(() => expect(result.current.trayEntries[0].status).toBe('ready'));
+        expect(restoreValidatedAttachmentDraft).not.toHaveBeenCalled();
+        expect(saveAttachmentDraft).not.toHaveBeenCalled();
+    });
+
+    it('leaves the draft alone when the tray is cleared', async () => {
+        const {result} = renderHook(() => useAttachmentTray({chatId: null, persistDraft: false}));
+
+        act(() => {
+            result.current.clearTray();
+        });
+
+        expect(clearAttachmentDraft).not.toHaveBeenCalled();
+    });
+
+    it('starts keeping drafts once persistence is switched on for a chat', async () => {
+        const {rerender} = renderHook(
+            ({chatId, persistDraft}) => useAttachmentTray({chatId, persistDraft}),
+            {initialProps: {chatId: null, persistDraft: false}},
+        );
+
+        rerender({chatId: 'chat-9', persistDraft: true});
+
+        await waitFor(() => expect(restoreValidatedAttachmentDraft).toHaveBeenCalledWith('chat-9'));
+    });
+});

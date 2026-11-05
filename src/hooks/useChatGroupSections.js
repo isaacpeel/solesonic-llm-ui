@@ -7,6 +7,7 @@ import chatGroupService from '../service/ChatGroupService.js';
 import {applyOrderMove, applyRankMove, changedRanks, partitionPlacedChats} from '../util/chatHistoryGrouping.js';
 import {isNoOpDrop} from '../util/chatHistoryDrag.js';
 import {chatFromRow} from '../util/chatHistoryRows.js';
+import {isSharedChat} from '../util/sharedChats.js';
 
 /* A group's own ordering column. Never `sortOrder` — that one belongs to the user's whole list. */
 const GROUP_ORDER_FIELD = "groupSortOrder";
@@ -544,7 +545,7 @@ function useChatGroupSections({
      * removed on its own reloads the whole history — which is also what puts its conversations back
      * into their day buckets.
      */
-    const handleChatGroupDeleted = (deletedChatGroupId, deletedChatIds) => {
+    const handleChatGroupDeleted = (deletedChatGroupId, deletedChatIds, {keptSharedCount = 0} = {}) => {
         setDeleteGroupRequest(null);
         forgetDeletedChats(deletedChatIds);
 
@@ -558,7 +559,7 @@ function useChatGroupSections({
         reloadGroups();
 
         /* Only the group went; its conversations are ungrouped now and belong in the day buckets. */
-        if (deletedChatIds.length === 0) {
+        if (deletedChatIds.length === 0 || keptSharedCount > 0) {
             onReloadHistory();
         }
 
@@ -620,6 +621,7 @@ function useChatGroupSections({
         dialogProps: {
             createGroupRequest,
             deleteGroupRequest,
+            sharedChatCount: (chatsByGroupId[deleteGroupRequest?.chatGroupId]?.chats ?? []).filter(isSharedChat).length,
             onCancelCreate: () => setCreateGroupRequest(null),
             onCreated: handleGroupCreated,
             onCancelDelete: () => setDeleteGroupRequest(null),

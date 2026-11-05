@@ -33,6 +33,11 @@ function ChatInput({
     onCaptionOpenChange,
     composerContainerRef,
     modelPicker,
+    placeholder,
+    ariaLabel,
+    maxLength,
+    attachmentsAloneSubmit = false,
+    submitBlocked = false,
 }) {
     const pickerOpen = !!modelPicker?.pickerOpen;
     const visibleCommandCandidates = loading ? [] : commandCandidates;
@@ -45,7 +50,8 @@ function ChatInput({
      * Attachments alone are not a message; a freshly selected command is. A pinned one still needs
      * an argument, or a stray Enter after every reply would resend the bare command.
      */
-    const canSubmit = !inputLocked && !pickerOpen && (inputValue.trim().length > 0 || (!!selectedCommand && !isPinned));
+    const attachmentsAlone = attachmentsAloneSubmit && Array.isArray(trayEntries) && trayEntries.length > 0;
+    const canSubmit = !inputLocked && !submitBlocked && !pickerOpen && (inputValue.trim().length > 0 || (!!selectedCommand && !isPinned) || attachmentsAlone);
 
     const submitTurn = () => handleSubmit().then((submitted) => {
         /* A pinned command stays selected so it is resent on the next turn too. */
@@ -179,7 +185,9 @@ function ChatInput({
             onSubmit={submitTurn}
             canSubmit={canSubmit}
             disabled={inputLocked}
-            placeholder={promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Type a message...")}
+            placeholder={placeholder ?? (promptOpen && loading ? 'Or type your answer…' : (loading ? "" : "Type a message..."))}
+            ariaLabel={ariaLabel}
+            maxLength={maxLength}
             loading={loading && !streamActive}
             onStop={streamActive ? onStopChat : null}
             showSend={!streamActive || promptOpen}

@@ -24,6 +24,7 @@ function ChatGroupDialogs({
     createGroupRequest,
     deleteGroupRequest,
     streamingChatId,
+    sharedChatCount,
     onCancelCreate,
     onCreated,
     onCancelDelete,
@@ -44,6 +45,7 @@ function ChatGroupDialogs({
                     chatGroupId={deleteGroupRequest.chatGroupId}
                     label={deleteGroupRequest.label}
                     streamingChatId={streamingChatId}
+                    sharedChatCount={sharedChatCount}
                     onCancel={onCancelDelete}
                     onConversationsDeleted={onConversationsDeleted}
                     onDeleted={onDeleted}

@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {render, fireEvent, waitFor} from '@testing-library/react';
+import {render, fireEvent, waitFor, within, screen, cleanup} from '@testing-library/react';
 import {MemoryRouter} from 'react-router';
 
 vi.mock('../../src/hooks/usePagedChatHistory.js', () => ({
@@ -28,6 +28,15 @@ vi.mock('../../src/service/ChatGroupService.js', () => ({
         deleteGroup: vi.fn(),
         findGroupChats: vi.fn(),
     },
+}));
+
+vi.mock('../../src/service/AuthService.js', () => ({
+    default: {getUserId: vi.fn()},
+}));
+
+vi.mock('../../src/service/SharedSessionService.js', async (importOriginal) => ({
+    ...await importOriginal(),
+    default: {leave: vi.fn()},
 }));
 
 vi.mock('../../src/service/UserDirectoryService.js', () => ({
@@ -60,6 +69,9 @@ import usePagedChatHistory from '../../src/hooks/usePagedChatHistory.js';
 import useChatGroups from '../../src/hooks/useChatGroups.js';
 import chatService from '../../src/service/ChatService.js';
 import chatGroupService from '../../src/service/ChatGroupService.js';
+import sharedSessionService from '../../src/service/SharedSessionService.js';
+import authService from '../../src/service/AuthService.js';
+import {ApiError} from '../../src/client/ApiClient.js';
 
 const VIEWPORT_HEIGHT = 600;
 
@@ -175,6 +187,9 @@ function renderChatHistory({
     chatsByGroupId = {},
     openChatId = null,
     streamingChatId = null,
+    initialPath = '/',
+    viewerUserId = 'user-1',
+    omitUserId = false,
 } = {}) {
     const loadMore = vi.fn();
     const retry = vi.fn();
@@ -239,9 +254,9 @@ function renderChatHistory({
     };
 
     const renderResult = render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[initialPath]}>
             <SharedDataContext.Provider value={sharedData}>
-                <ChatHistory userId="user-1" drawerOpen={true} setDrawerOpen={setDrawerOpen}/>
+                <ChatHistory userId={omitUserId ? undefined : viewerUserId} drawerOpen={true} setDrawerOpen={setDrawerOpen}/>
             </SharedDataContext.Provider>
         </MemoryRouter>
     );
@@ -282,6 +297,10 @@ beforeEach(() => {
     chatService.renameChat.mockResolvedValue({id: 'chat-0', name: 'Trip planning'});
     chatService.deleteChat.mockReset();
     chatService.deleteChat.mockResolvedValue(null);
+    authService.getUserId.mockReset();
+    authService.getUserId.mockResolvedValue('user-1');
+    sharedSessionService.leave.mockReset();
+    sharedSessionService.leave.mockResolvedValue(null);
 
     chatGroupService.createGroup.mockReset();
     chatGroupService.addChatToGroup.mockReset();
@@ -2400,5 +2419,368 @@ describe('ChatHistory after a push navigation', () => {
         pushNavigatedTo('/chat/chat-news');
 
         expect(setReloadHistoryTrigger).not.toHaveBeenCalled();
+    });
+});
+
+const OWNER = 'user-1';
+
+const GUEST = 'user-2';
+
+function sharedChatOf(overrides = {}) {
+    return {
+        id: 'chat-shared',
+        name: 'Trip planning',
+        timestamp: todayAtMidMorning(),
+        chatMessages: [{message: 'Where to?'}],
+        kind: 'SHARED',
+        sharedSessionId: 'session-9',
+        ownerUserId: OWNER,
+        participants: [{userId: OWNER, name: 'Isaac Peel'}, {userId: GUEST, name: 'sam'}],
+        ...overrides,
+    };
+}
+
+function renderShared(chat = sharedChatOf(), options = {}) {
+    return renderChatHistory({chats: [chat], hasMore: false, ...options});
+}
+
+describe('ChatHistory shared chats', () => {
+    it('badges a shared row and shows who is in it', () => {
+        const {container} = renderShared();
+
+        expect(container.querySelector('.chat-item-shared-badge').textContent).toBe('Shared');
+
+        const initials = Array.from(container.querySelectorAll('.chat-item-participant'));
+        expect(initials.map((node) => node.textContent)).toEqual(['IP', 'S']);
+        expect(initials.map((node) => node.getAttribute('title'))).toEqual(['Isaac Peel', 'sam']);
+    });
+
+    it('keeps the initials to a few and counts the rest', () => {
+        const crowd = Array.from({length: 6}, (unused, index) => ({userId: `u-${index}`, name: `Person ${index}`}));
+        const {container} = renderShared(sharedChatOf({participants: crowd}));
+
+        expect(container.querySelectorAll('.chat-item-participant')).toHaveLength(3);
+        expect(container.querySelector('.chat-item-participant-overflow').textContent).toBe('+3');
+    });
+
+    it('leaves private rows plain', () => {
+        const {container} = renderChatHistory({chats: chatsOf(2)});
+
+        expect(container.querySelector('.chat-item-shared-badge')).toBeNull();
+        expect(container.querySelector('.chat-item-participant')).toBeNull();
+    });
+
+    it('opens the shared session instead of a private chat', () => {
+        const {container, setChatId, setDrawerOpen} = renderShared();
+
+        fireEvent.click(container.querySelector('.chat-item'));
+
+        expect(navigateSpy).toHaveBeenCalledWith('/shared-sessions/session-9');
+        expect(setDrawerOpen).toHaveBeenCalledWith(false);
+        expect(setChatId).not.toHaveBeenCalledWith('chat-shared');
+    });
+
+    it('highlights the row while that session is open', () => {
+        const open = renderShared(sharedChatOf(), {initialPath: '/shared-sessions/session-9'});
+        expect(open.container.querySelector('.chat-item').classList.contains('chat-item-active')).toBe(true);
+        expect(open.container.querySelector('.chat-item').getAttribute('aria-current')).toBe('true');
+        cleanup();
+
+        const other = renderShared(sharedChatOf(), {initialPath: '/shared-sessions/session-1'});
+        expect(other.container.querySelector('.chat-item').classList.contains('chat-item-active')).toBe(false);
+    });
+
+    it('gives the owner Rename and End sharing, and neither Share nor Delete', () => {
+        const {container} = renderShared();
+
+        openRowMenu(container, 0);
+
+        expect(menuItemLabels()).toEqual(['Rename', 'End sharing']);
+    });
+
+    it('gives a participant Leave chat and nothing else', () => {
+        const {container} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+
+        openRowMenu(container, 0);
+
+        expect(menuItemLabels()).toEqual(['Leave chat']);
+    });
+
+    it('lets the owner rename a shared chat', async () => {
+        const {container, replaceChat} = renderShared();
+
+        openRowMenu(container, 0);
+        clickMenuItem('Rename');
+        const renameInput = container.querySelector('.chat-item-rename');
+        fireEvent.change(renameInput, {target: {value: 'Summer trip'}});
+        fireEvent.keyDown(renameInput, {key: 'Enter'});
+
+        await waitFor(() => expect(chatService.renameChat).toHaveBeenCalledWith('chat-shared', 'Summer trip'));
+        expect(replaceChat).toHaveBeenCalled();
+    });
+
+    it('ends sharing through the leave endpoint after confirming, and drops the row', async () => {
+        const {container, removeChat} = renderShared();
+
+        openRowMenu(container, 0);
+        clickMenuItem('End sharing');
+
+        const dialog = document.querySelector('[role="dialog"]');
+        expect(dialog.textContent).toContain('everyone');
+        expect(sharedSessionService.leave).not.toHaveBeenCalled();
+
+        fireEvent.click(within(dialog).getByRole('button', {name: 'End sharing'}));
+
+        await waitFor(() => expect(sharedSessionService.leave).toHaveBeenCalledWith('session-9'));
+        await waitFor(() => expect(removeChat).toHaveBeenCalledWith('chat-shared'));
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it('leaves through the leave endpoint after confirming, and drops the row', async () => {
+        const {container, removeChat} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+
+        openRowMenu(container, 0);
+        clickMenuItem('Leave chat');
+        fireEvent.click(within(document.querySelector('[role="dialog"]')).getByRole('button', {name: 'Leave chat'}));
+
+        await waitFor(() => expect(sharedSessionService.leave).toHaveBeenCalledWith('session-9'));
+        await waitFor(() => expect(removeChat).toHaveBeenCalledWith('chat-shared'));
+        expect(chatService.deleteChat).not.toHaveBeenCalled();
+    });
+
+    it('takes a filed shared chat out of its group too', async () => {
+        const filed = sharedChatOf({chatGroupId: 'group-1'});
+        const {container, removeChat, removeGroupChat} = renderChatHistory({
+            chats: [],
+            hasMore: false,
+            groups: [WORK_GROUP],
+            chatsByGroupId: {'group-1': groupChatsOf([filed])},
+        });
+
+        fireEvent.click(container.querySelector('.chat-group-header'));
+        openRowMenu(container, 0);
+        clickMenuItem('End sharing');
+        fireEvent.click(within(document.querySelector('[role="dialog"]')).getByRole('button', {name: 'End sharing'}));
+
+        await waitFor(() => expect(removeChat).toHaveBeenCalledWith('chat-shared'));
+        expect(removeGroupChat).toHaveBeenCalledWith('group-1', 'chat-shared');
+    });
+
+    it('keeps the row and says so when leaving fails', async () => {
+        sharedSessionService.leave.mockRejectedValue(new ApiError({message: '500', status: 500}));
+        const {container, removeChat} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+
+        openRowMenu(container, 0);
+        clickMenuItem('Leave chat');
+        fireEvent.click(within(document.querySelector('[role="dialog"]')).getByRole('button', {name: 'Leave chat'}));
+
+        expect((await screen.findByRole('alert')).textContent).toMatch(/could not/i);
+        expect(removeChat).not.toHaveBeenCalled();
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    });
+
+    it('treats a session that is already gone as left', async () => {
+        sharedSessionService.leave.mockRejectedValue(new ApiError({message: '404', status: 404}));
+        const {container, removeChat} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+
+        openRowMenu(container, 0);
+        clickMenuItem('Leave chat');
+        fireEvent.click(within(document.querySelector('[role="dialog"]')).getByRole('button', {name: 'Leave chat'}));
+
+        await waitFor(() => expect(removeChat).toHaveBeenCalledWith('chat-shared'));
+    });
+
+    it('moves off the session that was just left', async () => {
+        const {container} = renderShared(sharedChatOf(), {viewerUserId: GUEST, initialPath: '/shared-sessions/session-9'});
+
+        openRowMenu(container, 0);
+        clickMenuItem('Leave chat');
+        fireEvent.click(within(document.querySelector('[role="dialog"]')).getByRole('button', {name: 'Leave chat'}));
+
+        await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/'));
+    });
+
+    it('gives only the owner a handle to file or order the shared chat', () => {
+        const owner = renderShared();
+        expect(owner.container.querySelector('.chat-history-drag-handle')).not.toBeNull();
+        cleanup();
+
+        const guest = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+        expect(guest.container.querySelector('.chat-history-drag-handle')).toBeNull();
+    });
+
+    it('badges and opens a shared chat found by search', async () => {
+        const rendered = renderShared(sharedChatOf({match: null}));
+
+        fireEvent.change(screen.getByLabelText('Search chats'), {target: {value: 'trip'}});
+        await waitFor(() => expect(rendered.container.querySelector('.chat-item-search-result')).not.toBeNull());
+
+        expect(rendered.container.querySelector('.chat-item-shared-badge').textContent).toBe('Shared');
+
+        fireEvent.click(rendered.container.querySelector('.chat-item-search-result'));
+
+        expect(navigateSpy).toHaveBeenCalledWith('/shared-sessions/session-9');
+    });
+});
+
+describe('ChatHistory without a userId prop', () => {
+    it('resolves the viewer itself, so the owner gets the owner menu', async () => {
+        authService.getUserId.mockResolvedValue(OWNER);
+        const {container} = renderShared(sharedChatOf(), {omitUserId: true});
+
+        await waitFor(() => expect(container.querySelector('.chat-history-drag-handle')).not.toBeNull());
+        openRowMenu(container, 0);
+
+        expect(menuItemLabels()).toEqual(['Rename', 'End sharing']);
+    });
+
+    it('gives a participant the leave menu once it knows who they are', async () => {
+        authService.getUserId.mockResolvedValue(GUEST);
+        const {container} = renderShared(sharedChatOf(), {omitUserId: true});
+
+        await waitFor(() => expect(container.querySelector('.chat-item .chat-row-menu-trigger')).not.toBeNull());
+        openRowMenu(container, 0);
+
+        expect(menuItemLabels()).toEqual(['Leave chat']);
+    });
+
+    it('offers no role menu and no handle while the viewer is unknown', async () => {
+        authService.getUserId.mockReturnValue(new Promise(() => {}));
+        const {container} = renderShared(sharedChatOf(), {omitUserId: true});
+
+        expect(container.querySelector('.chat-item')).not.toBeNull();
+        expect(container.querySelector('.chat-item .chat-row-menu-trigger')).toBeNull();
+        expect(container.querySelector('.chat-history-drag-handle')).toBeNull();
+    });
+
+    it('still offers private rows their menu while the viewer is unknown', () => {
+        authService.getUserId.mockReturnValue(new Promise(() => {}));
+        const {container} = renderChatHistory({chats: chatsOf(1), omitUserId: true});
+
+        expect(container.querySelectorAll('.chat-item .chat-row-menu-trigger')).toHaveLength(1);
+    });
+});
+
+describe('ChatHistory opening a shared chat from a private one', () => {
+    it('clears the open private chat first, so deleting it later cannot redirect away', () => {
+        const {container, setChatId, setChatHistory} = renderShared(sharedChatOf(), {openChatId: 'chat-private'});
+
+        fireEvent.click(container.querySelector('.chat-item'));
+
+        expect(setChatHistory).toHaveBeenCalledWith([]);
+        expect(setChatId).toHaveBeenCalledWith(null);
+        expect(navigateSpy).toHaveBeenCalledWith('/shared-sessions/session-9');
+    });
+});
+
+describe('ChatHistory shared row accessibility', () => {
+    it('describes who it is shared with as one image and hides the initials', () => {
+        const people = [{userId: 'a', name: 'Jane Doe'}, {userId: 'b', name: 'Bob Lee'}, {userId: 'c', name: 'Al Ko'}, {userId: 'd', name: 'Di Ox'}, {userId: 'e', name: 'Ed Ng'}];
+        const {container} = renderShared(sharedChatOf({participants: people}));
+
+        const group = container.querySelector('.chat-item-participants');
+        expect(group.getAttribute('role')).toBe('img');
+        expect(group.getAttribute('aria-label')).toBe('Shared with Jane Doe, Bob Lee, Al Ko and 2 others');
+        container.querySelectorAll('.chat-item-participant, .chat-item-participant-overflow')
+            .forEach((node) => expect(node.getAttribute('aria-hidden')).toBe('true'));
+        expect(container.querySelector('.chat-item-shared-badge').getAttribute('aria-label')).toBe('Shared chat');
+    });
+});
+
+describe('LeaveSharedChatDialog accessibility', () => {
+    function openLeaveDialog(container) {
+        openRowMenu(container, 0);
+        clickMenuItem('Leave chat');
+
+        return document.querySelector('[role="dialog"]');
+    }
+
+    it('points aria-describedby at its body', () => {
+        const {container} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+        const dialog = openLeaveDialog(container);
+
+        const description = document.getElementById(dialog.getAttribute('aria-describedby'));
+        expect(description.textContent).toContain('Trip planning');
+    });
+
+    it('gives focus back to the row menu button when cancelled', () => {
+        const {container} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+        const trigger = container.querySelector('.chat-item .chat-row-menu-trigger');
+        const dialog = openLeaveDialog(container);
+
+        fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    it('keeps focus inside the dialog while the request runs', async () => {
+        let finish;
+        sharedSessionService.leave.mockReturnValue(new Promise((resolve) => {
+            finish = resolve;
+        }));
+        const {container} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+        const dialog = openLeaveDialog(container);
+        const confirm = within(dialog).getByRole('button', {name: 'Leave chat'});
+
+        confirm.focus();
+        fireEvent.click(confirm);
+
+        await waitFor(() => expect(sharedSessionService.leave).toHaveBeenCalled());
+        expect(dialog.contains(document.activeElement)).toBe(true);
+        expect(confirm.getAttribute('aria-disabled')).toBe('true');
+
+        fireEvent.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+        finish(null);
+    });
+
+    it('moves focus to Cancel when the request fails', async () => {
+        sharedSessionService.leave.mockRejectedValue(new ApiError({message: '500', status: 500}));
+        const {container} = renderShared(sharedChatOf(), {viewerUserId: GUEST});
+        const dialog = openLeaveDialog(container);
+
+        fireEvent.click(within(dialog).getByRole('button', {name: 'Leave chat'}));
+
+        await screen.findByRole('alert');
+        expect(document.activeElement).toBe(within(dialog).getByRole('button', {name: 'Cancel'}));
+    });
+});
+
+describe('ChatHistory delete group with shared chats', () => {
+    const SHARED_IN_GROUP = {id: 'chat-s', kind: 'SHARED', sharedSessionId: 'session-9'};
+
+    it('never deletes a shared chat, deletes the rest, and frees the shared one', async () => {
+        chatGroupService.findGroupChats.mockResolvedValue({chats: [{id: 'chat-a'}, SHARED_IN_GROUP], page: 0, last: true, totalElements: 2});
+        const {container, setReloadHistoryTrigger} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        openDeleteGroupDialog(container);
+        clickGroupDialog('confirm');
+
+        await waitFor(() => expect(chatGroupService.deleteGroup).toHaveBeenCalledWith('group-1'));
+        expect(chatService.deleteChat).toHaveBeenCalledTimes(1);
+        expect(chatService.deleteChat).toHaveBeenCalledWith('chat-a');
+        expect(chatService.deleteChat).not.toHaveBeenCalledWith('chat-s');
+        await waitFor(() => expect(setReloadHistoryTrigger).toHaveBeenCalled());
+    });
+
+    it('says so up front when the group holds shared chats it has loaded', () => {
+        const {container} = renderChatHistory({
+            chats: [],
+            hasMore: false,
+            groups: [WORK_GROUP],
+            chatsByGroupId: {'group-1': groupChatsOf([{...sharedChatOf(), chatGroupId: 'group-1'}])},
+        });
+
+        const dialog = openDeleteGroupDialog(container);
+
+        expect(dialog.textContent).toMatch(/shared chats? .*not be deleted/i);
+    });
+
+    it('stays quiet about shared chats when there are none', () => {
+        const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false, groups: [WORK_GROUP]});
+
+        expect(openDeleteGroupDialog(container).textContent).not.toMatch(/shared/i);
     });
 });
