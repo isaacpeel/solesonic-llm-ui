@@ -28,6 +28,7 @@ import useChatGroupSections from "../../hooks/useChatGroupSections.js";
 import chatService from "../../service/ChatService.js";
 import {groupChatsByDay, partitionGroupedChats} from "../../util/chatHistoryGrouping.js";
 import {
+    CHAT_GROUPS_SECTION_ROW,
     CHAT_HISTORY_HEADER_ROW,
     chatFromRow,
     chatHistoryRowFullLabel,
@@ -44,6 +45,7 @@ import {
 } from "../../util/chatHistoryDrag.js";
 import useChatHistoryDrag from "../../hooks/useChatHistoryDrag.js";
 import {PUSH_NAVIGATED_EVENT} from "../../push/usePushNavigation.js";
+import useResizableDrawerWidth from "../../hooks/useResizableDrawerWidth.js";
 
 /* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
 const OVERSCAN_ROWS = 4;
@@ -199,6 +201,11 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
      */
     const [collapsedDayKeys, setCollapsedDayKeys] = useState(() => new Set());
 
+    const [groupsExpanded, setGroupsExpanded] = useState(false);
+
+    const resizer = useResizableDrawerWidth();
+    const consumeResizeRelease = resizer.consumeResizeRelease;
+
     /*
      * Memoized on the accumulated pages rather than recomputed per render: grouping sorts every
      * bucket and then the buckets themselves, and the drawer re-renders on every parent state
@@ -252,8 +259,8 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
     const rows = useMemo(
         () => (searching
             ? flattenSearchResultsToRows(daySections)
-            : flattenChatGroupsToRows([...chatGroupSections, ...daySections])),
-        [searching, chatGroupSections, daySections],
+            : flattenChatGroupsToRows([...chatGroupSections, ...daySections], {groupsCollapsible: true, groupsExpanded})),
+        [searching, chatGroupSections, daySections, groupsExpanded],
     );
 
     const ungroupedChatCount = ungrouped.length;
@@ -287,6 +294,10 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
                 return;
             }
 
+            if (consumeResizeRelease()) {
+                return;
+            }
+
             if (drawerRef.current && !drawerRef.current.contains(event.target)) {
                 setDrawerOpen(false);
             }
@@ -296,7 +307,7 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
         return () => {
             document.removeEventListener("mouseup", handleClickOutside);
         };
-    }, [drawerOpen, setDrawerOpen]);
+    }, [drawerOpen, setDrawerOpen, consumeResizeRelease]);
 
     /*
      * Infinite scroll: the virtualizer already knows how close the window is to the end of the
@@ -367,6 +378,12 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
 
             return nextKeys;
         });
+    };
+
+    /* A group being created has to be visible once it lands, so the Groups section opens for it. */
+    const requestCreateGroup = (chat) => {
+        setGroupsExpanded(true);
+        chatGroups.requestCreateGroup(chat);
     };
 
     const handleChatClick = (chatId, chat) => {
@@ -528,7 +545,7 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
         onGroupDrop: (chatGroupId, position) => {
             void chatGroups.handleGroupDrop(chatGroupId, position);
         },
-        onNewGroup: (chat) => chatGroups.requestCreateGroup(chat),
+        onNewGroup: (chat) => requestCreateGroup(chat),
         onDropOutside: (chat, point) => setDropActionRequest({chat, point}),
     });
 
@@ -675,6 +692,27 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
      * element rather than a border.
      */
     const renderRow = (row) => {
+        if (row.type === CHAT_GROUPS_SECTION_ROW) {
+            return (
+                <button
+                    type="button"
+                    className="date-header chat-groups-section-header"
+                    aria-expanded={row.expanded}
+                    onClick={() => setGroupsExpanded(expanded => !expanded)}
+                >
+                    <ChevronRightIcon
+                        aria-hidden="true"
+                        className={row.expanded
+                            ? "date-header-chevron date-header-chevron-expanded"
+                            : "date-header-chevron"}
+                    />
+
+                    <span className="date-header-label">{row.label}</span>
+                    <span className="chat-groups-section-count">{row.count}</span>
+                </button>
+            );
+        }
+
         if (row.type === CHAT_HISTORY_HEADER_ROW) {
             return (
                 <button
@@ -779,7 +817,7 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
                         </button>
                         )}
 
-                        <span className="chat-item-label">{row.label}</span>
+                        <span className="chat-item-label">{row.fullLabel}</span>
                         {isSharedChat(row.chat) && <SharedChatMarkers participants={row.chat.participants}/>}
                         {renderRowMenu(row)}
                     </>
@@ -810,7 +848,7 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
                         className={newGroupDropActive
                             ? "chat-history-new-group chat-history-new-group-drop-active"
                             : "chat-history-new-group"}
-                        onClick={() => chatGroups.requestCreateGroup()}
+                        onClick={() => requestCreateGroup()}
                         {...{[NEW_GROUP_DROP_ATTRIBUTE]: "true"}}
                     >
                         + New group
@@ -890,7 +928,7 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
                         groups={chatGroups.groups}
                         currentChatGroupId={dropActionRequest.chat.chatGroupId ?? null}
                         onNewGroup={() => {
-                            chatGroups.requestCreateGroup(dropActionRequest.chat);
+                            requestCreateGroup(dropActionRequest.chat);
                             setDropActionRequest(null);
                         }}
                         onMoveToGroup={(chatGroupId) => {
@@ -945,6 +983,18 @@ function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
                     />
                 )}
             </div>
+
+            <div
+                className={resizer.resizing ? "chat-drawer-resize-handle chat-drawer-resize-handle-active" : "chat-drawer-resize-handle"}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize chat history"
+                aria-valuenow={resizer.width}
+                aria-valuemin={resizer.minimumWidth}
+                aria-valuemax={resizer.maximumWidth}
+                tabIndex={0}
+                {...resizer.handleProps}
+            />
         </div>
     );
 }
@@ -960,8 +1010,12 @@ function chatItemClassName(baseClassName, row, openSharedSessionId) {
 function rowClassName(row, {dragging, dropEdge} = {}) {
     const classNames = ["chat-history-row"];
 
-    if (row.type === CHAT_HISTORY_HEADER_ROW) {
+    if (row.type === CHAT_HISTORY_HEADER_ROW || row.type === CHAT_GROUPS_SECTION_ROW) {
         classNames.push("chat-history-header-row");
+
+        if (row.type === CHAT_GROUPS_SECTION_ROW) {
+            classNames.push("chat-groups-section-row");
+        }
 
         if (!row.firstInList) {
             classNames.push("chat-history-header-row-spaced");

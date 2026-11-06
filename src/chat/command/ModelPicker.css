@@ -20,12 +20,6 @@
     outline: none;
 }
 
-.model-picker-agent {
-    padding: 0 14px 8px;
-    font-size: 12px;
-    opacity: 0.8;
-}
-
 .model-picker-message {
     display: flex;
     align-items: center;
@@ -82,10 +76,6 @@
     opacity: 0.6;
 }
 
-.model-picker-item--reset .model-picker-item-name {
-    font-style: italic;
-}
-
 .model-picker-item-heading {
     display: flex;
     align-items: center;
@@ -112,8 +102,4 @@
 
 .model-picker-badge--current {
     background-color: var(--secondary-color);
-}
-
-.model-picker-badge--default {
-    opacity: 0.7;
 }

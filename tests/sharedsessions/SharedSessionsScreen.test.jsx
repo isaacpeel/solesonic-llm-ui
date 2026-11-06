@@ -34,6 +34,11 @@ import sharedSessionService from '../../src/service/SharedSessionService.js';
 import userDirectoryService from '../../src/service/UserDirectoryService.js';
 import authService from '../../src/service/AuthService.js';
 
+function chooseSharedChat() {
+    fireEvent.change(screen.getByRole('combobox', {name: 'Session type'}), {target: {value: 'conversation'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Start chat'}));
+}
+
 const SAM = {userId: 'u-sam', username: 'sam', displayName: 'Sam Stone'};
 const ME = 'u-me';
 
@@ -79,10 +84,12 @@ describe('SharedSessionsScreen conversations', () => {
         await renderScreen();
 
         const items = screen.getAllByRole('link');
-        expect(items.map((link) => link.textContent)).toEqual([
+        expect(items.map((link) => link.querySelector('.shared-sessions-list-item-name').textContent)).toEqual([
             'Family Feud with Sam',
             'Trip planning with Sam',
         ]);
+        expect(items[0].getAttribute('href')).toBe('/shared-sessions/session-f');
+        expect(items[0].textContent).toContain('Waiting on you');
         expect(screen.getByText(/^Updated /)).toBeTruthy();
     });
 
@@ -99,7 +106,7 @@ describe('SharedSessionsScreen conversations', () => {
     it('opens the share dialog for a new shared chat', async () => {
         await renderScreen();
 
-        fireEvent.click(screen.getByRole('button', {name: 'Start a shared chat'}));
+        chooseSharedChat();
 
         const dialog = screen.getByRole('dialog');
         expect(within(dialog).getByRole('heading', {name: 'Share this chat'})).toBeTruthy();
@@ -108,7 +115,7 @@ describe('SharedSessionsScreen conversations', () => {
     it('shares with no source chat', async () => {
         sharedSessionService.shareConversation.mockResolvedValue({id: 'session-new'});
         await renderScreen();
-        fireEvent.click(screen.getByRole('button', {name: 'Start a shared chat'}));
+        chooseSharedChat();
         const dialog = screen.getByRole('dialog');
 
         fireEvent.focus(within(dialog).getByRole('combobox'));
@@ -121,7 +128,7 @@ describe('SharedSessionsScreen conversations', () => {
 
     it('closes the dialog on cancel', async () => {
         await renderScreen();
-        fireEvent.click(screen.getByRole('button', {name: 'Start a shared chat'}));
+        chooseSharedChat();
 
         fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
 
@@ -158,5 +165,38 @@ describe('SharedSessionsScreen agent invite', () => {
         await waitFor(() => expect(sharedSessionService.invite).toHaveBeenCalledWith('sam', 'feud', 'new show'));
         await screen.findByText('Invite sent.');
         expect(inviteForm().querySelector('.user-multi-select-chip')).toBeNull();
+    });
+
+    it('offers every feud opening with a Feud prefix, then a shared chat', async () => {
+        await renderScreen();
+
+        const options = within(screen.getByRole('combobox', {name: 'Session type'})).getAllByRole('option').map((option) => option.textContent);
+
+        expect(options.slice(0, -1).every((label) => label.startsWith('Feud: '))).toBe(true);
+        expect(options[options.length - 1]).toBe('Shared chat (just people, no game)');
+    });
+
+    it('sends the selected opening', async () => {
+        sharedSessionService.invite.mockResolvedValue({id: 'i-9'});
+        await renderScreen();
+
+        fireEvent.change(screen.getByRole('combobox', {name: 'Session type'}), {target: {value: 'feud|new main game'}});
+        fireEvent.focus(within(inviteForm()).getByRole('combobox', {name: 'Username'}));
+        fireEvent.click(await within(inviteForm()).findByRole('option', {name: /sam/}));
+        fireEvent.click(within(inviteForm()).getByRole('button', {name: 'Invite'}));
+
+        await waitFor(() => expect(sharedSessionService.invite).toHaveBeenCalledWith('sam', 'feud', 'new main game'));
+    });
+
+    it('carries the picked person into the shared chat dialog', async () => {
+        await renderScreen();
+
+        fireEvent.focus(within(inviteForm()).getByRole('combobox', {name: 'Username'}));
+        fireEvent.click(await within(inviteForm()).findByRole('option', {name: /sam/}));
+        chooseSharedChat();
+
+        const dialog = screen.getByRole('dialog');
+        expect(within(dialog).getByText('sam')).toBeTruthy();
+        expect(within(dialog).getByRole('button', {name: 'Share'}).disabled).toBe(false);
     });
 });

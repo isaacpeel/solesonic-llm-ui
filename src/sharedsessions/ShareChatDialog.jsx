@@ -23,16 +23,17 @@ const MAXIMUM_NAME_LENGTH = 255;
  * @param {{
  *   sourceChatId: string|null,
  *   chatName?: string,
+ *   initialPeople?: Array<object>,
  *   onCancel: () => void,
  *   onShared?: (session: object) => void,
  * }} props
  */
-function ShareChatDialog({sourceChatId = null, chatName = '', onCancel, onShared}) {
+function ShareChatDialog({sourceChatId = null, chatName = '', initialPeople = [], onCancel, onShared}) {
     const navigate = useNavigate();
     const titleId = useId();
 
     const [name, setName] = useState(chatName ?? '');
-    const [people, setPeople] = useState([]);
+    const [people, setPeople] = useState(initialPeople);
     const [invalidUsernames, setInvalidUsernames] = useState([]);
     const [submitting, setSubmitting] = useState(false);
     const [shareError, setShareError] = useState(null);

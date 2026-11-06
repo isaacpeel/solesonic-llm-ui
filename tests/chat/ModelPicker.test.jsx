@@ -20,7 +20,6 @@ const modelOptions = {
 function renderPicker(props = {}) {
     const handlers = {
         onChoose: vi.fn(),
-        onResetToDefault: vi.fn(),
         onRetry: vi.fn(),
         onClose: vi.fn(),
     };
@@ -41,7 +40,7 @@ function renderPicker(props = {}) {
 }
 
 function modelRows(container) {
-    return Array.from(container.querySelectorAll('.model-picker-item:not(.model-picker-item--reset)'));
+    return Array.from(container.querySelectorAll('.model-picker-item'));
 }
 
 function rowFor(container, modelId) {
@@ -80,7 +79,6 @@ describe('ModelPicker rows', () => {
         const {container} = renderPicker();
 
         const defaultRow = rowFor(container, 'qwen3-8b');
-        expect(defaultRow.querySelector('.model-picker-badge--default')).not.toBeNull();
         expect(defaultRow.querySelector('.model-picker-badge--current')).not.toBeNull();
         expect(container.querySelectorAll('.model-picker-badge--current')).toHaveLength(1);
     });
@@ -90,7 +88,6 @@ describe('ModelPicker rows', () => {
 
         expect(rowFor(container, 'openai/gpt-4o').querySelector('.model-picker-badge--current')).not.toBeNull();
         expect(rowFor(container, 'qwen3-8b').querySelector('.model-picker-badge--current')).toBeNull();
-        expect(rowFor(container, 'qwen3-8b').querySelector('.model-picker-badge--default')).not.toBeNull();
     });
 
     it('marks a new chat pending pick as current', () => {
@@ -99,16 +96,21 @@ describe('ModelPicker rows', () => {
         expect(rowFor(container, 'openai/gpt-4o-mini').querySelector('.model-picker-badge--current')).not.toBeNull();
     });
 
-    it('offers "Use default" only when a selection exists', () => {
-        const {container: noSelection} = renderPicker();
-        expect(noSelection.querySelector('.model-picker-item--reset')).toBeNull();
+    it('lists only models, with no default row or badge, even when a model was chosen', () => {
+        const {container} = renderPicker({options: {...modelOptions, selectedModel: 'openai/gpt-4o'}});
 
-        const {container: withSelection, onResetToDefault} = renderPicker({options: {...modelOptions, selectedModel: 'openai/gpt-4o'}});
-        const resetRow = withSelection.querySelector('.model-picker-item--reset');
-        expect(resetRow.textContent).toContain('qwen3-8b');
+        expect(modelRows(container)).toHaveLength(4);
+        expect(container.textContent).not.toContain('Use default');
+        expect(container.querySelector('.model-picker-badge--default')).toBeNull();
+    });
 
-        fireEvent.mouseDown(resetRow);
-        expect(onResetToDefault).toHaveBeenCalledTimes(1);
+    it('picking the model already in use closes without choosing', () => {
+        const {container, onChoose, onClose} = renderPicker();
+
+        fireEvent.mouseDown(rowFor(container, 'qwen3-8b'));
+
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it('picks a model on mouse down', () => {
@@ -127,16 +129,10 @@ describe('ModelPicker rows', () => {
         expect(onChoose).not.toHaveBeenCalled();
     });
 
-    it('says which agent the chat is routed to', () => {
+    it('shows no agent line, even when the chat is routed to an agent', () => {
         const {container} = renderPicker({options: {...modelOptions, activeAgent: 'weather-agent'}});
 
-        expect(container.querySelector('.model-picker-agent').textContent).toContain('weather-agent');
-    });
-
-    it('shows no agent line when the chat is not routed to one', () => {
-        const {container} = renderPicker();
-
-        expect(container.querySelector('.model-picker-agent')).toBeNull();
+        expect(container.textContent).not.toContain('weather-agent');
     });
 });
 
@@ -229,7 +225,6 @@ describe('ModelPicker filter and keyboard', () => {
                             error={null}
                             pendingModel={null}
                             onChoose={vi.fn()}
-                            onResetToDefault={vi.fn()}
                             onRetry={vi.fn()}
                             onClose={onClose}
                         />

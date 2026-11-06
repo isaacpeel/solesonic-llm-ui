@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, afterEach} from 'vitest';
-import {render, cleanup, act} from '@testing-library/react';
+import {render, cleanup, act, fireEvent} from '@testing-library/react';
 import {MemoryRouter} from 'react-router';
 
 vi.mock('../../src/service/SharedSessionService.js', () => ({
@@ -13,14 +13,22 @@ vi.mock('../../src/push/usePushNavigation.js', () => ({
     PUSH_NAVIGATED_EVENT: 'push-navigated',
 }));
 
-import SharedSessionsLink from '../../src/sharedsessions/SharedSessionsLink.jsx';
+vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({
+    useKeycloak: () => ({logout: vi.fn()}),
+}));
+
+vi.mock('../../src/service/AuthService.js', () => ({
+    default: {getUsername: vi.fn().mockResolvedValue('Isaac')},
+}));
+
+import UserDialog from '../../src/settings/UserDialog.jsx';
 import sharedSessionService from '../../src/service/SharedSessionService.js';
 
 async function renderLink() {
     let rendered;
 
     await act(async () => {
-        rendered = render(<MemoryRouter><SharedSessionsLink/></MemoryRouter>);
+        rendered = render(<MemoryRouter><UserDialog/></MemoryRouter>);
     });
 
     return rendered.container;
@@ -31,7 +39,20 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-describe('SharedSessionsLink', () => {
+describe('shared sessions waiting dot on the user menu', () => {
+    it('lists Shared sessions in the user menu', async () => {
+        sharedSessionService.sessions.mockResolvedValue([]);
+        sharedSessionService.incomingInvites.mockResolvedValue([]);
+
+        const container = await renderLink();
+        await act(async () => {
+            fireEvent.click(container.querySelector('[data-dialog="User Options"]'));
+        });
+
+        expect(container.textContent).toContain('Shared sessions');
+        expect(container.querySelector('.shared-sessions-menu-dot')).toBeNull();
+    });
+
     it('shows the dot for an invite from a known agent', async () => {
         sharedSessionService.sessions.mockResolvedValue([]);
         sharedSessionService.incomingInvites.mockResolvedValue([{id: 'invite-1', agentName: 'feud'}]);

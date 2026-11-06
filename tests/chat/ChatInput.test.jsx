@@ -166,11 +166,13 @@ describe('ChatInput model picker', () => {
     });
 
     it('routes a pick and Escape to the hook', () => {
-        const modelPicker = buildModelPicker();
+        const modelPicker = buildModelPicker({
+            options: {models: [{id: 'qwen3-8b', ownedBy: 'local'}, {id: 'gemma-4', ownedBy: 'local'}], defaultModel: 'qwen3-8b', selectedModel: null, activeAgent: null},
+        });
         const {container} = renderChatInput({modelPicker});
 
-        fireEvent.mouseDown(container.querySelector('.model-picker-item'));
-        expect(modelPicker.choose).toHaveBeenCalledWith('qwen3-8b');
+        fireEvent.mouseDown(container.querySelectorAll('.model-picker-item')[1]);
+        expect(modelPicker.choose).toHaveBeenCalledWith('gemma-4');
 
         fireEvent.keyDown(container.querySelector('.model-picker-filter'), {key: 'Escape'});
         expect(modelPicker.closePicker).toHaveBeenCalledTimes(1);

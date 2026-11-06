@@ -2,6 +2,7 @@ import {useCallback, useRef, useState, useEffect} from 'react';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
 import {createPortal} from 'react-dom';
 import {toast} from 'react-toastify';
+import log from 'loglevel';
 import {useSharedData} from "../context/useSharedData.jsx";
 
 import './ChatScreen.css';
@@ -30,12 +31,13 @@ import useScrollToBottom from '../hooks/useScrollToBottom.js';
 import useKeyboardInset from '../hooks/useKeyboardInset.js';
 import {isDismissibleElicitation} from '../service/ElicitationService.js';
 import slashCommandService from '../service/SlashCommandService.js';
+import chatService from '../service/ChatService.js';
 import useCommandAvailable from '../hooks/useCommandAvailable.js';
 import {buildAnalyzeRequest, LOGS_COMMAND} from '../util/analyzeRequest.js';
 
 
 function ChatScreen() {
-    const {chatInputRef, headerActionsElement} = useSharedData();
+    const {chatInputRef, headerActionsElement, setReloadHistoryTrigger} = useSharedData();
 
     useEffect(() => {
         const handleCopy = (event) => {
@@ -215,6 +217,27 @@ function ChatScreen() {
     const chatTitle = (hydratedChat.chatId === chatId && hydratedChat.name)
         || (firstUserText && firstUserText.length > 60 ? `${firstUserText.slice(0, 59)}…` : firstUserText)
         || 'New chat';
+    const storedChatName = hydratedChat.chatId === chatId ? hydratedChat.name : null;
+
+    const handleRenameChat = async (name) => {
+        const renamingChatId = chatId;
+        const previousName = storedChatName;
+
+        setHydratedChat({chatId: renamingChatId, name});
+
+        try {
+            const renamedChat = await chatService.renameChat(renamingChatId, name);
+            setHydratedChat(current => current.chatId === renamingChatId ? {chatId: renamingChatId, name: renamedChat?.name ?? name} : current);
+            setReloadHistoryTrigger(trigger => trigger + 1);
+        } catch (caughtError) {
+            log.error('[ChatScreen] Rename failed', renamingChatId, caughtError);
+            setHydratedChat(current => current.chatId === renamingChatId ? {chatId: renamingChatId, name: previousName} : current);
+            toast.error(caughtError?.status === 400
+                ? 'That name could not be saved. Names must be 1–255 characters.'
+                : 'Could not rename the conversation. Please try again.');
+        }
+    };
+
     const modelFallback = latestModelName(chatHistory);
     const emptyConversation = isEmptyNewConversation(chatId, chatHistory);
 
@@ -227,6 +250,11 @@ function ChatScreen() {
             <div className="chat-content" ref={scrollContainerRef}>
                 <ChatHeader
                     title={chatTitle}
+                    rename={chatId ? {
+                        initialValue: storedChatName ?? '',
+                        placeholder: firstUserText ?? 'Conversation name',
+                        onRename: handleRenameChat,
+                    } : undefined}
                     subtitle={loading ? `${ASSISTANT_NAME} is responding…` : null}
                     busy={loading}
                 />

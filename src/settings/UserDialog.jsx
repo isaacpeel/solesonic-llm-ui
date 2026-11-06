@@ -1,9 +1,11 @@
 import {useEffect, useRef, useState} from 'react';
 import {useNavigate} from "react-router";
-import {UserCircleIcon, Cog6ToothIcon, ArrowLeftEndOnRectangleIcon} from "@heroicons/react/24/solid";
+import {UserCircleIcon, Cog6ToothIcon, ArrowLeftEndOnRectangleIcon, UserGroupIcon} from "@heroicons/react/24/solid";
 import {useKeycloak} from '../providers/KeycloakProvider.jsx';
 import authService from '../service/AuthService.js';
+import useSharedSessionsWaiting from '../sharedsessions/useSharedSessionsWaiting.js';
 import "./UserDialog.css";
+import "../sharedsessions/SharedSessions.css";
 
 const UserDialog = () => {
     const {logout} = useKeycloak();
@@ -11,6 +13,7 @@ const UserDialog = () => {
     const [showUserDialog, setShowUserDialog] = useState(false);
     const userDialogRef = useRef(null);
     const navigate = useNavigate();
+    const sharedSessionsWaiting = useSharedSessionsWaiting();
 
     useEffect(() => {
         function handleClickOutside(event) {
@@ -36,12 +39,13 @@ const UserDialog = () => {
     return (
         <div ref={userDialogRef}>
             <div
-                className="icon-wrapper"
+                className="icon-wrapper shared-sessions-link"
                 data-dialog="User Options"
                 onClick={() => setShowUserDialog(!showUserDialog)}
                 data-edge-right=""
             >
                 <UserCircleIcon/>
+                {sharedSessionsWaiting && <span className="shared-sessions-link-dot" aria-label="A shared session is waiting on you"/>}
             </div>
 
             {showUserDialog && (
@@ -60,6 +64,17 @@ const UserDialog = () => {
                         >
                             <Cog6ToothIcon className="icon"/>
                             Settings
+                        </div>
+                        <div
+                            className="dropdown-item shared-sessions-link"
+                            onClick={() => {
+                                navigate("/shared-sessions");
+                                setShowUserDialog(false);
+                            }}
+                        >
+                            <UserGroupIcon className="icon"/>
+                            Shared sessions
+                            {sharedSessionsWaiting && <span className="shared-sessions-menu-dot" aria-label="A shared session is waiting on you"/>}
                         </div>
                     </div>
 

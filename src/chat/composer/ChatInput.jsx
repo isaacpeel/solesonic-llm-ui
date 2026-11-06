@@ -146,7 +146,6 @@ function ChatInput({
                     error={modelPicker.pickerError}
                     pendingModel={modelPicker.pendingModel}
                     onChoose={modelPicker.choose}
-                    onResetToDefault={modelPicker.resetToDefault}
                     onRetry={modelPicker.openPicker}
                     onClose={modelPicker.closePicker}
                 />

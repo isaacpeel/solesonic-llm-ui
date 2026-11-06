@@ -6,20 +6,18 @@ import authService from '../service/AuthService.js';
 import UserMultiSelect from '../common/UserMultiSelect.jsx';
 import ShareChatDialog from './ShareChatDialog.jsx';
 import {
-    SHARED_AGENT_NAMES,
+    SHARED_CHAT_OPTION,
     conversationStatusText,
     describeInvitation,
     forSupportedSessions,
     isConversationSession,
-    sharedAgentFor,
     sharedAgentForSession,
+    sharedSessionOptions,
 } from './sharedAgents.js';
 import {otherParticipantNames} from './sharedSessionTranscript.js';
 import './SharedSessions.css';
 
-function firstOpeningOf(agentName) {
-    return sharedAgentFor(agentName).openings[0]?.openingMessage ?? '';
-}
+const SESSION_OPTIONS = sharedSessionOptions();
 
 function inviteName(username, displayName) {
     return displayName || username || 'someone';
@@ -52,12 +50,12 @@ const SharedSessionsScreen = () => {
     const [outgoing, setOutgoing] = useState([]);
     const [invitee, setInvitee] = useState([]);
     const [sharing, setSharing] = useState(false);
-    const [agentName, setAgentName] = useState(SHARED_AGENT_NAMES[0]);
-    const [openingMessage, setOpeningMessage] = useState(firstOpeningOf(SHARED_AGENT_NAMES[0]));
+    const [selectedValue, setSelectedValue] = useState(SESSION_OPTIONS[0].value);
     const [notice, setNotice] = useState(null);
     const [busy, setBusy] = useState(false);
 
-    const selectedAgent = sharedAgentFor(agentName);
+    const selectedOption = SESSION_OPTIONS.find((option) => option.value === selectedValue) ?? SESSION_OPTIONS[0];
+    const sharedChatSelected = selectedOption.value === SHARED_CHAT_OPTION;
 
     const refresh = useCallback(async () => {
         try {
@@ -96,19 +94,19 @@ const SharedSessionsScreen = () => {
         }
     }, []);
 
-    const handleAgentChange = (event) => {
-        setAgentName(event.target.value);
-        setOpeningMessage(firstOpeningOf(event.target.value));
-    };
-
     const handleInvite = async (event) => {
         event.preventDefault();
+
+        if (sharedChatSelected) {
+            setSharing(true);
+            return;
+        }
 
         if (invitee.length === 0) {
             return;
         }
 
-        const invite = await act(() => sharedSessionService.invite(invitee[0].username, agentName, openingMessage || undefined));
+        const invite = await act(() => sharedSessionService.invite(invitee[0].username, selectedOption.agentName, selectedOption.openingMessage || undefined));
 
         if (invite) {
             setInvitee([]);
@@ -150,30 +148,25 @@ const SharedSessionsScreen = () => {
                             ariaLabel="Username"
                         />
                     </div>
-                    {SHARED_AGENT_NAMES.length > 1 && (
-                        <select value={agentName} onChange={handleAgentChange} aria-label="Agent">
-                            {SHARED_AGENT_NAMES.map((name) => (
-                                <option key={name} value={name}>{sharedAgentFor(name).label}</option>
-                            ))}
-                        </select>
-                    )}
-                    {selectedAgent.openings.length > 0 && (
-                        <select value={openingMessage} onChange={(event) => setOpeningMessage(event.target.value)} aria-label="How to start">
-                            {selectedAgent.openings.map((opening) => (
-                                <option key={opening.openingMessage} value={opening.openingMessage}>{opening.label}</option>
-                            ))}
-                        </select>
-                    )}
-                    <button type="submit" className="shared-sessions-button shared-sessions-button--primary" disabled={busy || invitee.length === 0}>
-                        Invite
+                    <select
+                        className="shared-sessions-type-select"
+                        value={selectedOption.value}
+                        onChange={(event) => setSelectedValue(event.target.value)}
+                        aria-label="Session type"
+                    >
+                        {SESSION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                    <button
+                        type="submit"
+                        className="shared-sessions-button shared-sessions-button--primary"
+                        disabled={busy || (!sharedChatSelected && invitee.length === 0)}
+                    >
+                        {sharedChatSelected ? 'Start chat' : 'Invite'}
                     </button>
                 </form>
                 {notice && <p className="shared-sessions-notice" role="status">{notice}</p>}
-                <div className="shared-sessions-start">
-                    <button type="button" className="shared-sessions-button" onClick={() => setSharing(true)}>
-                        Start a shared chat
-                    </button>
-                </div>
             </section>
 
             {incoming.length > 0 && (
@@ -202,13 +195,15 @@ const SharedSessionsScreen = () => {
                 ) : (
                     <ul className="shared-sessions-list">
                         {sessions.map((session) => (
-                            <li key={session.id} className="shared-sessions-list-item">
-                                <Link to={`/shared-sessions/${session.id}`}>
-                                    {sharedAgentForSession(session).label} with {otherParticipantNames(session, viewerUserId).join(', ') || 'no one yet'}
+                            <li key={session.id}>
+                                <Link to={`/shared-sessions/${session.id}`} className="shared-sessions-list-item shared-sessions-list-item--link">
+                                    <span className="shared-sessions-list-item-name">
+                                        {sharedAgentForSession(session).label} with {otherParticipantNames(session, viewerUserId).join(', ') || 'no one yet'}
+                                    </span>
+                                    <span className={session.yourTurn && !isConversationSession(session) ? 'shared-sessions-waiting-on-you' : 'shared-sessions-notice'}>
+                                        {sessionStatusText(session)}
+                                    </span>
                                 </Link>
-                                <span className={session.yourTurn && !isConversationSession(session) ? 'shared-sessions-waiting-on-you' : 'shared-sessions-notice'}>
-                                    {sessionStatusText(session)}
-                                </span>
                             </li>
                         ))}
                     </ul>
@@ -234,6 +229,7 @@ const SharedSessionsScreen = () => {
                 <ShareChatDialog
                     sourceChatId={null}
                     chatName=""
+                    initialPeople={invitee}
                     onCancel={() => setSharing(false)}
                     onShared={() => setSharing(false)}
                 />

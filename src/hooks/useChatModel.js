@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import log from 'loglevel';
 import chatModelService, {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatModelService.js';
 import {LLM_KEY_MISSING_CODE} from '../service/LlmKeyService.js';
+import {modelLabel} from '../util/modelLabels.js';
 
 export const PICKER_ERROR_UNAVAILABLE = 'unavailable';
 export const PICKER_ERROR_UNKNOWN_MODEL = 'unknown';
@@ -40,6 +41,10 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
     const [trackedModel, setTrackedModel] = useState(currentModel);
     const [selectedModel, setSelectedModel] = useState(currentModel);
     const [defaultModel, setDefaultModel] = useState(null);
+    // The last list fetched, kept across chats (it is the user's, not the chat's) so labels survive a closed picker.
+    const [knownModels, setKnownModels] = useState([]);
+
+    const labelFor = useCallback((modelId) => modelLabel(knownModels, modelId), [knownModels]);
 
     const chatIdRef = useRef(chatId);
     const requestGenerationRef = useRef(0);
@@ -64,7 +69,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
 
         if (!chatChanged && trackedModel !== undefined && currentModel !== undefined) {
             setOptions((previousOptions) => (previousOptions ? {...previousOptions, selectedModel: currentModel} : previousOptions));
-            setModelNotice(currentModel ? `Model set to ${currentModel}.` : 'Using the default model.');
+            setModelNotice(currentModel ? `Model set to ${labelFor(currentModel)}.` : 'Using the default model.');
         }
     }
 
@@ -82,6 +87,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
                 }
 
                 setDefaultModel(fetchedOptions?.defaultModel ?? null);
+                setKnownModels(fetchedOptions?.models ?? []);
 
                 if (chatId) {
                     setSelectedModel(fetchedOptions?.selectedModel ?? null);
@@ -117,6 +123,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
             if (isCurrentRequest(generation, requestChatId)) {
                 setOptions(fetchedOptions);
                 setDefaultModel(fetchedOptions?.defaultModel ?? null);
+                setKnownModels(fetchedOptions?.models ?? []);
 
                 if (requestChatId) {
                     setSelectedModel(fetchedOptions?.selectedModel ?? null);
@@ -201,7 +208,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
 
         if (!requestChatId) {
             setPendingModel(modelId);
-            setModelNotice(`Your first message will use ${modelId}.`);
+            setModelNotice(`Your first message will use ${labelFor(modelId)}.`);
             closePicker();
             return true;
         }
@@ -209,14 +216,14 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
         return await applyToChat(
             requestChatId,
             () => chatModelService.select(requestChatId, modelId),
-            `Model set to ${modelId}.`,
+            `Model set to ${labelFor(modelId)}.`,
             modelId,
         );
-    }, [applyToChat, closePicker]);
+    }, [applyToChat, closePicker, labelFor]);
 
     const resetToDefault = useCallback(async () => {
         const requestChatId = chatIdRef.current;
-        const defaultModelName = options?.defaultModel ?? defaultModel;
+        const defaultModelName = labelFor(options?.defaultModel ?? defaultModel);
 
         if (!requestChatId) {
             setPendingModel(null);
@@ -231,7 +238,7 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
             defaultModelNotice('Using the default model', defaultModelName),
             null,
         );
-    }, [applyToChat, closePicker, options, defaultModel]);
+    }, [applyToChat, closePicker, options, defaultModel, labelFor]);
 
     const rejectPendingModel = useCallback(() => {
         setPendingModel(null);
@@ -248,12 +255,15 @@ function useChatModel({chatId, onChatNotFound, currentModel}) {
 
     const displayModel = pendingModel
         ?? (chatId && selectedModel === undefined ? undefined : selectedModel ?? defaultModel ?? undefined);
+    const displayLabel = displayModel === undefined ? undefined : labelFor(displayModel);
 
     return {
         pickerOpen,
         selectedModel,
         defaultModel,
         displayModel,
+        displayLabel,
+        labelFor,
         refreshOptions,
         options,
         loadingOptions,

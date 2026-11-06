@@ -1,16 +1,12 @@
 import {useCallback, useEffect, useState} from 'react';
-import {useNavigate} from 'react-router';
 import log from 'loglevel';
-import {UserGroupIcon} from '@heroicons/react/24/solid/index.js';
 import sharedSessionService from '../service/SharedSessionService.js';
 import {PUSH_NAVIGATED_EVENT} from '../push/usePushNavigation.js';
 import {forSupportedSessions, isConversationSession} from './sharedAgents.js';
-import './SharedSessions.css';
 
 const RECHECK_AFTER_MILLISECONDS = 60 * 1000;
 
-const SharedSessionsLink = () => {
-    const navigate = useNavigate();
+const useSharedSessionsWaiting = () => {
     const [waiting, setWaiting] = useState(false);
 
     const check = useCallback(async () => {
@@ -19,7 +15,7 @@ const SharedSessionsLink = () => {
 
             setWaiting(forSupportedSessions(sessions).some((session) => session.yourTurn && !isConversationSession(session)) || forSupportedSessions(invites).length > 0);
         } catch (caughtError) {
-            log.debug('[SharedSessionsLink] Could not check for shared sessions', caughtError);
+            log.debug('[useSharedSessionsWaiting] Could not check for shared sessions', caughtError);
         }
     }, []);
 
@@ -43,12 +39,7 @@ const SharedSessionsLink = () => {
         };
     }, [check]);
 
-    return (
-        <div className="icon-wrapper shared-sessions-link" onClick={() => navigate('/shared-sessions')} data-dialog="Shared sessions">
-            <UserGroupIcon/>
-            {waiting && <span className="shared-sessions-link-dot" aria-label="A shared session is waiting on you"/>}
-        </div>
-    );
+    return waiting;
 };
 
-export default SharedSessionsLink;
+export default useSharedSessionsWaiting;

@@ -8,11 +8,9 @@ import {
 } from '../../hooks/useChatModel.js';
 import {NO_MODEL_ACCESS_MESSAGE} from '../../service/LlmKeyService.js';
 import useIsMobile from '../../hooks/useIsMobile.js';
+import {visibleModels} from '../../util/modelLabels.js';
 
-const RESET_ROW = 'reset';
-const MODEL_ROW = 'model';
-
-function ModelPicker({options, loading, saving, error, pendingModel, onChoose, onResetToDefault, onRetry, onClose}) {
+function ModelPicker({options, loading, saving, error, pendingModel, onChoose, onRetry, onClose}) {
     const [filterText, setFilterText] = useState('');
     const [activeIndex, setActiveIndex] = useState(-1);
     const containerRef = useRef(null);
@@ -46,27 +44,25 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
         };
     }, [onClose]);
 
-    const models = options?.models ?? [];
+    const models = visibleModels(options?.models);
     const defaultModel = options?.defaultModel ?? null;
     const selection = options?.selectedModel ?? pendingModel ?? null;
     const currentModel = selection ?? defaultModel;
     const normalizedFilter = filterText.trim().toLowerCase();
 
-    const filteredModels = models.filter((model) => model.id.toLowerCase().includes(normalizedFilter));
-    const showResetRow = !!selection && !!defaultModel && normalizedFilter.length === 0;
+    const filteredModels = models.filter((model) => model.id.toLowerCase().includes(normalizedFilter)
+        || (model.displayName ?? '').toLowerCase().includes(normalizedFilter));
+    const rows = filteredModels.map((model) => ({key: model.id, model}));
 
-    const rows = [
-        ...(showResetRow ? [{type: RESET_ROW, key: RESET_ROW}] : []),
-        ...filteredModels.map((model) => ({type: MODEL_ROW, key: model.id, model})),
-    ];
+    const isCurrent = (model) => !!currentModel && model.id.toLowerCase() === currentModel.toLowerCase();
 
     const pickRow = (row) => {
         if (!row || saving) {
             return;
         }
 
-        if (row.type === RESET_ROW) {
-            onResetToDefault();
+        if (isCurrent(row.model)) {
+            onClose();
             return;
         }
 
@@ -147,7 +143,7 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
             <ul className="model-picker-list" role="listbox" id={listId} aria-label="Models">
                 {rows.map((row, index) => {
                     const isActive = index === activeIndex;
-                    const itemClassName = `model-picker-item${row.type === RESET_ROW ? ' model-picker-item--reset' : ''}${isActive ? ' model-picker-item--active' : ''}`;
+                    const itemClassName = `model-picker-item${isActive ? ' model-picker-item--active' : ''}`;
 
                     return (
                         <li
@@ -161,23 +157,14 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
                                 pickRow(row);
                             }}
                         >
-                            {row.type === RESET_ROW ? (
-                                <span className="model-picker-item-name">Use default ({defaultModel})</span>
-                            ) : (
-                                <>
-                                    <span className="model-picker-item-heading">
-                                        <span className="model-picker-item-name">{row.model.id}</span>
-                                        {row.model.id === currentModel && (
-                                            <span className="model-picker-badge model-picker-badge--current">Current</span>
-                                        )}
-                                        {row.model.id === defaultModel && (
-                                            <span className="model-picker-badge model-picker-badge--default">Default</span>
-                                        )}
-                                    </span>
-                                    {row.model.ownedBy && (
-                                        <span className="model-picker-item-owner">{row.model.ownedBy}</span>
-                                    )}
-                                </>
+                            <span className="model-picker-item-heading">
+                                <span className="model-picker-item-name">{row.model.displayName || row.model.id}</span>
+                                {isCurrent(row.model) && (
+                                    <span className="model-picker-badge model-picker-badge--current">Current</span>
+                                )}
+                            </span>
+                            {row.model.ownedBy && (
+                                <span className="model-picker-item-owner">{row.model.ownedBy}</span>
                             )}
                         </li>
                     );
@@ -199,12 +186,6 @@ function ModelPicker({options, loading, saving, error, pendingModel, onChoose, o
                 onChange={handleFilterChange}
                 onKeyDown={handleFilterKeyDown}
             />
-
-            {options?.activeAgent && (
-                <div className="model-picker-agent">
-                    This chat is routed to <code>{options.activeAgent}</code>; the model applies once another command releases it.
-                </div>
-            )}
 
             {error === PICKER_ERROR_UNKNOWN_MODEL && (
                 <div className="model-picker-message model-picker-message--error" role="alert">

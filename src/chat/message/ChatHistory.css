@@ -3,10 +3,51 @@
  * claim every pixel the fixed drawer leaves under the toggle icon.
  */
 .chat-drawer-container {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
+}
+
+/* Grab strip on the drawer's right edge; wider than it looks so a finger can find it. */
+.chat-drawer-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 12px;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 1001;
+}
+
+.chat-drawer-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 3px;
+    background: transparent;
+    transition: background-color var(--transition-speed);
+}
+
+.chat-drawer-resize-handle:hover::after,
+.chat-drawer-resize-handle:focus-visible::after,
+.chat-drawer-resize-handle-active::after {
+    background: var(--border-color);
+}
+
+.chat-drawer-resize-handle:focus-visible {
+    outline: none;
+}
+
+.chat-groups-section-count {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    font-weight: normal;
+    opacity: 0.7;
 }
 
 /*
@@ -369,7 +410,7 @@
     top: 0;
     left: 0;
     bottom: 0;
-    width: 250px;
+    width: var(--chat-drawer-width, 250px);
     display: flex;
     flex-direction: column;
     background-color: var(--primary-color); /* Matches primary sections */

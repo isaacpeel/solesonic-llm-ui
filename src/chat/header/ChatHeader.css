@@ -74,6 +74,60 @@
     text-overflow: ellipsis;
 }
 
+.chat-header-name-button {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.chat-header-name-button:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+.chat-header-name-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.chat-header-title-editor {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+.chat-header-title-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--secondary-color);
+    color: var(--text-color);
+    font: inherit;
+    /* 16px keeps iOS from zooming the page when the field takes focus. */
+    font-size: 16px;
+}
+
+.chat-header-title-save {
+    color: #4caf50;
+}
+
+.chat-header-title-cancel {
+    color: var(--chat-header-danger-color);
+}
+
 .chat-header-subtitle {
     display: flex;
     align-items: center;

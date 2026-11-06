@@ -7,9 +7,8 @@ import {
     PICKER_ERROR_UNKNOWN_MODEL,
 } from '../../hooks/useChatModel.js';
 import {NO_MODEL_ACCESS_MESSAGE} from '../../service/LlmKeyService.js';
+import {visibleModels} from '../../util/modelLabels.js';
 import './ModelSelect.css';
-
-const DEFAULT_ROW = '__default__';
 
 function errorText(error) {
     switch (error) {
@@ -35,17 +34,19 @@ function ModelSelect({chatModel, fallbackLabel}) {
     const listId = useId();
 
     const options = chatModel.options;
-    const models = options?.models ?? [];
+    const models = visibleModels(options?.models);
     const defaultModel = options?.defaultModel ?? chatModel.defaultModel ?? null;
-    const selectedId = chatModel.pendingModel ?? chatModel.selectedModel ?? null;
-    const label = chatModel.displayModel || fallbackLabel || 'Default model';
+    // With no choice made the chat runs on the default, so the default is the one marked.
+    const currentId = (chatModel.pendingModel ?? chatModel.selectedModel ?? defaultModel)?.toLowerCase() ?? null;
+    const label = chatModel.displayLabel || chatModel.displayModel || chatModel.labelFor?.(fallbackLabel) || fallbackLabel || 'Default model';
     const saving = !!chatModel.savingModel;
     const message = errorText(chatModel.pickerError);
 
-    const rows = [
-        {id: DEFAULT_ROW, label: defaultModel ? `Default (${defaultModel})` : 'Default model', selected: !selectedId},
-        ...models.map((model) => ({id: model.id, label: model.id, selected: model.id === selectedId})),
-    ];
+    const rows = models.map((model) => ({
+        id: model.id,
+        label: model.displayName || model.id,
+        selected: model.id.toLowerCase() === currentId,
+    }));
 
     const close = ({returnFocus = false} = {}) => {
         setOpen(false);
@@ -85,11 +86,12 @@ function ModelSelect({chatModel, fallbackLabel}) {
             return;
         }
 
-        const changed = row.id === DEFAULT_ROW
-            ? await chatModel.resetToDefault()
-            : await chatModel.choose(row.id);
+        if (row.selected) {
+            close({returnFocus: true});
+            return;
+        }
 
-        if (changed) {
+        if (await chatModel.choose(row.id)) {
             close({returnFocus: true});
         }
     };
@@ -153,11 +155,6 @@ function ModelSelect({chatModel, fallbackLabel}) {
                             {chatModel.pickerError === PICKER_ERROR_UNAVAILABLE && (
                                 <button type="button" className="model-select-retry" onClick={chatModel.refreshOptions}>Retry</button>
                             )}
-                        </div>
-                    )}
-                    {options?.activeAgent && (
-                        <div className="model-select-message">
-                            Routed to <code>{options.activeAgent}</code>. The model applies once it is released.
                         </div>
                     )}
                     {showList && (

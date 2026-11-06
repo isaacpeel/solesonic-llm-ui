@@ -80,6 +80,9 @@ const ROW_HEIGHT = 41;
 /* Matches `.drawer`'s fixed width, which is what the out-of-drawer dead band is measured from. */
 const DRAWER_WIDTH = 250;
 
+/* Rows below the collapsible "Groups" header, so indexes start at the first group or day. */
+const LIST_ROW_SELECTOR = '.chat-history-row:not(.chat-groups-section-row)';
+
 /*
  * jsdom lays nothing out, so every element reports zero for the metrics @tanstack/virtual-core
  * actually reads — `offsetWidth`/`offsetHeight` (its ResizeObserver path never fires under test;
@@ -190,6 +193,7 @@ function renderChatHistory({
     initialPath = '/',
     viewerUserId = 'user-1',
     omitUserId = false,
+    groupsExpanded = true,
 } = {}) {
     const loadMore = vi.fn();
     const retry = vi.fn();
@@ -260,6 +264,12 @@ function renderChatHistory({
             </SharedDataContext.Provider>
         </MemoryRouter>
     );
+
+    const groupsSectionHeader = renderResult.container.querySelector('.chat-groups-section-header');
+
+    if (groupsExpanded && groupsSectionHeader) {
+        fireEvent.click(groupsSectionHeader);
+    }
 
     return {
         ...renderResult,
@@ -360,13 +370,14 @@ describe('ChatHistory virtualization', () => {
     it('truncates a long message onto one row', () => {
         const chats = [{
             id: 'chat-long',
-            timestamp: '2026-08-03T10:00:00.000-06:00',
+            timestamp: todayAtMidMorning(),
             chatMessages: [{message: 'x'.repeat(90)}],
         }];
 
         const {container} = renderChatHistory({chats});
 
-        expect(container.querySelector('.chat-item').textContent).toBe('x'.repeat(25) + '...');
+        /* The full label goes in the row; CSS ellipsizes it to whatever width the drawer has. */
+        expect(container.querySelector('.chat-item-label').textContent).toBe('x'.repeat(90));
     });
 });
 
@@ -388,7 +399,7 @@ describe('ChatHistory collapsing a day', () => {
     }
 
     function dayHeaders(container) {
-        return Array.from(container.querySelectorAll('.date-header'));
+        return Array.from(container.querySelectorAll('.date-header:not(.chat-groups-section-header)'));
     }
 
     function rowLabels(container) {
@@ -426,7 +437,7 @@ describe('ChatHistory collapsing a day', () => {
 
         expect(dayHeaders(container).map(header => header.textContent)).toEqual(['Today', 'Yesterday']);
 
-        fireEvent.click(container.querySelectorAll('.date-header')[0]);
+        fireEvent.click(dayHeaders(container)[0]);
 
         expect(rowLabels(container)).toEqual(['Yesterday message']);
         expect(dayHeaders(container)).toHaveLength(2);
@@ -548,7 +559,7 @@ const ROW_RECTANGLE = {
  * and once at the coordinate the release actually happens at, which is what settles the edge.
  */
 function dragRow(container, fromIndex, toIndex, {edge = 'before'} = {}) {
-    const rows = container.querySelectorAll('.chat-history-row');
+    const rows = container.querySelectorAll(LIST_ROW_SELECTOR);
     const handle = rows[fromIndex].querySelector('.chat-history-drag-handle');
     const target = rows[toIndex];
 
@@ -565,7 +576,7 @@ function dragRow(container, fromIndex, toIndex, {edge = 'before'} = {}) {
 
 /* Drags a conversation onto the `+ New group` button, which creates the group around it. */
 function dragRowOntoNewGroup(container, fromIndex) {
-    const handle = container.querySelectorAll('.chat-history-row')[fromIndex]
+    const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[fromIndex]
         .querySelector('.chat-history-drag-handle');
 
     hitTestElement = container.querySelector('.chat-history-new-group');
@@ -577,7 +588,7 @@ function dragRowOntoNewGroup(container, fromIndex) {
 
 /* Presses a grip and moves, without releasing — for asserting on the drag while it is in flight. */
 function startDraggingRow(container, fromIndex) {
-    const handle = container.querySelectorAll('.chat-history-row')[fromIndex]
+    const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[fromIndex]
         .querySelector('.chat-history-drag-handle');
 
     fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
@@ -586,7 +597,7 @@ function startDraggingRow(container, fromIndex) {
 
 /* Holds a conversation over another row without releasing, for asserting on the drop indicator. */
 function hoverRowOver(container, fromIndex, toIndex, {edge = 'before'} = {}) {
-    const rows = container.querySelectorAll('.chat-history-row');
+    const rows = container.querySelectorAll(LIST_ROW_SELECTOR);
     const target = rows[toIndex];
 
     target.getBoundingClientRect = () => ROW_RECTANGLE;
@@ -601,7 +612,7 @@ function hoverRowOver(container, fromIndex, toIndex, {edge = 'before'} = {}) {
 }
 
 function pressDragHandle(container, rowIndex, key) {
-    const handle = container.querySelectorAll('.chat-history-row')[rowIndex]
+    const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[rowIndex]
         .querySelector('.chat-history-drag-handle');
 
     fireEvent.keyDown(handle, {key});
@@ -625,7 +636,7 @@ describe('ChatHistory row labels', () => {
         const longName = 'n'.repeat(40);
         const {container} = renderChatHistory({chats: chatsOf(1, longName)});
 
-        expect(container.querySelector('.chat-item-label').textContent).toBe('n'.repeat(25) + '...');
+        expect(container.querySelector('.chat-item-label').textContent).toBe(longName);
         expect(container.querySelector('.chat-item').getAttribute('title')).toBe(longName);
     });
 });
@@ -822,6 +833,33 @@ function renderExpandedGroup(groupChats, {last = true, chats = []} = {}) {
 }
 
 describe('ChatHistory conversation groups', () => {
+    it('starts with the Groups section collapsed and opens it on click', () => {
+        const {container} = renderChatHistory({
+            chats: chatsOf(2),
+            hasMore: false,
+            groups: [WORK_GROUP, PERSONAL_GROUP],
+            groupsExpanded: false,
+        });
+
+        const sectionHeader = container.querySelector('.chat-groups-section-header');
+
+        expect(sectionHeader.getAttribute('aria-expanded')).toBe('false');
+        expect(sectionHeader.textContent).toBe('Groups2');
+        expect(container.querySelectorAll('.chat-group-header')).toHaveLength(0);
+        expect(container.querySelectorAll('.chat-item')).toHaveLength(2);
+
+        fireEvent.click(sectionHeader);
+
+        expect(container.querySelector('.chat-groups-section-header').getAttribute('aria-expanded')).toBe('true');
+        expect(Array.from(container.querySelectorAll('.chat-group-header')).map(header => header.textContent)).toEqual(['Work', 'Personal']);
+    });
+
+    it('shows no Groups section when there are no groups', () => {
+        const {container} = renderChatHistory({chats: chatsOf(2), hasMore: false});
+
+        expect(container.querySelector('.chat-groups-section-header')).toBeNull();
+    });
+
     it('renders every group above the ungrouped list, collapsed', () => {
         const {container} = renderChatHistory({
             chats: chatsOf(2),
@@ -835,7 +873,7 @@ describe('ChatHistory conversation groups', () => {
         expect(groupHeaders[0].getAttribute('aria-expanded')).toBe('false');
         expect(container.querySelectorAll('.chat-item-in-group')).toHaveLength(0);
         /* Above the ungrouped list, not below it. */
-        expect(container.querySelector('.chat-history-spacer').firstElementChild.textContent).toBe('Work');
+        expect(container.querySelector(LIST_ROW_SELECTOR).textContent).toBe('Work');
     });
 
     it('keeps a conversation filed under a group out of the day-bucketed list', () => {
@@ -952,7 +990,7 @@ describe('ChatHistory drag handles', () => {
     it('does not lift anything until the pointer has actually travelled', () => {
         const {container} = renderChatHistory({chats: chatsOf(2), hasMore: false});
 
-        const handle = container.querySelectorAll('.chat-history-row')[2]
+        const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[2]
             .querySelector('.chat-history-drag-handle');
 
         fireEvent(handle, pointerEventOf('pointerdown', {clientY: 0}));
@@ -1683,7 +1721,7 @@ describe('ChatHistory dragging in the ungrouped list', () => {
 
 /* Row indices shift with however many group sections sit above the day buckets. */
 function rowIndexOfConversation(container, label) {
-    return Array.from(container.querySelectorAll('.chat-history-row'))
+    return Array.from(container.querySelectorAll(LIST_ROW_SELECTOR))
         .findIndex(row => row.querySelector('.chat-item-label')?.textContent === label);
 }
 
@@ -1695,7 +1733,7 @@ const DRIFTED_PAST_DRAWER = DRAWER_WIDTH + 8;
 
 /* Releases the conversation clear of the drawer. */
 function dragRowOutOfDrawer(container, fromIndex) {
-    const handle = container.querySelectorAll('.chat-history-row')[fromIndex]
+    const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[fromIndex]
         .querySelector('.chat-history-drag-handle');
 
     hitTestElement = document.body;
@@ -1791,7 +1829,7 @@ describe('ChatHistory dragging out of the drawer', () => {
     it('dims the drawer while the conversation is held outside it', () => {
         const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
 
-        const handle = container.querySelectorAll('.chat-history-row')[1]
+        const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[1]
             .querySelector('.chat-history-drag-handle');
 
         hitTestElement = document.body;
@@ -1867,7 +1905,7 @@ describe('ChatHistory dragging out of the drawer', () => {
     it('offers nothing for a drift that only just clears the drawer', () => {
         const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
 
-        const handle = container.querySelectorAll('.chat-history-row')[1]
+        const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[1]
             .querySelector('.chat-history-drag-handle');
 
         hitTestElement = document.body;
@@ -1887,7 +1925,7 @@ describe('ChatHistory dragging out of the drawer', () => {
     it('offers nothing when the pointer leaves the viewport', () => {
         const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
 
-        const handle = container.querySelectorAll('.chat-history-row')[1]
+        const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[1]
             .querySelector('.chat-history-drag-handle');
 
         hitTestElement = null;
@@ -1902,7 +1940,7 @@ describe('ChatHistory dragging out of the drawer', () => {
     it('abandons the drag on Escape before it is released', () => {
         const {container} = renderChatHistory({chats: chatsOf(1), hasMore: false});
 
-        const handle = container.querySelectorAll('.chat-history-row')[1]
+        const handle = container.querySelectorAll(LIST_ROW_SELECTOR)[1]
             .querySelector('.chat-history-drag-handle');
 
         hitTestElement = document.body;

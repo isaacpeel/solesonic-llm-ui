@@ -70,7 +70,7 @@ describe('sharedAgents', () => {
     });
 
     it('describes an invitation by its agent and, when known, how it opens', () => {
-        expect(describeInvitation('feud', 'new show')).toBe('Family Feud · The whole show');
+        expect(describeInvitation('feud', 'new show')).toBe('Family Feud · Full show (Main Games, Fast Money, Big Money)');
         expect(describeInvitation('feud', 'something else')).toBe('Family Feud');
         expect(describeInvitation('weather', 'hello')).toBe('weather');
     });

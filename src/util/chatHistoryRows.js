@@ -17,11 +17,15 @@ export const CHAT_HISTORY_CHAT_ROW = "chat";
  */
 export const CHAT_GROUP_HEADER_ROW = "groupHeader";
 
+export const CHAT_GROUPS_SECTION_ROW = "groupsSection";
+
+export const CHAT_GROUPS_SECTION_LABEL = "Groups";
+
 export const CHAT_GROUP_EMPTY_ROW = "groupEmpty";
 
 export const CHAT_GROUP_LOAD_MORE_ROW = "groupLoadMore";
 
-/* Longest message that still fits the 250px drawer on one line; longer ones are ellipsized. */
+/* Short form used for the rename placeholder; drawer rows render the full label and ellipsize it in CSS, so a widened drawer shows more of it. */
 const MAXIMUM_LABEL_LENGTH = 25;
 
 const NO_MESSAGES_LABEL = "No messages yet";
@@ -115,15 +119,33 @@ export function chatFromRow(row) {
  * actions read `name` today and ordering and grouping will read more of it, and threading one more
  * property through per feature does not scale.
  *
+ * With `groupsCollapsible`, the group sections sit under one "Groups" header row that hides all of
+ * them while `groupsExpanded` is false.
+ *
  * @param {Array<{key?: string, label?: string, chats?: Array, chatGroupId?: string, expanded?: boolean, loading?: boolean, hasMore?: boolean, count?: number|null}>} sections
+ * @param {{groupsCollapsible?: boolean, groupsExpanded?: boolean}} [options]
  * @returns {Array<{type: string, key: string, label: string, chatId?: *, fullLabel?: string, chat?: *, chatGroupId?: string, dayKey?: string, expanded?: boolean, loading?: boolean, count?: number|null, firstInList?: boolean}>}
  */
-export function flattenChatGroupsToRows(sections) {
+export function flattenChatGroupsToRows(sections, {groupsCollapsible = false, groupsExpanded = true} = {}) {
     const rows = [];
+    const groupCount = (sections ?? []).filter(section => section?.chatGroupId).length;
+
+    if (groupsCollapsible && groupCount > 0) {
+        rows.push({
+            type: CHAT_GROUPS_SECTION_ROW,
+            key: "groupsSection",
+            label: CHAT_GROUPS_SECTION_LABEL,
+            expanded: groupsExpanded,
+            count: groupCount,
+            firstInList: true,
+        });
+    }
 
     for (const section of sections ?? []) {
         if (section?.chatGroupId) {
-            rows.push(...chatGroupSectionRows(section));
+            if (!groupsCollapsible || groupsExpanded) {
+                rows.push(...chatGroupSectionRows(section));
+            }
             continue;
         }
 
@@ -274,7 +296,7 @@ export function estimateChatHistoryRowSize(row) {
         return ESTIMATED_SEARCH_RESULT_ROW_HEIGHT;
     }
 
-    if (row?.type === CHAT_HISTORY_HEADER_ROW) {
+    if (row?.type === CHAT_HISTORY_HEADER_ROW || row?.type === CHAT_GROUPS_SECTION_ROW) {
         return row.firstInList
             ? ESTIMATED_HEADER_ROW_HEIGHT
             : ESTIMATED_HEADER_ROW_HEIGHT + ESTIMATED_HEADER_ROW_SPACING;
