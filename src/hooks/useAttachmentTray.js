@@ -41,7 +41,7 @@ function messageForUploadFailure(caughtError) {
     }
 }
 
-function useAttachmentTray({chatId} = {}) {
+function useAttachmentTray({chatId, persistDraft = true} = {}) {
     const [trayEntries, setTrayEntries] = useState([]);
     const [trayError, setTrayError] = useState(null);
     const trayEntriesRef = useRef([]);
@@ -283,8 +283,11 @@ function useAttachmentTray({chatId} = {}) {
 
         setTrayEntries([]);
         setTrayError(null);
-        clearAttachmentDraft(chatId);
-    }, [chatId]);
+
+        if (persistDraft) {
+            clearAttachmentDraft(chatId);
+        }
+    }, [chatId, persistDraft]);
 
     const restoreTray = useCallback((entriesToRestore) => {
         if (!Array.isArray(entriesToRestore) || entriesToRestore.length === 0) {
@@ -300,6 +303,10 @@ function useAttachmentTray({chatId} = {}) {
      * and cannot be re-staged for a caption edit — hence `restoredFromDraft`.
      */
     useEffect(() => {
+        if (!persistDraft) {
+            return undefined;
+        }
+
         let isEffectActive = true;
 
         restoreValidatedAttachmentDraft(chatId)
@@ -338,11 +345,13 @@ function useAttachmentTray({chatId} = {}) {
         return () => {
             isEffectActive = false;
         };
-    }, [chatId]);
+    }, [chatId, persistDraft]);
 
     useEffect(() => {
-        saveAttachmentDraft(chatId, trayEntries);
-    }, [chatId, trayEntries]);
+        if (persistDraft) {
+            saveAttachmentDraft(chatId, trayEntries);
+        }
+    }, [chatId, persistDraft, trayEntries]);
 
     const stagedAttachmentIds = useMemo(() => {
         return trayEntries

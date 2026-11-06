@@ -11,6 +11,7 @@ vi.mock('../../src/service/ElicitationService.js', () => ({
     default: {
         handleElicitationChange: vi.fn(),
         handleElicitationSubmit: vi.fn().mockResolvedValue(undefined),
+        dismissElicitation: vi.fn().mockResolvedValue(true),
     },
 }));
 
@@ -158,5 +159,42 @@ describe('useElicitation', () => {
         });
 
         expect(elicitationService.handleElicitationSubmit.mock.calls[1][0].carriedNotifications).toEqual([]);
+    });
+
+    it('dismissElicitation declines through the service and reports its outcome', async () => {
+        options.activeElicitation = {name: 'elicitation', _meta: {'solesonic/elicitation': 'feud'}};
+        const {result} = renderHook(() => useElicitation(options));
+
+        let dismissed;
+        await act(async () => {
+            dismissed = await result.current.dismissElicitation();
+        });
+
+        expect(dismissed).toBe(true);
+        expect(elicitationService.dismissElicitation).toHaveBeenCalledWith({
+            activeElicitation: options.activeElicitation,
+            setChatHistory: options.setChatHistory,
+            setActiveElicitation: options.setActiveElicitation,
+            appendErrorMessage: options.appendErrorMessage,
+        });
+    });
+
+    it('dismissElicitation drops notifications carried for a submit that will never come', async () => {
+        options.activeElicitation = {name: 'elicitation'};
+        const {result} = renderHook(() => useElicitation(options));
+
+        const updater = options.setChatHistory.mock.calls[0][0];
+        updater([
+            {type: AI, text: '', _key: 'ai-1', notifications: ['Dealing the board…']},
+        ]);
+
+        await act(async () => {
+            await result.current.dismissElicitation();
+        });
+        await act(async () => {
+            await result.current.handleElicitationSubmit();
+        });
+
+        expect(elicitationService.handleElicitationSubmit.mock.calls[0][0].carriedNotifications).toEqual([]);
     });
 });

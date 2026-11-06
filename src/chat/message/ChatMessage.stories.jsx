@@ -39,7 +39,21 @@ export const AssistantWithMetadata = {
             model: 'qwen3.5-9b',
             isStreaming: false,
             notifications: [],
-            responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            responseMetadata: {tokensPerSecond: 222.23},
+        },
+    },
+};
+
+export const AssistantWithoutTokensPerSecond = {
+    args: {
+        message: {
+            _key: 'msg-assistant-no-rate',
+            type: 'ASSISTANT',
+            text: 'This turn was not routed through LiteLLM, so the API reported no rate.',
+            model: 'qwen3.5-9b',
+            isStreaming: false,
+            notifications: [],
+            responseMetadata: {completionTokens: 18},
         },
     },
 };
@@ -107,6 +121,74 @@ export const ErrorMessage = {
             _key: 'msg-error-1',
             type: 'ERROR',
             text: 'The model backend timed out. Please try again.',
+        },
+    },
+};
+
+const analyzableFailure = {
+    _key: 'msg-error-analyze',
+    type: 'ERROR',
+    text: 'An unexpected error occurred. Please try again.',
+    code: 'internal',
+    occurredAt: '2026-11-05T17:27:20.138Z',
+    analyzable: true,
+    failedCommands: [],
+};
+
+export const ErrorWithAnalyze = {
+    args: {
+        message: analyzableFailure,
+        onAnalyzeError: async () => true,
+    },
+};
+
+export const ErrorWithAnalyzeWhileBusy = {
+    args: {
+        message: analyzableFailure,
+        onAnalyzeError: async () => true,
+        analyzeBusy: true,
+    },
+};
+
+export const ErrorNotAnalyzable = {
+    args: {
+        message: {
+            ...analyzableFailure,
+            _key: 'msg-error-key',
+            text: 'Ask an administrator to add a model key for you.',
+            code: 'LLM_KEY_MISSING',
+            analyzable: false,
+        },
+        onAnalyzeError: async () => true,
+    },
+};
+
+export const ToolActivityRunning = {
+    args: {
+        message: {
+            _key: 'msg-ai-tools-running',
+            type: 'ASSISTANT',
+            text: '',
+            isStreaming: true,
+            toolCalls: [
+                {toolCallId: 't1', name: 'web_search', arguments: '{"query":"AI engineer Denver startup"}', status: 'running', startedAt: Date.now() - 14000, durationMs: null},
+            ],
+        },
+    },
+};
+
+export const ToolActivityFinished = {
+    args: {
+        message: {
+            _key: 'msg-ai-tools-finished',
+            type: 'ASSISTANT',
+            text: 'Four Denver startups are hiring AI engineers right now.',
+            timestamp: new Date().toISOString(),
+            responseMetadata: {routedModel: 'qwen3-32b', tokensPerSecond: 38.4, totalTokens: 1284, totalMillis: 21400, modelCalls: 3},
+            toolCalls: [
+                {toolCallId: 't1', name: 'web_search', arguments: '{"query":"AI engineer Denver startup"}', status: 'ok', startedAt: 0, durationMs: 15800},
+                {toolCallId: 't2', name: 'web_extract', arguments: '{"urls":["https://example.com/jobs"]}', status: 'ok', startedAt: 0, durationMs: 4100},
+            ],
         },
     },
 };

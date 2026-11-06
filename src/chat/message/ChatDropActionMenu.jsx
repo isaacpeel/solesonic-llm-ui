@@ -38,7 +38,7 @@ const NO_CHOICE_VALUE = "";
  *   currentChatGroupId: string|null,
  *   onNewGroup: () => void,
  *   onMoveToGroup: (chatGroupId: string) => void,
- *   onDelete: () => void,
+ *   onDelete?: () => void,
  *   onDismiss: () => void,
  * }} props
  */
@@ -178,13 +178,15 @@ function ChatDropActionMenu({
                 </select>
             </div>
 
-            <button
-                type="button"
-                className="chat-row-menu-item chat-row-menu-item-destructive chat-row-menu-item-separated"
-                onClick={onDelete}
-            >
-                <span className="chat-row-menu-item-label">Delete conversation</span>
-            </button>
+            {onDelete && (
+                <button
+                    type="button"
+                    className="chat-row-menu-item chat-row-menu-item-destructive chat-row-menu-item-separated"
+                    onClick={onDelete}
+                >
+                    <span className="chat-row-menu-item-label">Delete conversation</span>
+                </button>
+            )}
         </div>,
         document.body
     );

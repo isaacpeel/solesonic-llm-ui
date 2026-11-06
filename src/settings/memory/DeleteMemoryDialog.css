@@ -1,0 +1,79 @@
+.memory-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+.memory-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 380px;
+    padding: 20px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.memory-dialog-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.memory-dialog-body {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--text-color);
+}
+
+.memory-dialog-quote {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+.memory-dialog-error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #e57373;
+}
+
+.memory-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.memory-dialog-actions button {
+    padding: 6px 14px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.memory-dialog-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.memory-dialog-confirm:not(:disabled) {
+    color: #ffffff;
+    background-color: #c62828;
+    border-color: #c62828;
+}

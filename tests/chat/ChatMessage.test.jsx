@@ -13,6 +13,14 @@ function buildMessage(overrides) {
     };
 }
 
+const UNAVAILABLE_TOKENS_PER_SECOND = '--/-- tok/s';
+
+function renderedTokensPerSecond(container) {
+    const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
+    expect(responseMetadata).not.toBeNull();
+    return responseMetadata.textContent;
+}
+
 describe('ChatMessage', () => {
     describe('message type rendering', () => {
         it('renders USER message with USER type class', () => {
@@ -65,14 +73,46 @@ describe('ChatMessage', () => {
     });
 
     describe('placeholder', () => {
-        it('shows "Thinking..." when AI message is streaming with no text and no notifications', () => {
+        it('shows "Thinking" when AI message is streaming with no text, notifications or tool calls', () => {
             render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: '', isStreaming: true})}/>);
-            expect(screen.getByText('Thinking...')).toBeDefined();
+            expect(screen.getByText('Thinking')).toBeDefined();
+        });
+
+        it('shows the tool activity instead of the placeholder once a tool is running', () => {
+            render(<ChatMessage message={buildMessage({
+                type: 'ASSISTANT',
+                text: '',
+                isStreaming: true,
+                toolCalls: [{toolCallId: 't1', name: 'web_search', arguments: '{"query":"denver"}', status: 'running', startedAt: Date.now(), durationMs: null}],
+            })}/>);
+
+            expect(screen.queryByText('Thinking')).toBeNull();
+            expect(screen.getByRole('button', {name: /Running web_search/})).toBeDefined();
+            expect(screen.getByText('{"query":"denver"}')).toBeDefined();
+        });
+
+        it('collapses finished tool activity to a summary that expands on demand', () => {
+            render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                toolCalls: [
+                    {toolCallId: 't1', name: 'web_search', arguments: null, status: 'ok', startedAt: 0, durationMs: 15800},
+                    {toolCallId: 't2', name: 'web_extract', arguments: null, status: 'error', startedAt: 0, durationMs: 4100},
+                ],
+            })}/>);
+
+            const summary = screen.getByRole('button', {name: '2 tool calls · 19.9s · 1 failed'});
+            expect(summary.getAttribute('aria-expanded')).toBe('false');
+            expect(screen.queryByText('web_search')).toBeNull();
+
+            fireEvent.click(summary);
+
+            expect(screen.getByText('web_search')).toBeDefined();
+            expect(screen.getByText('failed · 4.1s')).toBeDefined();
         });
 
         it('does not show placeholder when text is present', () => {
             render(<ChatMessage message={buildMessage({type: 'ASSISTANT', text: 'Some text', isStreaming: true})}/>);
-            expect(screen.queryByText('Thinking...')).toBeNull();
+            expect(screen.queryByText('Thinking')).toBeNull();
         });
 
         it('does not show placeholder when notifications are present', () => {
@@ -82,7 +122,7 @@ describe('ChatMessage', () => {
                 isStreaming: true,
                 notifications: ['Step 1'],
             })}/>);
-            expect(screen.queryByText('Thinking...')).toBeNull();
+            expect(screen.queryByText('Thinking')).toBeNull();
         });
     });
 
@@ -141,13 +181,31 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.elicitation-resolved-badge--neutral')).not.toBeNull();
         });
 
-        it('capitalises the first letter of the response and lowercases the rest', () => {
+        it('capitalises the first letter of the response', () => {
             render(<ChatMessage message={buildMessage({
                 type: 'SYSTEM',
                 text: 'Question?',
-                elicitationResponse: 'ACCEPT',
+                elicitationResponse: 'accept',
             })}/>);
             expect(screen.getByText('✓ Accept')).toBeDefined();
+        });
+
+        it('keeps the capitals of names inside a form summary', () => {
+            render(<ChatMessage message={buildMessage({
+                type: 'SYSTEM',
+                text: 'Who is playing?',
+                elicitationResponse: 'The whole show, Alex, Jo vs Sam, Kim',
+            })}/>);
+            expect(screen.getByText('✓ The whole show, Alex, Jo vs Sam, Kim')).toBeDefined();
+        });
+
+        it('keeps a typed-instead badge neutral', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'SYSTEM',
+                text: 'Face-off: who buzzed in first?',
+                elicitationResponse: 'Typed instead',
+            })}/>);
+            expect(container.querySelector('.elicitation-resolved-badge--neutral')).not.toBeNull();
         });
 
         it('renders the question text', () => {
@@ -298,10 +356,34 @@ describe('ChatMessage', () => {
             expect(container.querySelector('.message-model-name').textContent).toBe('legacy-model');
         });
 
-        it('falls back to "AI Assistant" when neither field carries a model', () => {
+        it('shows no model when neither field carries one', () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
-            expect(container.querySelector('.message-model-name').textContent).toBe('AI Assistant');
+            expect(container.querySelector('.message-model-name')).toBeNull();
+        });
+
+        it('labels the assistant and the sender above each message', () => {
+            const {container: assistant} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
+            expect(assistant.querySelector('.message-sender').textContent).toBe('Izzy-Bot');
+
+            const {container: agent} = render(<ChatMessage assistantLabel="Family Feud" message={buildMessage({text: 'the answer'})}/>);
+            expect(agent.querySelector('.message-sender').textContent).toBe('Family Feud');
+
+            const {container: mine} = render(<ChatMessage message={buildMessage({type: 'USER', text: 'hi'})}/>);
+            expect(mine.querySelector('.message-sender').textContent).toBe('You');
+
+            const {container: theirs} = render(<ChatMessage senderLabel="Sam" message={buildMessage({type: 'USER', text: 'hi'})}/>);
+            expect(theirs.querySelector('.message-sender').textContent).toBe('Sam');
+        });
+
+        it('shows only tokens per second in the footer', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {tokensPerSecond: 38.27, totalTokens: 1284, totalMillis: 21400, modelCalls: 3},
+            })}/>);
+
+            const metadata = Array.from(container.querySelectorAll('.message-response-metadata')).map((node) => node.textContent);
+            expect(metadata).toEqual(['38.2 tok/s']);
         });
 
         it('falls back to responseMetadata.routedModel when the top-level model is absent', () => {
@@ -320,6 +402,49 @@ describe('ChatMessage', () => {
             })}/>);
 
             expect(container.querySelector('.message-model-name').textContent).toBe('auto-model');
+        });
+    });
+
+    describe('slash command badge', () => {
+        it('renders only the badge for a bare command with no argument', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: '',
+                commands: ['summarize'],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge').textContent).toBe('/summarize');
+            expect(container.querySelector('.markdown-body')).toBeNull();
+        });
+
+        it('renders the badge above the command argument', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'pricing/q3',
+                commands: ['summarize'],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge').textContent).toBe('/summarize');
+            expect(screen.getByText('pricing/q3')).toBeTruthy();
+        });
+
+        it('renders no badge on a USER message without commands', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                type: 'USER',
+                text: 'hello',
+                commands: [],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge')).toBeNull();
+        });
+
+        it('renders no badge on an ASSISTANT message carrying commands', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'Here is the summary.',
+                commands: ['summarize'],
+            })}/>);
+
+            expect(container.querySelector('.user-message-command-badge')).toBeNull();
         });
     });
 
@@ -467,7 +592,46 @@ describe('ChatMessage', () => {
             await waitFor(() => expect(writeText).toHaveBeenCalledWith(markdown));
         });
 
-        it('renders a tokens-per-second figure computed from completionTokens and totalMillis', () => {
+        it('renders responseMetadata.tokensPerSecond verbatim', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {tokensPerSecond: 222.23},
+            })}/>);
+
+            expect(renderedTokensPerSecond(container)).toBe('222.2 tok/s');
+        });
+
+        /* Floors rather than rounds: 144.09 must read 144.0, not 144.1. */
+        it('floors the tokens-per-second figure to one decimal rather than rounding', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {tokensPerSecond: 144.09},
+            })}/>);
+
+            expect(renderedTokensPerSecond(container)).toBe('144.0 tok/s');
+        });
+
+        it('uses responseMetadata.tokensPerSecond even when calls carry other rates', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {tokensPerSecond: 34.7},
+                responseMetadataCalls: [{predictedPerSecond: 144.0545966921463, tokensPerSecond: 88.8}],
+            })}/>);
+
+            expect(renderedTokensPerSecond(container)).toBe('34.7 tok/s');
+        });
+
+        it('ignores responseMetadataCalls predictedPerSecond', () => {
+            const {container} = render(<ChatMessage message={buildMessage({
+                text: 'the answer',
+                responseMetadata: {completionTokens: 82},
+                responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
+            })}/>);
+
+            expect(renderedTokensPerSecond(container)).toBe(UNAVAILABLE_TOKENS_PER_SECOND);
+        });
+
+        it('does not derive a rate from completionTokens and totalMillis', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
                 responseMetadata: {
@@ -478,76 +642,34 @@ describe('ChatMessage', () => {
                 },
             })}/>);
 
-            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('514.0 tok/s');
+            expect(renderedTokensPerSecond(container)).toBe(UNAVAILABLE_TOKENS_PER_SECOND);
         });
 
-        it('prefers a precomputed tokensPerSecond over deriving one', () => {
+        it('renders the placeholder when tokensPerSecond is null', () => {
             const {container} = render(<ChatMessage message={buildMessage({
                 text: 'the answer',
-                responseMetadata: {
-                    completionTokens: 128,
-                    totalMillis: 3690,
-                    tokensPerSecond: 34.7,
-                },
+                responseMetadata: {tokensPerSecond: null},
             })}/>);
 
-            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('34.7 tok/s');
+            expect(renderedTokensPerSecond(container)).toBe(UNAVAILABLE_TOKENS_PER_SECOND);
         });
 
-        /*
-         * On this response shape totalMillis is proxy/overhead time only, not generation time, so
-         * responseMetadataCalls[0].predictedPerSecond — the backend's own generation-speed figure —
-         * must win over both tokensPerSecond and the completionTokens/totalMillis derivation.
-         */
-        it('prefers responseMetadataCalls[0].predictedPerSecond over responseMetadata entirely', () => {
-            const {container} = render(<ChatMessage message={buildMessage({
-                text: 'the answer',
-                responseMetadata: {
-                    completionTokens: 82,
-                    totalMillis: 33.349,
-                    tokensPerSecond: 9999,
-                },
-                responseMetadataCalls: [{predictedPerSecond: 144.0545966921463}],
-            })}/>);
+        it('renders the placeholder for a non-finite or non-numeric tokensPerSecond', () => {
+            for (const tokensPerSecond of [Number.NaN, Number.POSITIVE_INFINITY, '222.23']) {
+                const {container, unmount} = render(<ChatMessage message={buildMessage({
+                    text: 'the answer',
+                    responseMetadata: {tokensPerSecond},
+                })}/>);
 
-            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('144.0 tok/s');
+                expect(renderedTokensPerSecond(container)).toBe(UNAVAILABLE_TOKENS_PER_SECOND);
+                unmount();
+            }
         });
 
-        /* Floors rather than rounds: 144.09 must read 144.0, not 144.1. */
-        it('floors the tokens-per-second figure to one decimal rather than rounding', () => {
-            const {container} = render(<ChatMessage message={buildMessage({
-                text: 'the answer',
-                responseMetadataCalls: [{predictedPerSecond: 144.09}],
-            })}/>);
-
-            const responseMetadata = container.querySelector('.message-actions .message-response-metadata');
-            expect(responseMetadata).not.toBeNull();
-            expect(responseMetadata.textContent).toBe('144.0 tok/s');
-        });
-
-        it('renders no response metadata element when completionTokens or totalMillis is missing', () => {
-            const {container} = render(<ChatMessage message={buildMessage({
-                text: 'the answer',
-                responseMetadata: {
-                    promptTokens: 412,
-                    completionTokens: null,
-                    totalTokens: 540,
-                },
-            })}/>);
-
-            expect(container.querySelector('.message-response-metadata')).toBeNull();
-        });
-
-        it('renders no response metadata element when the message carries none', () => {
+        it('renders the placeholder when the message carries no responseMetadata', () => {
             const {container} = render(<ChatMessage message={buildMessage({text: 'the answer'})}/>);
 
-            expect(container.querySelector('.message-response-metadata')).toBeNull();
+            expect(renderedTokensPerSecond(container)).toBe(UNAVAILABLE_TOKENS_PER_SECOND);
         });
 
         it('confirms on the button once the copy resolves', async () => {
@@ -567,5 +689,65 @@ describe('ChatMessage', () => {
             await waitFor(() => expect(writeText).toHaveBeenCalled());
             expect(container.querySelector('.message-copy-button--copied')).toBeNull();
         });
+    });
+});
+
+describe('ChatMessage Analyze button', () => {
+    const failure = {
+        type: 'ERROR', text: 'An unexpected error occurred. Please try again.', _key: 'error-1',
+        code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true, failedCommands: [],
+    };
+
+    it('is offered on an analyzable error when the handler is given', async () => {
+        const onAnalyzeError = vi.fn().mockResolvedValue(true);
+        const {rerender} = render(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError}/>);
+
+        fireEvent.click(screen.getByRole('button', {name: 'Analyze this error'}));
+
+        expect(onAnalyzeError).toHaveBeenCalledWith(failure);
+        await waitFor(() => expect(screen.getByRole('button', {name: 'Analyze this error'}).textContent).toBe('Analyzing…'));
+        rerender(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError} analyzeBusy/>);
+        expect(screen.getByRole('button', {name: 'Analyze this error'}).textContent).toBe('Analyzing…');
+        expect(screen.getByRole('button', {name: 'Analyze this error'}).disabled).toBe(true);
+
+        rerender(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError} analyzeBusy={false}/>);
+        await waitFor(() => expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull());
+    });
+
+    it('comes back when the request was not sent', async () => {
+        const onAnalyzeError = vi.fn().mockResolvedValue(false);
+        render(<ChatMessage message={failure} onAnalyzeError={onAnalyzeError}/>);
+
+        fireEvent.click(screen.getByRole('button', {name: 'Analyze this error'}));
+
+        await waitFor(() => expect(screen.getByRole('button', {name: 'Analyze this error'}).textContent).toBe('Analyze'));
+    });
+
+    it('is disabled while another turn is running', () => {
+        render(<ChatMessage message={failure} onAnalyzeError={vi.fn()} analyzeBusy/>);
+
+        expect(screen.getByRole('button', {name: 'Analyze this error'}).disabled).toBe(true);
+    });
+
+    it('is not offered without a handler, for other codes, or for a failed /logs turn', () => {
+        const {rerender} = render(<ChatMessage message={failure}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+
+        rerender(<ChatMessage message={{...failure, analyzable: false}} onAnalyzeError={vi.fn()}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+
+        rerender(<ChatMessage message={{...failure, failedCommands: ['logs']}} onAnalyzeError={vi.fn()}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+
+        rerender(<ChatMessage message={{...failure, type: 'ASSISTANT'}} onAnalyzeError={vi.fn()}/>);
+        expect(screen.queryByRole('button', {name: 'Analyze this error'})).toBeNull();
+    });
+
+    it('sits under the error text', () => {
+        const {container} = render(<ChatMessage message={failure} onAnalyzeError={vi.fn()}/>);
+        const text = container.querySelector('.markdown-body');
+        const button = screen.getByRole('button', {name: 'Analyze this error'});
+
+        expect(text.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 });

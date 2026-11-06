@@ -1,5 +1,6 @@
 /* Ensures the chat content takes up the available space */
 .chat-app {
+    --composer-clearance: calc(112px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -31,18 +32,18 @@
  * because the tray is capped at 4 images and never wraps to a second row.
  */
 .chat-app--tray-open {
-    --composer-clearance: calc(110px + env(safe-area-inset-bottom));
+    --composer-clearance: calc(148px + env(safe-area-inset-bottom));
 }
 
 .chat-app--caption-open {
-    --composer-clearance: calc(165px + env(safe-area-inset-bottom));
+    --composer-clearance: calc(203px + env(safe-area-inset-bottom));
 }
 
 /*
  * Centered horizontally on the full viewport — neither .chat-app nor .chat-content
  * constrains its width, so there's no narrower column to center against. left: 50% alone
  * would offset by the button's own half-width, hence the translateX correction (same idiom
- * as .dots-loader in ChatInput.css). Vertically it rides the same clearance the transcript
+ * as .dots-loader in MessageComposer.css). Vertically it rides the same clearance the transcript
  * uses, so it clears the composer whether or not the attachment tray is open. Fixed rather
  * than absolute because the composer it sits above is fixed too.
  */
@@ -138,6 +139,18 @@
 }
 
 @media (max-width: 768px) {
+    .chat-app {
+        --composer-clearance: calc(120px + env(safe-area-inset-bottom));
+    }
+
+    .chat-app--tray-open {
+        --composer-clearance: calc(155px + env(safe-area-inset-bottom));
+    }
+
+    .chat-app--caption-open {
+        --composer-clearance: calc(210px + env(safe-area-inset-bottom));
+    }
+
     .chat-content {
         padding: 8px;
     }

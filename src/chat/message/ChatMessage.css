@@ -1,28 +1,25 @@
 .chat-message-container {
     display: flex;
-    margin: 8px 0;
-    width: 100%;
+    flex-direction: column;
+    box-sizing: border-box;
+    margin: 14px auto 6px;
+    width: 45%;
     overflow: hidden;
-    gap: 10px;
-    align-items: flex-start;
+    gap: 6px;
+    align-items: stretch;
     word-wrap: break-word;
     overflow-wrap: anywhere;
 }
 
-.chat-message-container.USER {
-    justify-content: flex-end;
-}
-
-.chat-message-container.ASSISTANT {
-    justify-content: flex-start;
-}
-
-.chat-message-container.SYSTEM {
-    justify-content: flex-start;
-}
-
+.chat-message-container.SYSTEM,
 .chat-message-container.ERROR {
-    justify-content: flex-start;
+    align-items: flex-start;
+    margin-top: 8px;
+}
+
+.chat-message-container.SYSTEM .message,
+.chat-message-container.ERROR .message {
+    max-width: 100%;
 }
 
 .message {
@@ -58,16 +55,54 @@
  * previously won the cascade by source order and silently re-capped the bubble to 90% of an
  * already-90%-capped column (81% effective) while the footer row beneath it had no such cap.
  */
+.message.USER,
+.message.ASSISTANT,
+.message-with-actions {
+    max-width: 100%;
+}
+
 .message.USER {
-    background-color: #e0e0e0;
-    color: #000;
-    align-self: flex-end;
+    --message-user-accent: #5b9cf0;
+    margin-top: 0;
+    padding: 0 0 0 10px;
+    border-radius: 0;
+    border-left: 2px solid var(--message-user-accent);
+    background: none;
+    color: var(--text-color);
+    justify-content: flex-start;
 }
 
 .message.ASSISTANT {
-    background-color: #4a4a4a;
-    color: #dedede;
-    align-self: flex-start;
+    margin-top: 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--text-color);
+    justify-content: flex-start;
+}
+
+.message-thinking {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    opacity: 0.75;
+}
+
+.message-thinking-spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    border-top-color: #5b9cf0;
+    animation: notification-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-thinking-spinner {
+        animation: none;
+    }
 }
 
 .message.SYSTEM {
@@ -236,14 +271,11 @@
     text-decoration-color: rgba(179, 212, 255, 0.75);
 }
 
-.message.USER .message-text .markdown-body a {
-    color: #1a5fad;
-    text-decoration-color: rgba(26, 95, 173, 0.45);
-}
-
-.message.USER .message-text .markdown-body a:hover {
-    color: #1347cc;
-    text-decoration-color: rgba(19, 71, 204, 0.7);
+.message-text .markdown-body a.citation-link {
+    font-size: 0.75em;
+    vertical-align: super;
+    line-height: 0;
+    text-decoration: none;
 }
 
 .message-text .markdown-body p {
@@ -433,7 +465,8 @@
  */
 @media (max-width: 768px) {
     .chat-message-container {
-        margin: 4px 0;
+        width: 94%;
+        margin: 12px auto 4px;
     }
 
     .message,
@@ -445,4 +478,45 @@
         margin-top: 8px;
         padding: 1px 12px;
     }
+
+    .message.USER {
+        margin-top: 0;
+        padding: 0 0 0 10px;
+    }
+
+    .message.ASSISTANT {
+        margin-top: 0;
+        padding: 0;
+    }
+}
+
+.analyze-error {
+    margin: 6px 0 8px;
+}
+
+.analyze-error-button {
+    padding: 6px 14px;
+    min-height: 32px;
+    border-radius: 6px;
+    border: 1px solid #eb5757;
+    background: transparent;
+    color: #ffd9d9;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.analyze-error-button:hover:not(:disabled),
+.analyze-error-button:focus-visible {
+    background: rgba(235, 87, 87, 0.18);
+}
+
+.analyze-error-button:focus-visible {
+    outline: 2px solid #ffd9d9;
+    outline-offset: 2px;
+}
+
+.analyze-error-button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }

@@ -1,0 +1,78 @@
+.model-access-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.model-access-settings .settings-content-subtitle {
+    margin-bottom: 4px;
+}
+
+.model-access-toolbar {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.model-access-button {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius-sm);
+    cursor: pointer;
+}
+
+.model-access-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.model-access-button-primary:not(:disabled) {
+    color: #ffffff;
+    background-color: var(--settings-accent);
+    border-color: var(--settings-accent);
+}
+
+.model-access-message {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: var(--settings-radius-sm);
+}
+
+.model-access-message-error {
+    color: #ff8a80;
+    border: 1px solid rgba(255, 82, 82, 0.4);
+}
+
+.model-access-empty {
+    margin: 0;
+    padding: 16px 18px;
+    font-size: 14px;
+    color: var(--settings-muted);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--settings-radius);
+}
+
+.llm-key-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.model-access-sentinel {
+    height: 1px;
+}
+
+.model-access-loading-more {
+    min-height: 1em;
+    font-size: 13px;
+    color: var(--settings-muted);
+}

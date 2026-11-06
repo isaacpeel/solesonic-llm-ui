@@ -12,6 +12,9 @@ import chatService, {
     RUN_ERROR,
     RUN_FINISHED,
     RUN_STARTED,
+    SOUND_METADATA_KEY,
+    STREAM_IDLE_TIMEOUT_MILLISECONDS,
+    StreamStalledError,
     TEXT_MESSAGE_CONTENT,
     TEXT_MESSAGE_END,
     TEXT_MESSAGE_START,
@@ -22,7 +25,8 @@ import chatService, {
 } from '../src/service/ChatService.js';
 import authClient from "../src/service/AuthService.js";
 
-vi.mock('../src/client/ApiClient.js', () => ({
+vi.mock('../src/client/ApiClient.js', async (importOriginal) => ({
+    ...(await importOriginal()),
     default: {
         get: vi.fn().mockResolvedValue({chatDetails: {}}),
         post: vi.fn().mockResolvedValue({success: true}),
@@ -43,7 +47,7 @@ vi.mock('../src/client/parseSseStream.js', () => ({
     parseSseStream: vi.fn(),
 }));
 
-import apiClient from '../src/client/ApiClient.js';
+import apiClient, {ApiError} from '../src/client/ApiClient.js';
 import { parseSseStream } from '../src/client/parseSseStream.js';
 
 beforeEach(() => {
@@ -180,6 +184,22 @@ function elicitationArgsFrame(elicitationRequest, toolCallId = 'elicitation-1') 
     return agUiFrame(TOOL_CALL_ARGS, {toolCallId, delta: JSON.stringify(elicitationRequest)});
 }
 
+const VALID_SOUND_ID = 'a'.repeat(64);
+
+function validSoundCue() {
+    return {
+        cueId: 'sound-cue-1',
+        soundId: VALID_SOUND_ID,
+        cue: 'theme',
+        playOnce: true,
+        source: {type: 'url', value: `/izzybot/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'},
+    };
+}
+
+function textMessageStartFrame(metadata) {
+    return agUiFrame(TEXT_MESSAGE_START, {messageId: 'wire-1', role: 'assistant', metadata});
+}
+
 function runFinishedFrame(result) {
     return agUiFrame(RUN_FINISHED, {threadId: 'chat-1', runId: 'run-1', result});
 }
@@ -303,13 +323,85 @@ describe('handleStreamChunk', () => {
         consoleError.mockRestore();
     });
 
-    it('TEXT_MESSAGE_START and TEXT_MESSAGE_END are structural only', () => {
-        const callbacks = makeCallbacks();
+    it('TEXT_MESSAGE_START without metadata and TEXT_MESSAGE_END open nothing', () => {
+        const playSound = vi.fn();
+        const mergeMessageMetadata = vi.fn();
+        const callbacks = makeCallbacks({playSound, mergeMessageMetadata});
 
         chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_START, {messageId: 'wire-1', role: 'assistant'}), callbacks);
         chatService.handleStreamChunk(agUiFrame(TEXT_MESSAGE_END, {messageId: 'wire-1'}), callbacks);
 
         expectNoStreamHandlerCalled(callbacks);
+        expect(playSound).not.toHaveBeenCalled();
+        expect(mergeMessageMetadata).not.toHaveBeenCalled();
+    });
+
+    it('TEXT_MESSAGE_START with a valid sound cue plays it once', () => {
+        const playSound = vi.fn();
+        const callbacks = makeCallbacks({playSound});
+        const soundCue = validSoundCue();
+
+        chatService.handleStreamChunk(textMessageStartFrame({[SOUND_METADATA_KEY]: soundCue}), callbacks);
+
+        expect(playSound).toHaveBeenCalledOnce();
+        expect(playSound).toHaveBeenCalledWith(soundCue);
+        expectNoStreamHandlerCalled(callbacks);
+    });
+
+    it('TEXT_MESSAGE_START merges its metadata onto the message', () => {
+        const mergeMessageMetadata = vi.fn();
+        const metadata = {[SOUND_METADATA_KEY]: validSoundCue(), other: 'value'};
+
+        chatService.handleStreamChunk(textMessageStartFrame(metadata), makeCallbacks({mergeMessageMetadata}));
+
+        expect(mergeMessageMetadata).toHaveBeenCalledWith(metadata);
+    });
+
+    it('TEXT_MESSAGE_START with a sound cue does not throw without sound handlers', () => {
+        expect(() => chatService.handleStreamChunk(
+            textMessageStartFrame({[SOUND_METADATA_KEY]: validSoundCue()}),
+            makeCallbacks(),
+        )).not.toThrow();
+    });
+
+    it('TEXT_MESSAGE_START plays a cue whose source has no context path', () => {
+        const playSound = vi.fn();
+        const soundCue = {
+            ...validSoundCue(),
+            source: {type: 'url', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'},
+        };
+
+        chatService.handleStreamChunk(textMessageStartFrame({[SOUND_METADATA_KEY]: soundCue}), makeCallbacks({playSound}));
+
+        expect(playSound).toHaveBeenCalledWith(soundCue);
+    });
+
+    const OTHER_SOUND_ID = 'b'.repeat(64);
+
+    it.each([
+        ['an absolute source url', {source: {type: 'url', value: `https://evil.example.com/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a protocol-relative source url', {source: {type: 'url', value: `//evil.example.com/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['an off-path source url', {source: {type: 'url', value: `/attachments/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source naming a different sound id', {source: {type: 'url', value: `/izzybot/sounds/${OTHER_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with a query string', {source: {type: 'url', value: `/izzybot/sounds/x?y=/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with a fragment', {source: {type: 'url', value: `/izzybot/sounds/x#/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with a backslash', {source: {type: 'url', value: `/\\evil.example.com/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a source with no sound id', {source: {type: 'url', value: '/izzybot/sounds/', mimeType: 'audio/mpeg'}}],
+        ['a non-url source type', {source: {type: 'data', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'audio/mpeg'}}],
+        ['a non-audio mime type', {source: {type: 'url', value: `/sounds/${VALID_SOUND_ID}`, mimeType: 'text/html'}}],
+        ['a short sound id', {soundId: 'abc123'}],
+        ['an uppercase sound id', {soundId: 'A'.repeat(64)}],
+        ['a missing cue id', {cueId: undefined}],
+        ['an oversized cue id', {cueId: 'x'.repeat(129)}],
+    ])('TEXT_MESSAGE_START with %s plays nothing', (description, overrides) => {
+        const playSound = vi.fn();
+
+        chatService.handleStreamChunk(
+            textMessageStartFrame({[SOUND_METADATA_KEY]: {...validSoundCue(), ...overrides}}),
+            makeCallbacks({playSound}),
+        );
+
+        expect(playSound).not.toHaveBeenCalled();
     });
 
     it('TOOL_CALL_ARGS opens the elicitation carried in the delta', () => {
@@ -474,7 +566,7 @@ describe('handleStreamChunk', () => {
         chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message: 'The model timed out.', code: 'timeout'}), callbacks);
 
         expect(callbacks.appendErrorMessage).toHaveBeenCalledOnce();
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('The model timed out.');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('The model timed out.', {code: 'timeout', occurredAt: undefined, analyzable: true});
         expect(callbacks.appendToLastAIMessage).not.toHaveBeenCalled();
     });
 
@@ -486,6 +578,17 @@ describe('handleStreamChunk', () => {
         expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
         expect(callbacks.setActiveElicitation).toHaveBeenCalledWith(null);
         expect(callbacks.setElicitationSubmitting).toHaveBeenCalledWith(false);
+        expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
+    });
+
+    it('RUN_ERROR for a missing model key surfaces the backend sentence and ends the turn', () => {
+        const callbacks = makeCallbacks();
+        const message = "Model access isn't configured for your account. Ask an administrator.";
+
+        chatService.handleStreamChunk(agUiFrame(RUN_ERROR, {message, code: 'LLM_KEY_MISSING'}), callbacks);
+
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith(message, {code: 'LLM_KEY_MISSING', occurredAt: undefined, analyzable: false});
+        expect(callbacks.stopStreamingLastAIMessage).toHaveBeenCalledTimes(1);
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
     });
 
@@ -568,7 +671,7 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the model refused'}), callbacks);
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the model refused');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the model refused', {code: undefined, occurredAt: undefined, analyzable: false});
         expect(callbacks.finalizeLastAIMessage).not.toHaveBeenCalled();
         expect(callbacks.stopStreamingLastAIMessage).not.toHaveBeenCalled();
     });
@@ -581,7 +684,7 @@ describe('handleStreamChunk', () => {
             callbacks,
         );
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('image generation timed out');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('image generation timed out', {code: 'GENERATION_TIMEOUT', occurredAt: undefined, analyzable: false});
     });
 
     it('CUSTOM failure prefers content when both are present', () => {
@@ -589,7 +692,20 @@ describe('handleStreamChunk', () => {
 
         chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {content: 'the real one', message: 'the other one'}), callbacks);
 
-        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the real one');
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('the real one', {code: undefined, occurredAt: undefined, analyzable: false});
+    });
+
+    it('a chat failure carries its code and the server time for the Analyze button', () => {
+        const callbacks = makeCallbacks();
+
+        chatService.handleStreamChunk(customFrame(CUSTOM_FAILURE, {
+            chatId: 'chat-1', message: 'An unexpected error occurred. Please try again.', code: 'internal',
+            occurredAt: '2026-11-05T17:27:20.138Z',
+        }), callbacks);
+
+        expect(callbacks.appendErrorMessage).toHaveBeenCalledWith('An unexpected error occurred. Please try again.', {
+            code: 'internal', occurredAt: '2026-11-05T17:27:20.138Z', analyzable: true,
+        });
     });
 
     it('CUSTOM failure stays quiet when it carries no text', () => {
@@ -729,6 +845,33 @@ describe('chatStream', () => {
         vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
 
         await expect(chatService.chatStream('hello', null, {})).rejects.toThrow('Streaming failed: 500');
+    });
+
+    it('rejected open — throws an ApiError carrying the status and the code from the JSON body', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            json: () => Promise.resolve({code: 'UNKNOWN_MODEL', message: 'Unknown model'}),
+        });
+
+        const error = await chatService.chatStream({chatMessage: 'hi', model: 'nope'}, null, {}).catch((caughtError) => caughtError);
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(400);
+        expect(error.code).toBe('UNKNOWN_MODEL');
+        expect(error.method).toBe('POST');
+        expect(parseSseStream).not.toHaveBeenCalled();
+    });
+
+    it('rejected open without a JSON body — still an ApiError, with no code', async () => {
+        vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503, statusText: 'Service Unavailable' });
+
+        const error = await chatService.chatStream('hello', null, {}).catch((caughtError) => caughtError);
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(503);
+        expect(error.code).toBeUndefined();
     });
 
     it('AbortError from fetch — propagates to caller', async () => {
@@ -918,5 +1061,128 @@ describe('chatStreamResume', () => {
         fetch.mockResolvedValue(makeResponse(500, {body: null}));
 
         await expect(chatService.chatStreamResume('chat-1', 'x', {})).rejects.toThrow('Stream resume failed');
+    });
+
+    it('retries once with a refreshed token when the resume is unauthorized', async () => {
+        authClient.getAccessToken = vi.fn()
+            .mockResolvedValueOnce('expired-token')
+            .mockResolvedValueOnce('refreshed-token');
+        parseSseStream.mockImplementation(async function* () {
+            yield {event: RUN_FINISHED, id: '1754062831270-0', data: '{}'};
+        });
+        fetch
+            .mockResolvedValueOnce(makeResponse(401, {body: null}))
+            .mockResolvedValueOnce(makeResponse(200));
+
+        const outcome = await chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk: vi.fn()});
+
+        expect(outcome).toBe(RESUME_STREAMED);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(authClient.getAccessToken).toHaveBeenLastCalledWith({forceRefresh: true});
+        expect(fetch.mock.calls[1][1].headers.Authorization).toBe('Bearer refreshed-token');
+        expect(fetch.mock.calls[1][1].headers['Last-Event-ID']).toBe('1754062831251-1');
+    });
+
+    it('reports a second unauthorized response as rejected', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        fetch.mockResolvedValue(makeResponse(401, {body: null}));
+
+        await expect(chatService.chatStreamResume('chat-1', 'x', {})).resolves.toBe(RESUME_REJECTED);
+        expect(fetch).toHaveBeenCalledTimes(2);
+
+        consoleErrorSpy.mockRestore();
+    });
+});
+
+describe('stream idle watchdog', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    /* Stands in for a reader parked on a half-open connection: it only ever ends when its fetch is aborted. */
+    function stallAfter(framesBeforeStall) {
+        return async function* (responseBody, {onActivity} = {}) {
+            for (const frame of framesBeforeStall) {
+                onActivity?.();
+                yield frame;
+            }
+
+            const fetchCalls = vi.mocked(fetch).mock.calls;
+            const requestSignal = fetchCalls[fetchCalls.length - 1][1].signal;
+
+            await new Promise((resolve, reject) => {
+                requestSignal.addEventListener('abort', () => {
+                    reject(Object.assign(new Error('The operation was aborted.'), {name: 'AbortError'}));
+                });
+            });
+        };
+    }
+
+    it('aborts a turn whose stream goes silent and reports it as stalled', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, body: {}});
+        parseSseStream.mockImplementation(stallAfter([runStartedFrame()]));
+        const onChunk = vi.fn();
+
+        const streamOutcome = chatService.chatStream('hello', 'chat-1', {onChunk}).catch((caughtError) => caughtError);
+        await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MILLISECONDS + 1);
+        const caughtError = await streamOutcome;
+
+        expect(caughtError).toBeInstanceOf(StreamStalledError);
+        expect(caughtError.name).toBe('StreamStalledError');
+        expect(onChunk).toHaveBeenCalledTimes(1);
+    });
+
+    it('keepalives alone hold the stream open', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, body: {}});
+        parseSseStream.mockImplementation(async function* (responseBody, {onActivity} = {}) {
+            for (let keepaliveIndex = 0; keepaliveIndex < 6; keepaliveIndex += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 15000));
+                onActivity?.();
+            }
+
+            yield runFinishedFrame({id: 'chat-1'});
+        });
+        const onChunk = vi.fn();
+
+        const streamOutcome = chatService.chatStream('hello', 'chat-1', {onChunk});
+        await vi.advanceTimersByTimeAsync(6 * 15000);
+        await streamOutcome;
+
+        expect(onChunk).toHaveBeenCalledTimes(1);
+        expect(onChunk.mock.calls[0][0].event).toBe(RUN_FINISHED);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('lets the caller abort win over the watchdog', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, body: {}});
+        parseSseStream.mockImplementation(stallAfter([runStartedFrame()]));
+        const callerController = new AbortController();
+
+        const streamOutcome = chatService.chatStream('hello', 'chat-1', {signal: callerController.signal})
+            .catch((caughtError) => caughtError);
+        await vi.advanceTimersByTimeAsync(1000);
+        callerController.abort();
+        const caughtError = await streamOutcome;
+
+        expect(caughtError.name).toBe('AbortError');
+        expect(caughtError).not.toBeInstanceOf(StreamStalledError);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('aborts a silent resume and reports it as stalled', async () => {
+        vi.mocked(fetch).mockResolvedValue({ok: true, status: 200, statusText: 'OK', body: {}});
+        parseSseStream.mockImplementation(stallAfter([]));
+
+        const resumeOutcome = chatService.chatStreamResume('chat-1', '1754062831251-1', {onChunk: vi.fn()})
+            .catch((caughtError) => caughtError);
+        await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MILLISECONDS + 1);
+
+        expect(await resumeOutcome).toBeInstanceOf(StreamStalledError);
     });
 });

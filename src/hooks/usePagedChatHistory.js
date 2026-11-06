@@ -7,11 +7,19 @@ import chatService, {DEFAULT_CHAT_HISTORY_PAGE_SIZE} from '../service/ChatServic
  * actually scrolled to are fetched; the accumulated rows live here so the drawer can be re-opened
  * without discarding what was already loaded.
  */
-function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_CHAT_HISTORY_PAGE_SIZE}) {
+function usePagedChatHistory({active, reloadTrigger, userId, query = null, pageSize = DEFAULT_CHAT_HISTORY_PAGE_SIZE}) {
     const [chats, setChats] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [hasMore, setHasMore] = useState(true);
+    const [totalElements, setTotalElements] = useState(null);
+
+    /*
+     * The query the accumulated rows were fetched with. Read by `loadPage` so the next page asks the
+     * same question as the first, and compared on restart so switching between listing and search
+     * clears rows that belong to the other question instead of showing them as answers.
+     */
+    const queryRef = useRef(query);
 
     /*
      * Bumped whenever paging restarts, so a response from a superseded run is dropped instead of
@@ -32,8 +40,13 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
         loadingRef.current = true;
         setLoading(true);
 
+        const requestQuery = queryRef.current;
+        const requestParameters = requestQuery
+            ? {page: pageNumber, size: pageSize, query: requestQuery}
+            : {page: pageNumber, size: pageSize};
+
         try {
-            const page = await chatService.findChatHistory({page: pageNumber, size: pageSize});
+            const page = await chatService.findChatHistory(requestParameters);
 
             if (generation !== requestGenerationRef.current) {
                 return;
@@ -46,9 +59,25 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
             nextPageRef.current = page.page + 1;
             hasMoreRef.current = !page.last;
             setHasMore(hasMoreRef.current);
+            setTotalElements(page.totalElements);
             setError(null);
         } catch (caughtError) {
             if (generation !== requestGenerationRef.current) {
+                return;
+            }
+
+            /* A query the server refused for its length is "nothing to show", not a failure. */
+            if (requestQuery && caughtError?.status === 400) {
+                log.warn('[usePagedChatHistory] Search query rejected', requestQuery);
+
+                if (pageNumber === 0) {
+                    setChats([]);
+                    setTotalElements(0);
+                }
+
+                hasMoreRef.current = false;
+                setHasMore(false);
+                setError(null);
                 return;
             }
 
@@ -76,6 +105,12 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
             return;
         }
 
+        if (queryRef.current !== query) {
+            queryRef.current = query;
+            setChats([]);
+            setTotalElements(null);
+        }
+
         requestGenerationRef.current += 1;
         nextPageRef.current = 0;
         hasMoreRef.current = true;
@@ -84,7 +119,7 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
         setError(null);
 
         void loadPage(0, requestGenerationRef.current);
-    }, [active, reloadTrigger, userId, loadPage]);
+    }, [active, reloadTrigger, userId, query, loadPage]);
 
     const loadMore = useCallback(() => {
         if (loadingRef.current || !hasMoreRef.current) {
@@ -156,6 +191,7 @@ function usePagedChatHistory({active, reloadTrigger, userId, pageSize = DEFAULT_
         loading,
         error,
         hasMore,
+        totalElements,
         loadMore,
         retry,
         replaceChat,

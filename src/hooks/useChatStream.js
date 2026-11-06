@@ -5,13 +5,19 @@ import {useSharedData} from '../context/useSharedData.jsx';
 import chatService, {
     RUN_STARTED,
     TERMINAL_RUN_EVENTS,
+    TOOL_CALL_ARGS,
     findRunStartedUserMessageId,
 } from '../service/ChatService.js';
 import streamService from '../service/StreamService.js';
+import {isDismissibleElicitation} from '../service/ElicitationService.js';
+import {MODEL_LIST_UNAVAILABLE_CODE, UNKNOWN_MODEL_CODE} from '../service/ChatModelService.js';
+import {LLM_KEY_MISSING_CODE, NO_MODEL_ACCESS_MESSAGE} from '../service/LlmKeyService.js';
+import {ApiError} from '../client/ApiClient.js';
 import {AI, USER} from '../chat/message/ChatMessage.jsx';
 import {generateMessageKey} from '../util/keys.js';
-import {isPageHidden, observePageHidden} from '../util/pageLifecycle.js';
-import useStreamRecovery from './useStreamRecovery.js';
+import {isPageHidden, observePageHidden, observePageResumed} from '../util/pageLifecycle.js';
+import activeTurnRegistry from '../util/activeTurnRegistry.js';
+import useStreamRecovery, {hasSettledTurn} from './useStreamRecovery.js';
 
 /*
  * A cold vision model can take tens of seconds to load before it reports anything. One static
@@ -20,6 +26,35 @@ import useStreamRecovery from './useStreamRecovery.js';
  */
 const VISION_WARMUP_NOTICE_DELAY_MILLISECONDS = 20000;
 const VISION_WARMUP_NOTICE_TEXT = 'Still reading — the model may be warming up…';
+
+/* The server only sends a push notification when no stream is open, so a hidden page lets go of its stream. */
+const BACKGROUND_STREAM_RELEASE_DELAY_MILLISECONDS = 5000;
+
+/* A declined prompt ends its run promptly; one that has not ended by now is not going to. */
+const DECLINED_RUN_SETTLE_TIMEOUT_MILLISECONDS = 10000;
+
+function isRejectedBeforeRunStarted(caughtError) {
+    return caughtError instanceof ApiError
+        && (caughtError.status < 500 || caughtError.code === MODEL_LIST_UNAVAILABLE_CODE);
+}
+
+function describeRejectedSend(caughtError, selectedCommand) {
+    if (caughtError.code === LLM_KEY_MISSING_CODE) {
+        return NO_MODEL_ACCESS_MESSAGE;
+    }
+
+    if (caughtError.code === UNKNOWN_MODEL_CODE) {
+        return 'The model you picked is no longer available. Pick another and send again.';
+    }
+
+    if (caughtError.code === MODEL_LIST_UNAVAILABLE_CODE) {
+        return 'The model list could not be checked, so your message was not sent. Please try again.';
+    }
+
+    return selectedCommand
+        ? 'Your message could not be sent. Your text has been restored — please re-select the command and try again.'
+        : 'Your message could not be sent. Your text has been restored — please try again.';
+}
 
 function useChatStream({
     chatId,
@@ -37,6 +72,9 @@ function useChatStream({
     ensureChatIdFromResponse,
     adoptMessageIdForLastUserMessage,
     updateAttachmentStatus,
+    mergeMetadataIntoLastAIMessage,
+    recordToolActivityOnLastAIMessage,
+    playSound,
     activeElicitation,
     setActiveElicitation,
     setElicitationSubmitting,
@@ -44,6 +82,9 @@ function useChatStream({
     getSelectedCommandRef,
     getMessageTextRef,
     attachmentTray,
+    pendingModel,
+    rejectPendingModel,
+    clearModelNotice,
 }) {
     const {chatInputRef} = useSharedData();
 
@@ -58,6 +99,9 @@ function useChatStream({
      * because there is nothing to cancel server-side until RUN_STARTED binds the turn to a chat id.
      */
     const [streamActive, setStreamActive] = useState(false);
+    const [attachedTurnActive, setAttachedTurnActive] = useState(false);
+    const recoveringRef = useRef(false);
+    const attachedTurnRef = useRef(false);
 
     /*
      * The chat id `stopChat` targets. Mirrors the `resolvedChatId` closed over by `handleSubmit`
@@ -78,14 +122,6 @@ function useChatStream({
     const turnInFlightRef = useRef(false);
 
     /*
-     * Whether the page went into the background at any point during the current turn. Checking
-     * `isPageHidden()` at the moment the stream dies is not enough — the teardown surfaces
-     * whenever the reader next runs, which is often after the user is already looking at the
-     * screen again.
-     */
-    const pageWasHiddenDuringStreamRef = useRef(false);
-
-    /*
      * The resume cursor. An opaque Redis stream entry id (`<milliseconds>-<sequence>`) — stored
      * and echoed verbatim, never parsed or compared. Keepalive comments carry no id, so they
      * never reach here and cannot advance it.
@@ -95,6 +131,63 @@ function useChatStream({
     const {recovering, recoveryFailed, beginRecovery, retryRecovery, dismissRecoveryFailure, cancelActiveRecovery} = useStreamRecovery({
         reloadChatHistory,
         stopStreamingLastAIMessage,
+    });
+
+    useEffect(() => {
+        if (!recovering) {
+            setAttachedTurnActive(false);
+            attachedTurnRef.current = false;
+        }
+
+        recoveringRef.current = recovering;
+    }, [recovering]);
+
+    /*
+     * A turn sent after awaiting another one must build on the transcript as it is now, not as
+     * it was when the user pressed Enter.
+     */
+    const chatHistoryRef = useRef(chatHistory);
+
+    useEffect(() => {
+        chatHistoryRef.current = chatHistory;
+    }, [chatHistory]);
+
+    const turnInProgress = loading || recovering;
+    const turnInProgressRef = useRef(turnInProgress);
+    const turnIdleWaitersRef = useRef([]);
+
+    useEffect(() => {
+        turnInProgressRef.current = turnInProgress;
+
+        if (turnInProgress) {
+            return;
+        }
+
+        const turnIdleWaiters = turnIdleWaitersRef.current;
+        turnIdleWaitersRef.current = [];
+        turnIdleWaiters.forEach((resolveWaiter) => resolveWaiter());
+    }, [turnInProgress]);
+
+    /* Resolves true once no turn is running, or false if one is still running after the timeout. */
+    const waitForTurnIdle = (timeoutMilliseconds) => new Promise((resolve) => {
+        if (!turnInProgressRef.current) {
+            resolve(true);
+            return;
+        }
+
+        let timeoutId = null;
+
+        const resolveWaiter = () => {
+            clearTimeout(timeoutId);
+            resolve(true);
+        };
+
+        timeoutId = setTimeout(() => {
+            turnIdleWaitersRef.current = turnIdleWaitersRef.current.filter((waiter) => waiter !== resolveWaiter);
+            resolve(false);
+        }, timeoutMilliseconds);
+
+        turnIdleWaitersRef.current.push(resolveWaiter);
     });
 
     /*
@@ -140,6 +233,9 @@ function useChatStream({
             adoptMessageId: adoptMessageIdForLastUserMessage,
             attachGeneratedImages: attachGeneratedImagesToLastAIMessage,
             updateAttachmentStatus,
+            mergeMessageMetadata: mergeMetadataIntoLastAIMessage,
+            recordToolActivity: recordToolActivityOnLastAIMessage,
+            playSound,
         });
     }, [
         activeElicitation,
@@ -150,6 +246,9 @@ function useChatStream({
         adoptMessageIdForLastUserMessage,
         attachGeneratedImagesToLastAIMessage,
         updateAttachmentStatus,
+        mergeMetadataIntoLastAIMessage,
+        recordToolActivityOnLastAIMessage,
+        playSound,
         finalizeLastAIMessage,
         stopStreamingLastAIMessage,
         appendSystemMessage,
@@ -174,29 +273,179 @@ function useChatStream({
             lastEventIdRef.current = rawEvent.id;
         }
 
+        if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
+            activeTurnRegistry.forget(activeChatIdRef.current);
+        }
+
         handleStreamChunkRef.current(rawEvent);
     }, []);
 
-    const handleSubmit = async () => {
-        if (loading) {
+    /*
+     * Picks up a turn the server is still running when its chat is opened — after a reload, a
+     * push, or coming back from another chat. Nothing on screen holds the turn's earlier frames,
+     * so it is always replayed from its own RUN_STARTED: from the cursor this tab saved when it
+     * started the turn, or else from the start of the buffer, skipping the earlier turns in it.
+     */
+    const attachIfInFlight = useCallback((attachChatId, chatDetails) => {
+        if (!attachChatId || turnInFlightRef.current || recoveringRef.current) {
             return;
         }
 
-        /* An id that is still uploading cannot be sent; block rather than send a partial set. */
-        if (attachmentTray?.hasPendingUploads) {
+        const chatMessages = Array.isArray(chatDetails?.chatMessages) ? chatDetails.chatMessages : [];
+        const lastUserMessage = [...chatMessages].reverse().find((chatMessage) => chatMessage.messageType === USER);
+
+        if (!lastUserMessage || hasSettledTurn(chatDetails, lastUserMessage.id)) {
+            activeTurnRegistry.forget(attachChatId);
             return;
+        }
+
+        const registryEntry = activeTurnRegistry.read(attachChatId);
+        const runStartedEventId = registryEntry?.userMessageId === lastUserMessage.id ? registryEntry.runStartedEventId : null;
+        const answeredElicitationIds = new Set(
+            chatMessages.filter((chatMessage) => chatMessage.elicitationId).map((chatMessage) => chatMessage.elicitationId),
+        );
+
+        let reachedThisTurn = !!runStartedEventId;
+
+        const replayThisTurnOnly = (rawEvent) => {
+            if (!reachedThisTurn) {
+                if (rawEvent?.event !== RUN_STARTED || readRunStartedIdentifiers(rawEvent).userMessageId !== lastUserMessage.id) {
+                    return;
+                }
+
+                reachedThisTurn = true;
+            }
+
+            if (rawEvent?.event === TOOL_CALL_ARGS && answeredElicitationIds.has(readToolCallId(rawEvent))) {
+                return;
+            }
+
+            handleResumedStreamChunk(rawEvent);
+        };
+
+        setChatHistory((previousHistory) => [
+            ...previousHistory,
+            {type: AI, text: '', _key: generateMessageKey('ai'), isStreaming: true, notifications: []},
+        ]);
+
+        activeChatIdRef.current = attachChatId;
+        lastEventIdRef.current = runStartedEventId;
+        stoppingRef.current = false;
+        setAttachedTurnActive(true);
+        attachedTurnRef.current = true;
+        recoveringRef.current = true;
+
+        beginRecovery({
+            recoveryChatId: attachChatId,
+            userMessageId: lastUserMessage.id,
+            lastEventId: runStartedEventId,
+            onResumeChunk: replayThisTurnOnly,
+            quietWhenUnavailable: true,
+        });
+    }, [beginRecovery, handleResumedStreamChunk, setChatHistory]);
+
+    /*
+     * Resolves false when nothing went out, so the composer keeps a selected command for the retry.
+     * The composer passes its own tray and model at click time: this hook lives above the router,
+     * so the options it was rendered with may predate the user's latest pick.
+     */
+    const handleSubmit = async (composer = {}) => {
+        const turnComposer = {
+            attachmentTray: composer.attachmentTray ?? attachmentTray,
+            pendingModel: composer.pendingModel ?? pendingModel,
+            rejectPendingModel: composer.rejectPendingModel ?? rejectPendingModel,
+            clearModelNotice: composer.clearModelNotice ?? clearModelNotice,
+        };
+
+        if (turnInProgress && composer.dismissElicitation && isDismissibleElicitation(activeElicitation)) {
+            return await sendInsteadOfOpenPrompt(composer.dismissElicitation, turnComposer);
+        }
+
+        if (loading) {
+            return false;
+        }
+
+        /* An id that is still uploading cannot be sent; block rather than send a partial set. */
+        if (turnComposer.attachmentTray?.hasPendingUploads) {
+            return false;
         }
 
         const submittedInputValue = inputValue;
         const selectedCommand = getSelectedCommandRef?.current?.() || null;
         const submittedMessageText = getMessageTextRef?.current?.() || submittedInputValue.trim();
 
-        if (!submittedMessageText) {
-            return;
+        if (!submittedMessageText && !selectedCommand) {
+            return false;
         }
 
+        await sendTurn(selectedCommand, submittedMessageText, turnComposer);
+
+        return true;
+    };
+
+    const sendCommandTurn = async (command, text) => {
+        if (loading || turnInProgress) {
+            return false;
+        }
+
+        await sendTurn(command, text, {
+            attachmentTray: null,
+            pendingModel: null,
+            rejectPendingModel: null,
+            clearModelNotice: null,
+            keepInput: true,
+        });
+
+        return true;
+    };
+
+    /*
+     * The open run is parked on the prompt, so the typed text cannot go into it. The prompt is
+     * declined, the API ends the run, and the text is sent as an ordinary turn. A typed answer
+     * never carries files.
+     */
+    const sendInsteadOfOpenPrompt = async (dismissElicitation, turnComposer) => {
+        const selectedCommand = getSelectedCommandRef?.current?.() || null;
+        const submittedMessageText = getMessageTextRef?.current?.() || inputValue.trim();
+
+        if (!submittedMessageText) {
+            return false;
+        }
+
+        const dismissed = await dismissElicitation();
+
+        if (!dismissed) {
+            return false;
+        }
+
+        const runSettled = await waitForTurnIdle(DECLINED_RUN_SETTLE_TIMEOUT_MILLISECONDS);
+
+        if (!runSettled) {
+            log.warn('[useChatStream] The run did not end after its prompt was declined; the typed text was not sent.');
+            appendErrorMessage(describeRejectedSend({}, selectedCommand));
+
+            return false;
+        }
+
+        await sendTurn(selectedCommand, submittedMessageText, {...turnComposer, attachmentTray: null});
+
+        return true;
+    };
+
+    const sendTurn = async (selectedCommand, submittedMessageText, turnComposer) => {
+        turnInFlightRef.current = true;
+        attachedTurnRef.current = false;
+
+        const {
+            attachmentTray: turnAttachmentTray,
+            pendingModel: turnPendingModel,
+            rejectPendingModel: rejectTurnPendingModel,
+            clearModelNotice: clearTurnModelNotice,
+            keepInput,
+        } = turnComposer;
+
         /* Never rejects; a failed caption keeps the original id rather than blocking the send. */
-        const settledEntries = attachmentTray ? await attachmentTray.commitCaptions() : [];
+        const settledEntries = turnAttachmentTray ? await turnAttachmentTray.commitCaptions() : [];
         const attachmentIds = settledEntries.map((entry) => entry.attachmentId).filter((attachmentId) => !!attachmentId);
 
         /*
@@ -214,11 +463,12 @@ function useChatStream({
                 localObjectUrl: entry.localObjectUrl,
             }));
 
-        const updatedHistory = chatHistory.filter((message) => !message.ephemeral);
+        const updatedHistory = chatHistoryRef.current.filter((message) => !message.ephemeral);
         const userMessage = {
             type: USER,
             text: submittedMessageText,
             attachments: optimisticAttachments,
+            commands: selectedCommand ? [selectedCommand] : [],
             _key: generateMessageKey('user'),
         };
         /*
@@ -241,13 +491,17 @@ function useChatStream({
 
         setChatHistory([...updatedHistory, userMessage, aiPlaceholder]);
         setLoading(true);
-        setInputValue('');
 
-        if (chatInputRef.current) {
-            chatInputRef.current.style.height = 'auto';
+        if (!keepInput) {
+            setInputValue('');
+
+            if (chatInputRef.current) {
+                chatInputRef.current.style.height = 'auto';
+            }
         }
 
         setAttachmentNotice(null);
+        clearTurnModelNotice?.();
 
         /* A new turn supersedes any recovery still waiting on the previous one. */
         cancelActiveRecovery();
@@ -256,8 +510,21 @@ function useChatStream({
         let sawRunStarted = false;
         let sawTerminalFrame = false;
         let visionWarmupTimeoutId = null;
+        let releaseTimeoutId = null;
+        let releasedForBackground = false;
+        let turnController = null;
         let resolvedChatId = chatId;
         let resolvedUserMessageId = null;
+        let trayCleared = false;
+
+        const clearTrayOnce = () => {
+            if (trayCleared) {
+                return;
+            }
+
+            trayCleared = true;
+            turnAttachmentTray?.clearTray();
+        };
 
         lastEventIdRef.current = null;
         activeChatIdRef.current = chatId;
@@ -266,15 +533,11 @@ function useChatStream({
 
         /*
          * Recovery is only possible once the turn is bound server-side, which RUN_STARTED is what
-         * tells us — before it there is no chat id to reconcile against, and on an attachment
-         * turn the ids may not be spent, so the restore path below owns that case instead.
+         * tells us — before it the message may never have reached the server, and a resume with
+         * no cursor would replay every earlier turn still in the chat's buffer.
          */
         const attemptStreamRecovery = () => {
-            if (attachmentIds.length > 0 && !sawRunStarted) {
-                return false;
-            }
-
-            if (!pageWasHiddenDuringStreamRef.current && !isPageHidden()) {
+            if (!sawRunStarted) {
                 return false;
             }
 
@@ -290,14 +553,55 @@ function useChatStream({
             });
         };
 
-        pageWasHiddenDuringStreamRef.current = isPageHidden();
+        const shouldReleaseForBackground = () => isPageHidden() && sawRunStarted && !sawTerminalFrame;
+
+        const clearReleaseTimer = () => {
+            if (releaseTimeoutId) {
+                clearTimeout(releaseTimeoutId);
+                releaseTimeoutId = null;
+            }
+        };
+
+        const armReleaseTimer = () => {
+            if (releaseTimeoutId || !shouldReleaseForBackground()) {
+                return;
+            }
+
+            releaseTimeoutId = setTimeout(() => {
+                releaseTimeoutId = null;
+
+                if (!shouldReleaseForBackground()) {
+                    return;
+                }
+
+                releasedForBackground = true;
+                turnController?.abort();
+            }, BACKGROUND_STREAM_RELEASE_DELAY_MILLISECONDS);
+        };
+
         const unsubscribePageHidden = observePageHidden(() => {
-            pageWasHiddenDuringStreamRef.current = true;
+            armReleaseTimer();
         });
+        const unsubscribePageResumed = observePageResumed(clearReleaseTimer);
+
+        const restoreComposer = (errorMessage) => {
+            setChatHistory(updatedHistory);
+
+            if (!keepInput) {
+                setInputValue(submittedMessageText);
+            }
+
+            if (settledEntries.length > 0) {
+                turnAttachmentTray?.restoreTray(settledEntries);
+            }
+
+            appendErrorMessage(errorMessage);
+        };
 
         try {
             controller.current?.abort();
             controller.current = new AbortController();
+            turnController = controller.current;
 
             if (attachmentIds.length > 0) {
                 visionWarmupTimeoutId = setTimeout(() => {
@@ -313,6 +617,10 @@ function useChatStream({
 
             if (attachmentIds.length > 0) {
                 payload.attachmentIds = attachmentIds;
+            }
+
+            if (!chatId && turnPendingModel) {
+                payload.model = turnPendingModel;
             }
 
             await chatService.chatStream(payload, chatId, {
@@ -334,6 +642,12 @@ function useChatStream({
                         resolvedUserMessageId = runStartedIdentifiers.userMessageId ?? resolvedUserMessageId;
                         activeChatIdRef.current = resolvedChatId;
                         setStreamActive(true);
+                        armReleaseTimer();
+                        activeTurnRegistry.remember(resolvedChatId, {
+                            runStartedEventId: rawEvent.id,
+                            userMessageId: resolvedUserMessageId,
+                        });
+                        clearTrayOnce();
                     }
 
                     /*
@@ -343,9 +657,11 @@ function useChatStream({
                      */
                     if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
                         sawTerminalFrame = true;
+                        clearReleaseTimer();
+                        activeTurnRegistry.forget(resolvedChatId);
                     }
 
-                    handleStreamChunk(rawEvent);
+                    handleStreamChunkRef.current(rawEvent);
                 },
             });
 
@@ -356,10 +672,7 @@ function useChatStream({
              * bound — the staged ids are still good and the composer must come back intact.
              */
             if (attachmentIds.length > 0 && !sawRunStarted) {
-                setChatHistory(updatedHistory);
-                setInputValue(submittedMessageText);
-                attachmentTray?.restoreTray(settledEntries);
-                appendErrorMessage(
+                restoreComposer(
                     selectedCommand
                         ? 'Your message could not be sent. Your text and attachments have been restored — please re-select the command and try again.'
                         : 'Your message could not be sent. Your text and attachments have been restored — please try again.'
@@ -368,7 +681,7 @@ function useChatStream({
                 return;
             }
 
-            attachmentTray?.clearTray();
+            clearTrayOnce();
 
             /*
              * RUN_STARTED arrived but nothing closed the stream. The turn was bound and the ids are
@@ -378,11 +691,7 @@ function useChatStream({
              * long cold vision pass behind a proxy read timeout is how this happens in practice.
              */
             if (!sawTerminalFrame) {
-                /*
-                 * A backgrounded page is the common cause on mobile, and it is not an error —
-                 * the turn is still running server-side. Recover instead of accusing the user's
-                 * connection; the message below stays for every other cause.
-                 */
+                /* The turn is still running server-side, so this is a dropped reader, not a failed turn. */
                 if (attemptStreamRecovery()) {
                     return;
                 }
@@ -401,7 +710,21 @@ function useChatStream({
             }
         } catch (caughtError) {
             if (caughtError.name === 'AbortError') {
-                log.info('[ChatScreen] Stream aborted.');
+                if (releasedForBackground) {
+                    clearTrayOnce();
+
+                    if (attemptStreamRecovery()) {
+                        log.info('[useChatStream] Stream released while backgrounded; recovering.');
+                        return;
+                    }
+
+                    stopStreamingLastAIMessage?.();
+                    appendErrorMessage('The response stopped before it finished. Your message was sent — ask again to see the rest.');
+
+                    return;
+                }
+
+                log.info('[useChatStream] Stream aborted.');
                 setChatHistory((previousHistory) => {
                     const newHistory = [...previousHistory];
                     const lastIndex = newHistory.length - 1;
@@ -416,13 +739,26 @@ function useChatStream({
             }
 
             /*
-             * The transport died. If the page was backgrounded, that is a mobile browser
-             * reaping an idle connection rather than a failure worth showing — the turn is
-             * bound and still running, so the ids are spent and the tray must not come back.
+             * Rejected before the SSE response started (the model check runs first), so no chat or
+             * message was created and the attachment ids are unspent — the composer comes back whole.
+             */
+            if (!sawRunStarted && isRejectedBeforeRunStarted(caughtError)) {
+                restoreComposer(describeRejectedSend(caughtError, selectedCommand));
+
+                if (caughtError.code === UNKNOWN_MODEL_CODE) {
+                    rejectTurnPendingModel?.();
+                }
+
+                return;
+            }
+
+            /*
+             * The transport died or went silent past the idle watchdog. The turn is bound and
+             * still running, so the ids are spent and the tray must not come back.
              */
             if (streamService.isTransientStreamDisconnect(caughtError) && attemptStreamRecovery()) {
-                log.info('[ChatScreen] Stream interrupted while backgrounded; recovering.');
-                attachmentTray?.clearTray();
+                log.info('[useChatStream] Stream interrupted; recovering.');
+                clearTrayOnce();
 
                 return;
             }
@@ -430,6 +766,8 @@ function useChatStream({
             streamService.handleStreamError(caughtError, appendErrorMessage, setChatHistory);
         } finally {
             unsubscribePageHidden();
+            unsubscribePageResumed();
+            clearReleaseTimer();
 
             if (visionWarmupTimeoutId) {
                 clearTimeout(visionWarmupTimeoutId);
@@ -449,12 +787,13 @@ function useChatStream({
      * both pass the check before the first has re-rendered.
      */
     const stopChat = useCallback(async () => {
-        if (!streamActive || stoppingRef.current) {
+        if ((!streamActive && !attachedTurnActive) || stoppingRef.current) {
             return;
         }
 
         stoppingRef.current = true;
         setStreamActive(false);
+        setAttachedTurnActive(false);
 
         try {
             await chatService.cancelStream(activeChatIdRef.current);
@@ -471,12 +810,16 @@ function useChatStream({
             if (turnInFlightRef.current) {
                 stoppingRef.current = false;
                 setStreamActive(true);
+            } else if (attachedTurnRef.current) {
+                stoppingRef.current = false;
+                setAttachedTurnActive(true);
             }
         }
-    }, [streamActive]);
+    }, [streamActive, attachedTurnActive]);
 
     return {
         loading,
+        turnInProgress,
         inputValue,
         setInputValue,
         handleInputChange,
@@ -489,8 +832,10 @@ function useChatStream({
         recoveryFailed,
         retryRecovery,
         dismissRecoveryFailure,
-        streamActive,
+        streamActive: streamActive || attachedTurnActive,
         stopChat,
+        attachIfInFlight,
+        sendCommandTurn,
     };
 }
 
@@ -510,5 +855,13 @@ function readRunStartedIdentifiers(rawEvent) {
         };
     } catch {
         return {chatId: null, userMessageId: null};
+    }
+}
+
+function readToolCallId(rawEvent) {
+    try {
+        return JSON.parse(rawEvent?.data)?.toolCallId ?? null;
+    } catch {
+        return null;
     }
 }

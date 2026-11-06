@@ -1,0 +1,92 @@
+.llm-key-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius);
+}
+
+.llm-key-form-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.llm-key-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.llm-key-form-field label {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.llm-key-form-input {
+    min-width: 0;
+    padding: 7px 10px;
+    font-size: 13px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius-sm);
+}
+
+.llm-key-form-input[readonly] {
+    opacity: 0.7;
+}
+
+.llm-key-form-input-mono {
+    font-family: monospace;
+}
+
+.llm-key-form-key-row {
+    display: flex;
+    gap: 8px;
+}
+
+.llm-key-form-key-row .llm-key-form-input {
+    flex: 1;
+}
+
+.llm-key-form-hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--settings-muted);
+}
+
+.llm-key-form-error {
+    margin: 0;
+    font-size: 13px;
+    color: #ff8a80;
+}
+
+.llm-key-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.llm-key-form-button {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius-sm);
+    cursor: pointer;
+}
+
+.llm-key-form-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.llm-key-form-button-primary:not(:disabled) {
+    color: #ffffff;
+    background-color: var(--settings-accent);
+    border-color: var(--settings-accent);
+}

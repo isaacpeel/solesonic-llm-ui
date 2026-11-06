@@ -5,10 +5,25 @@ import PropTypes from 'prop-types';
 import log from 'loglevel';
 import {toast} from 'react-toastify';
 import authService from '../service/AuthService.js';
+import pushSubscriptionService from '../service/PushSubscriptionService.js';
 import {observePageResumed} from '../util/pageLifecycle.js';
 
 // Create Keycloak context
-const KeycloakContext = createContext(null);
+export const KeycloakContext = createContext(null);
+
+const REMOVED_SESSION_STORAGE_KEY = 'solesonic.keycloakSession';
+
+const removeStoredSession = () => {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
+    try {
+        localStorage.removeItem(REMOVED_SESSION_STORAGE_KEY);
+    } catch (removeError) {
+        log.warn('[KeycloakProvider] Could not remove the previously stored session', removeError);
+    }
+};
 
 /**
  * KeycloakProvider Component
@@ -37,6 +52,8 @@ export const KeycloakProvider = ({children}) => {
         }
 
         didInitRef.current = true;
+
+        removeStoredSession();
 
         // Deliberately excludes the query string. Keycloak matches redirect_uri against the
         // client's Valid Redirect URIs, and an exact (non-wildcard) entry will not match a URL
@@ -158,12 +175,20 @@ export const KeycloakProvider = ({children}) => {
     };
 
     // Logout method
-    const logout = () => {
-        if (keycloak) {
-            keycloak.logout({
-                redirectUri: window.location.origin,
-            });
+    const logout = async () => {
+        if (!keycloak) {
+            return;
         }
+
+        try {
+            await pushSubscriptionService.releaseOnLogout();
+        } catch (releaseError) {
+            log.warn('[KeycloakProvider] Push release failed; signing out anyway', releaseError);
+        }
+
+        keycloak.logout({
+            redirectUri: window.location.origin,
+        });
     };
 
     // Get current access token
@@ -172,6 +197,8 @@ export const KeycloakProvider = ({children}) => {
     };
 
     const hasRole = (roleName) => user?.roles?.includes(roleName) ?? false;
+
+    const hasGroup = (groupName) => keycloak?.tokenParsed?.groups?.includes(groupName) ?? false;
 
     const contextValue = {
         keycloak,
@@ -182,6 +209,7 @@ export const KeycloakProvider = ({children}) => {
         logout,
         getToken,
         hasRole,
+        hasGroup,
     };
 
     return (

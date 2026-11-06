@@ -1,0 +1,107 @@
+.memory-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius, 8px);
+}
+
+.memory-row-superseded {
+    opacity: 0.55;
+}
+
+.memory-row-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.memory-row-content {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-color);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.memory-row-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.memory-row-hint {
+    margin: 0;
+    font-size: 12px;
+    color: #d29922;
+}
+
+.memory-row-meta,
+.memory-row-admin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    font-size: 12px;
+    color: var(--settings-muted, #b0b0b0);
+}
+
+.memory-row-provenance {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.memory-row-chat-link,
+.memory-row-chat-id,
+.memory-row-key {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 11px;
+}
+
+.memory-row-chat-link {
+    color: var(--settings-accent, #0074d9);
+    text-decoration: none;
+}
+
+.memory-row-chat-link:hover {
+    text-decoration: underline;
+}
+
+.memory-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.memory-row-action {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--settings-muted, #b0b0b0);
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.memory-row-action:hover {
+    color: var(--settings-accent, #0074d9);
+    border-color: var(--settings-accent, #0074d9);
+}
+
+.memory-row-action-delete:hover {
+    color: #ff5252;
+    border-color: #ff5252;
+    background-color: rgba(255, 0, 0, 0.08);
+}

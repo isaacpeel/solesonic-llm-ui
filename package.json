@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host=localhost --port=3000",
     "build": "vite build",
+    "test": "vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -15,6 +16,8 @@
     "@tailwindcss/vite": "^4.3.1",
     "@tanstack/react-virtual": "^3.14.9",
     "@testing-library/react": "^16.3.2",
+    "approve": "^0.0.12",
+    "esbuild": "^0.28.2",
     "keycloak-js": "^26.2.4",
     "linkify-react": "^4.3.3",
     "linkifyjs": "^4.3.3",
@@ -28,6 +31,7 @@
     "react-toastify": "^11.1.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
+    "scripts": "^0.1.0",
     "tailwindcss": "^4.3.1"
   },
   "devDependencies": {
@@ -56,8 +60,11 @@
   },
   "overrides": {
     "inflight": "npm:lru-cache@^10.4.3",
-    "minimatch": "^10.2.1",
-    "glob": "^10.3.10",
+    "minimatch": "^11.0.2",
+    "glob": "^14.0.3",
     "js-yaml": ">=4.1.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

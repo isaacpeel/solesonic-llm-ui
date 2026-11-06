@@ -12,7 +12,11 @@ vi.mock('../../src/chat/message/ChatMessage.jsx', () => ({
     SYSTEM: 'SYSTEM',
 }));
 
-import elicitationService, {resolveElicitationAction} from '../../src/service/ElicitationService.js';
+import elicitationService, {
+    isDismissibleElicitation,
+    resolveElicitationAction,
+    TYPED_INSTEAD_RESPONSE,
+} from '../../src/service/ElicitationService.js';
 import streamService from '../../src/service/StreamService.js';
 import {AI, SYSTEM} from '../../src/chat/message/ChatMessage.jsx';
 
@@ -477,5 +481,123 @@ describe('handleElicitationSubmit stream outcome', () => {
         );
         const calls = args.setElicitationSubmitting.mock.calls.map(call => call[0]);
         expect(calls.at(-1)).toBe(false);
+    });
+});
+
+const FEUD_BUZZ_IN_ELICITATION = {
+    message: 'Face-off: who buzzed in first?',
+    elicitationId: 'elicit-feud-1',
+    chatId: 'chat-feud',
+    requestedSchema: {
+        type: 'object',
+        required: ['speaker', 'answer'],
+        properties: {
+            speaker: {type: 'string', title: 'Who buzzed in', oneOf: [{const: 'Alex', title: 'Alex'}, {const: 'Sam', title: 'Sam'}]},
+            answer: {type: 'string', title: 'Answer', maxLength: 80},
+        },
+    },
+    _meta: {'solesonic/elicitation': 'feud', 'feud/prompt': 'buzz_in'},
+};
+
+describe('isDismissibleElicitation', () => {
+    it('is true for a prompt that opts in through _meta', () => {
+        expect(isDismissibleElicitation(FEUD_BUZZ_IN_ELICITATION)).toBe(true);
+    });
+
+    it('is false for an MCP prompt, a prompt with empty _meta, and no prompt at all', () => {
+        expect(isDismissibleElicitation({message: 'Confirm', elicitationId: 'e-1'})).toBe(false);
+        expect(isDismissibleElicitation({message: 'Confirm', elicitationId: 'e-1', _meta: {}})).toBe(false);
+        expect(isDismissibleElicitation(null)).toBe(false);
+    });
+});
+
+function makeDismissArgs(overrides = {}) {
+    return {
+        activeElicitation: FEUD_BUZZ_IN_ELICITATION,
+        setChatHistory: vi.fn(),
+        setActiveElicitation: vi.fn(),
+        appendErrorMessage: vi.fn(),
+        ...overrides,
+    };
+}
+
+describe('dismissElicitation', () => {
+    it('does nothing and reports false when no prompt is open', async () => {
+        const args = makeDismissArgs({activeElicitation: null});
+
+        const dismissed = await elicitationService.dismissElicitation(args);
+
+        expect(dismissed).toBe(false);
+        expect(streamService.chatStreamElicitationResponse).not.toHaveBeenCalled();
+        expect(args.setChatHistory).not.toHaveBeenCalled();
+    });
+
+    it('declines the prompt with a ToolMessage for its tool call', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeDismissArgs();
+
+        const dismissed = await elicitationService.dismissElicitation(args);
+
+        expect(dismissed).toBe(true);
+        const [toolMessage, chatId, elicitationId] = streamService.chatStreamElicitationResponse.mock.calls[0];
+        expect(toolMessage.role).toBe('tool');
+        expect(toolMessage.toolCallId).toBe('elicit-feud-1');
+        expect(JSON.parse(toolMessage.content)).toEqual({action: 'decline'});
+        expect(chatId).toBe('chat-feud');
+        expect(elicitationId).toBe('elicit-feud-1');
+    });
+
+    it('replaces the prompt with a typed-instead bubble and no AI placeholder', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeDismissArgs();
+
+        await elicitationService.dismissElicitation(args);
+
+        expect(args.setActiveElicitation).toHaveBeenCalledWith(null);
+        const updater = args.setChatHistory.mock.calls[0][0];
+        const newHistory = updater([
+            {type: AI, text: 'Hi', _key: 'welcome', ephemeral: true},
+            {type: 'USER', text: 'new game Alex vs Sam', _key: 'u-1'},
+            {type: AI, text: 'Here is the board.', _key: 'ai-1'},
+        ]);
+
+        expect(newHistory.map((message) => message._key)).toEqual(['u-1', 'ai-1', expect.any(String)]);
+        expect(newHistory.at(-1)).toEqual(expect.objectContaining({
+            type: SYSTEM,
+            text: 'Face-off: who buzzed in first?',
+            elicitationResponse: TYPED_INSTEAD_RESPONSE,
+        }));
+        expect(newHistory.some((message) => message.type === AI && message.isStreaming)).toBe(false);
+    });
+
+    it('stops the reply that streamed before the prompt, since no RUN_FINISHED will reach it', async () => {
+        streamService.chatStreamElicitationResponse.mockResolvedValue(undefined);
+        const args = makeDismissArgs();
+
+        await elicitationService.dismissElicitation(args);
+
+        const updater = args.setChatHistory.mock.calls[0][0];
+        const newHistory = updater([
+            {type: 'USER', text: 'new game Alex vs Sam', _key: 'u-1'},
+            {type: AI, text: 'Here is the board.', _key: 'ai-1', isStreaming: true},
+        ]);
+
+        expect(newHistory[1]).toEqual(expect.objectContaining({_key: 'ai-1', text: 'Here is the board.', isStreaming: false}));
+    });
+
+    it('puts the prompt back and reports false when the decline cannot be sent', async () => {
+        streamService.chatStreamElicitationResponse.mockRejectedValue(new Error('offline'));
+        const args = makeDismissArgs();
+
+        const dismissed = await elicitationService.dismissElicitation(args);
+
+        expect(dismissed).toBe(false);
+        expect(args.setActiveElicitation).toHaveBeenLastCalledWith(FEUD_BUZZ_IN_ELICITATION);
+        expect(args.appendErrorMessage).toHaveBeenCalledTimes(1);
+
+        const addBubble = args.setChatHistory.mock.calls[0][0];
+        const removeBubble = args.setChatHistory.mock.calls[1][0];
+        const historyBefore = [{type: AI, text: 'Here is the board.', _key: 'ai-1'}];
+        expect(removeBubble(addBubble(historyBefore))).toEqual(historyBefore);
     });
 });

@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {useNavigate} from "react-router";
+import {useMatch, useNavigate} from "react-router";
 import {useVirtualizer} from "@tanstack/react-virtual";
 import {ChevronRightIcon} from "@heroicons/react/24/solid";
 import {MdDragIndicator} from "react-icons/md";
@@ -12,19 +12,30 @@ import ChatDropActionMenu from "./ChatDropActionMenu.jsx";
 import ChatGroupDialogs from "./ChatGroupDialogs.jsx";
 import ChatGroupSection, {isChatGroupRow} from "./ChatGroupSection.jsx";
 import ChatNameInput from "./ChatNameInput.jsx";
+import ChatHistorySearchInput from "./ChatHistorySearchInput.jsx";
+import ChatSearchResultLabel from "./ChatSearchResultLabel.jsx";
 import DeleteChatDialog from "./DeleteChatDialog.jsx";
+import ShareChatDialog from "../../sharedsessions/ShareChatDialog.jsx";
+import LeaveSharedChatDialog from "../../sharedsessions/LeaveSharedChatDialog.jsx";
+import SharedChatMarkers from "../../sharedsessions/SharedChatMarkers.jsx";
+import {isSharedChat, isSharedChatOwner} from "../../util/sharedChats.js";
+import authService from "../../service/AuthService.js";
 import {useSharedData} from "../../context/useSharedData.jsx";
 import usePagedChatHistory from "../../hooks/usePagedChatHistory.js";
+import useDebouncedValue from "../../hooks/useDebouncedValue.js";
+import {normalizeSearchQuery, SEARCH_DEBOUNCE_MILLISECONDS} from "../../util/chatHistorySearch.js";
 import useChatGroupSections from "../../hooks/useChatGroupSections.js";
 import chatService from "../../service/ChatService.js";
 import {groupChatsByDay, partitionGroupedChats} from "../../util/chatHistoryGrouping.js";
 import {
+    CHAT_GROUPS_SECTION_ROW,
     CHAT_HISTORY_HEADER_ROW,
     chatFromRow,
     chatHistoryRowFullLabel,
     chatHistoryRowLabel,
     estimateChatHistoryRowSize,
     flattenChatGroupsToRows,
+    flattenSearchResultsToRows,
 } from "../../util/chatHistoryRows.js";
 import {
     DROP_AFTER,
@@ -33,6 +44,8 @@ import {
     NEW_GROUP_DROP_ATTRIBUTE,
 } from "../../util/chatHistoryDrag.js";
 import useChatHistoryDrag from "../../hooks/useChatHistoryDrag.js";
+import {PUSH_NAVIGATED_EVENT} from "../../push/usePushNavigation.js";
+import useResizableDrawerWidth from "../../hooks/useResizableDrawerWidth.js";
 
 /* Rows kept mounted above and below the window, so a fast flick does not expose blank space. */
 const OVERSCAN_ROWS = 4;
@@ -49,6 +62,7 @@ const INITIAL_SCROLL_RECT = {width: 250, height: 600};
 
 /* Rendered as the disabled item's title, so the user learns why rather than just being blocked. */
 const STREAMING_DELETE_REASON = "Wait for the response to finish.";
+const STREAMING_SHARE_REASON = STREAMING_DELETE_REASON;
 
 /*
  * Ceiling on the top-up below. A user whose entire history is filed under groups would otherwise
@@ -60,7 +74,30 @@ const DRAG_HANDLE_HINT = "Drag onto a group, or out of the drawer";
 
 const GROUPED_DRAG_HANDLE_HINT = "Drag to reorder, or use the arrow keys";
 
-function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
+function ChatHistory({userId: userIdProp, drawerOpen, setDrawerOpen}) {
+    const [resolvedUserId, setResolvedUserId] = useState(null);
+    const userId = userIdProp ?? resolvedUserId;
+
+    useEffect(() => {
+        if (userIdProp) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        authService.getUserId()
+            .then((viewerUserId) => {
+                if (!cancelled) {
+                    setResolvedUserId(viewerUserId ?? null);
+                }
+            })
+            .catch((caughtError) => log.error("[ChatHistory] Could not read the signed-in user", caughtError));
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userIdProp]);
+
     const {
         reloadHistoryTrigger,
         chatId: openChatId,
@@ -71,15 +108,25 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         setReloadHistoryTrigger,
     } = useSharedData();
     const navigate = useNavigate();
+    const openSharedSessionId = useMatch("/shared-sessions/:sessionId")?.params.sessionId ?? null;
 
     const drawerRef = useRef(null);
     const scrollContainerRef = useRef(null);
+
+    const [searchText, setSearchText] = useState("");
+    const debouncedSearchText = useDebouncedValue(searchText, SEARCH_DEBOUNCE_MILLISECONDS);
+
+    /* Clearing skips the debounce, so the normal listing comes back the moment the field empties. */
+    const liveSearchQuery = normalizeSearchQuery(searchText);
+    const searchQuery = liveSearchQuery === null ? null : normalizeSearchQuery(debouncedSearchText);
+    const searching = searchQuery !== null;
 
     const {
         chats,
         loading,
         error,
         hasMore,
+        totalElements,
         loadMore,
         retry,
         replaceChat,
@@ -89,6 +136,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         active: drawerOpen,
         reloadTrigger: reloadHistoryTrigger,
         userId,
+        query: searchQuery,
     });
 
     /*
@@ -136,6 +184,8 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * knows which group's cached page the row also has to come out of.
      */
     const [deleteRequest, setDeleteRequest] = useState(null);
+    const [shareRequest, setShareRequest] = useState(null);
+    const [leaveRequest, setLeaveRequest] = useState(null);
 
     /* null when closed; `{chat, point}` for a conversation released clear of the drawer. */
     const [dropActionRequest, setDropActionRequest] = useState(null);
@@ -151,6 +201,11 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      */
     const [collapsedDayKeys, setCollapsedDayKeys] = useState(() => new Set());
 
+    const [groupsExpanded, setGroupsExpanded] = useState(false);
+
+    const resizer = useResizableDrawerWidth();
+    const consumeResizeRelease = resizer.consumeResizeRelease;
+
     /*
      * Memoized on the accumulated pages rather than recomputed per render: grouping sorts every
      * bucket and then the buckets themselves, and the drawer re-renders on every parent state
@@ -164,7 +219,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * nothing for a drag to rearrange; ordering belongs to groups, where the server has a column
      * for it and the rendered list can express a position. `sortOrder` is deliberately not read.
      */
-    const dayGroups = useMemo(() => groupChatsByDay(ungrouped), [ungrouped]);
+    const dayGroups = useMemo(
+        () => groupChatsByDay(searching ? chats : ungrouped),
+        [searching, chats, ungrouped],
+    );
 
     const daySections = useMemo(
         () => dayGroups.map((dayGroup) => ({
@@ -176,10 +234,33 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     );
 
     const chatGroupSections = chatGroups.chatGroupSections;
+    const reloadChatGroupsRef = useRef(null);
+    reloadChatGroupsRef.current = chatGroups.reloadGroupsAndLoadedChats;
+
+    useEffect(() => {
+        const handlePushNavigated = (event) => {
+            const url = event.detail?.url;
+
+            if (typeof url !== "string" || !url.startsWith("/chat/")) {
+                return;
+            }
+
+            setReloadHistoryTrigger(trigger => trigger + 1);
+            reloadChatGroupsRef.current?.();
+        };
+
+        window.addEventListener(PUSH_NAVIGATED_EVENT, handlePushNavigated);
+
+        return () => {
+            window.removeEventListener(PUSH_NAVIGATED_EVENT, handlePushNavigated);
+        };
+    }, [setReloadHistoryTrigger]);
 
     const rows = useMemo(
-        () => flattenChatGroupsToRows([...chatGroupSections, ...daySections]),
-        [chatGroupSections, daySections],
+        () => (searching
+            ? flattenSearchResultsToRows(daySections)
+            : flattenChatGroupsToRows([...chatGroupSections, ...daySections], {groupsCollapsible: true, groupsExpanded})),
+        [searching, chatGroupSections, daySections, groupsExpanded],
     );
 
     const ungroupedChatCount = ungrouped.length;
@@ -213,6 +294,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                 return;
             }
 
+            if (consumeResizeRelease()) {
+                return;
+            }
+
             if (drawerRef.current && !drawerRef.current.contains(event.target)) {
                 setDrawerOpen(false);
             }
@@ -222,7 +307,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         return () => {
             document.removeEventListener("mouseup", handleClickOutside);
         };
-    }, [drawerOpen, setDrawerOpen]);
+    }, [drawerOpen, setDrawerOpen, consumeResizeRelease]);
 
     /*
      * Infinite scroll: the virtualizer already knows how close the window is to the end of the
@@ -260,7 +345,8 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * this effect, and a ref would not.
      */
     useEffect(() => {
-        if (!drawerOpen || !hasMore || loading) {
+        /* Search pages count only the rows they return, so there is nothing to top up. */
+        if (!drawerOpen || !hasMore || loading || searching) {
             return;
         }
 
@@ -278,7 +364,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
         setEmptyPageAttempts(attempts => attempts + 1);
         loadMore();
-    }, [drawerOpen, hasMore, loading, ungroupedChatCount, emptyPageAttempts, loadMore]);
+    }, [drawerOpen, hasMore, loading, searching, ungroupedChatCount, emptyPageAttempts, loadMore]);
 
     const toggleDaySection = (dayKey) => {
         setCollapsedDayKeys(previousKeys => {
@@ -294,9 +380,23 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         });
     };
 
-    const handleChatClick = (chatId) => {
+    /* A group being created has to be visible once it lands, so the Groups section opens for it. */
+    const requestCreateGroup = (chat) => {
+        setGroupsExpanded(true);
+        chatGroups.requestCreateGroup(chat);
+    };
+
+    const handleChatClick = (chatId, chat) => {
         /* A row being renamed is an editor, not a link — clicking its padding must not navigate. */
         if (chatId === renamingChatId) {
+            return;
+        }
+
+        if (isSharedChat(chat)) {
+            setChatHistory([]);
+            setChatId(null);
+            setDrawerOpen(false);
+            navigate(`/shared-sessions/${encodeURIComponent(chat.sharedSessionId)}`);
             return;
         }
 
@@ -445,7 +545,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
         onGroupDrop: (chatGroupId, position) => {
             void chatGroups.handleGroupDrop(chatGroupId, position);
         },
-        onNewGroup: (chat) => chatGroups.requestCreateGroup(chat),
+        onNewGroup: (chat) => requestCreateGroup(chat),
         onDropOutside: (chat, point) => setDropActionRequest({chat, point}),
     });
 
@@ -507,15 +607,80 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
     };
 
     /*
-     * Two items, and no arranging among them. Filing, unfiling and ordering are all drag gestures
+     * Three items, and no arranging among them. Filing, unfiling and ordering are all drag gestures
      * now — an action that duplicates a gesture is a second place for the two to disagree.
      */
-    const buildRowActions = (row) => ([
+    const buildShareAction = (row) => ({
+        key: "share",
+        label: "Share…",
+        disabled: !!streamingChatId && row.chatId === streamingChatId,
+        disabledReason: STREAMING_SHARE_REASON,
+        onSelect: () => setShareRequest({chatId: row.chatId, chatName: row.chat?.name ?? ""}),
+    });
+
+    const handleSharedChatLeft = () => {
+        const request = leaveRequest;
+
+        removeChat(request.chatId);
+
+        if (request.chatGroupId) {
+            chatGroups.removeGroupChat(request.chatGroupId, request.chatId);
+        }
+
+        setLeaveRequest(null);
+        toast(request.owner ? "Sharing ended" : "You left the chat");
+
+        if (openSharedSessionId === request.sharedSessionId) {
+            navigate("/");
+        }
+    };
+
+    const buildSharedRowActions = (row) => {
+        if (!userId) {
+            return [];
+        }
+
+        const owner = isSharedChatOwner(row.chat, userId);
+
+        const leaveAction = {
+            key: "leave",
+            label: owner ? "End sharing" : "Leave chat",
+            onSelect: () => setLeaveRequest({
+                chatId: row.chatId,
+                chatGroupId: row.chatGroupId ?? null,
+                sharedSessionId: row.chat.sharedSessionId,
+                label: row.fullLabel,
+                owner,
+            }),
+        };
+
+        if (!owner) {
+            return [leaveAction];
+        }
+
+        return [
+            {
+                key: "rename",
+                label: "Rename",
+                onSelect: () => handleRenameStart(row.chat),
+            },
+            leaveAction,
+        ];
+    };
+
+    const renderRowMenu = (row) => {
+        const actions = buildRowActions(row);
+
+        return actions.length > 0 ? <ChatRowMenu label={row.fullLabel} actions={actions}/> : null;
+    };
+
+    const buildRowActions = (row) => isSharedChat(row.chat) ? buildSharedRowActions(row) : ([
         {
             key: "rename",
             label: "Rename",
             onSelect: () => handleRenameStart(row.chat),
         },
+        buildShareAction(row),
         buildDeleteAction(row),
     ]);
 
@@ -527,6 +692,27 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
      * element rather than a border.
      */
     const renderRow = (row) => {
+        if (row.type === CHAT_GROUPS_SECTION_ROW) {
+            return (
+                <button
+                    type="button"
+                    className="date-header chat-groups-section-header"
+                    aria-expanded={row.expanded}
+                    onClick={() => setGroupsExpanded(expanded => !expanded)}
+                >
+                    <ChevronRightIcon
+                        aria-hidden="true"
+                        className={row.expanded
+                            ? "date-header-chevron date-header-chevron-expanded"
+                            : "date-header-chevron"}
+                    />
+
+                    <span className="date-header-label">{row.label}</span>
+                    <span className="chat-groups-section-count">{row.count}</span>
+                </button>
+            );
+        }
+
         if (row.type === CHAT_HISTORY_HEADER_ROW) {
             return (
                 <button
@@ -565,11 +751,41 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             );
         }
 
+        if (row.searchResult) {
+            return (
+                <div
+                    className={chatItemClassName("chat-item chat-item-search-result", row, openSharedSessionId)}
+                    aria-current={isOpenSharedRow(row, openSharedSessionId) ? "true" : undefined}
+                    title={row.fullLabel}
+                    onClick={() => handleChatClick(row.chatId, row.chat)}
+                >
+                    {row.chatId === renamingChatId ? (
+                        <ChatNameInput
+                            key={`${row.chatId}:${renameSeed.attempt}`}
+                            className="chat-item-rename"
+                            label="Conversation name"
+                            initialValue={renameSeed.value}
+                            placeholder={chatHistoryRowLabel({...row.chat, name: null})}
+                            onCommit={(name) => handleRenameCommit(row, name)}
+                            onCancel={handleRenameCancel}
+                        />
+                    ) : (
+                        <>
+                            <ChatSearchResultLabel label={row.label} match={row.match} query={searchQuery}/>
+                            {isSharedChat(row.chat) && <SharedChatMarkers participants={row.chat.participants}/>}
+                            {renderRowMenu(row)}
+                        </>
+                    )}
+                </div>
+            );
+        }
+
         return (
             <div
-                className={row.chatGroupId ? "chat-item chat-item-in-group" : "chat-item"}
+                className={chatItemClassName(row.chatGroupId ? "chat-item chat-item-in-group" : "chat-item", row, openSharedSessionId)}
+                aria-current={isOpenSharedRow(row, openSharedSessionId) ? "true" : undefined}
                 title={row.fullLabel}
-                onClick={() => handleChatClick(row.chatId)}
+                onClick={() => handleChatClick(row.chatId, row.chat)}
             >
                 {row.chatId === renamingChatId ? (
                     <ChatNameInput
@@ -583,6 +799,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     />
                 ) : (
                     <>
+                        {(!isSharedChat(row.chat) || isSharedChatOwner(row.chat, userId)) && (
                         <button
                             type="button"
                             className="chat-history-drag-handle"
@@ -598,9 +815,11 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                         >
                             <MdDragIndicator aria-hidden="true"/>
                         </button>
+                        )}
 
-                        <span className="chat-item-label">{row.label}</span>
-                        <ChatRowMenu label={row.fullLabel} actions={buildRowActions(row)}/>
+                        <span className="chat-item-label">{row.fullLabel}</span>
+                        {isSharedChat(row.chat) && <SharedChatMarkers participants={row.chat.participants}/>}
+                        {renderRowMenu(row)}
                     </>
                 )}
             </div>
@@ -614,19 +833,27 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
             <div className={outsideDropActive ? "chat-drawer mt-7! chat-drawer-releasing" : "chat-drawer mt-7!"}>
                 <h2>Chat History</h2>
 
+                <ChatHistorySearchInput
+                    value={searchText}
+                    onChange={setSearchText}
+                    onClear={() => setSearchText("")}
+                />
+
                 {/* Pinned under the title and outside the scroll box: anything that scrolls above
                   * the virtualizer's rows offsets every one of them. Also the target for a
                   * conversation dragged onto it, which creates the group around it. */}
-                <button
-                    type="button"
-                    className={newGroupDropActive
-                        ? "chat-history-new-group chat-history-new-group-drop-active"
-                        : "chat-history-new-group"}
-                    onClick={() => chatGroups.requestCreateGroup()}
-                    {...{[NEW_GROUP_DROP_ATTRIBUTE]: "true"}}
-                >
-                    + New group
-                </button>
+                {!searching && (
+                    <button
+                        type="button"
+                        className={newGroupDropActive
+                            ? "chat-history-new-group chat-history-new-group-drop-active"
+                            : "chat-history-new-group"}
+                        onClick={() => requestCreateGroup()}
+                        {...{[NEW_GROUP_DROP_ATTRIBUTE]: "true"}}
+                    >
+                        + New group
+                    </button>
+                )}
 
                 <div className="chat-history-scroll" ref={scrollContainerRef}>
                     <div
@@ -661,8 +888,10 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     {/* In the scroll box, not the footer: an empty list stands in for the rows
                       * under the title rather than sitting pinned to the drawer's foot. It can
                       * never coexist with a scrollbar, so it cannot disturb one. */}
-                    {!loading && !error && rows.length === 0 && (
-                        <div className="chat-history-status">No chats yet.</div>
+                    {!loading && !error && (rows.length === 0 || (searching && totalElements === 0)) && (
+                        <div className="chat-history-status">
+                            {searching ? "No matching chats." : "No chats yet."}
+                        </div>
                     )}
                 </div>
 
@@ -674,7 +903,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                   */}
                 <div className="chat-history-status-area">
                     {loading && (
-                        <div className="chat-history-status">Loading…</div>
+                        <div className="chat-history-status">{searching ? "Searching…" : "Loading…"}</div>
                     )}
 
                     {!loading && error && (
@@ -699,7 +928,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                         groups={chatGroups.groups}
                         currentChatGroupId={dropActionRequest.chat.chatGroupId ?? null}
                         onNewGroup={() => {
-                            chatGroups.requestCreateGroup(dropActionRequest.chat);
+                            requestCreateGroup(dropActionRequest.chat);
                             setDropActionRequest(null);
                         }}
                         onMoveToGroup={(chatGroupId) => {
@@ -708,7 +937,7 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                             setDropActionRequest(null);
                             void chatGroups.handleMoveToGroup(chat, chatGroupId);
                         }}
-                        onDelete={() => {
+                        onDelete={isSharedChat(dropActionRequest.chat) ? undefined : () => {
                             setDeleteRequest({
                                 chatId: dropActionRequest.chat.id,
                                 chatGroupId: dropActionRequest.chat.chatGroupId ?? null,
@@ -722,6 +951,28 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
 
                 <ChatGroupDialogs {...chatGroups.dialogProps} streamingChatId={streamingChatId}/>
 
+                {shareRequest && (
+                    <ShareChatDialog
+                        sourceChatId={shareRequest.chatId}
+                        chatName={shareRequest.chatName}
+                        onCancel={() => setShareRequest(null)}
+                        onShared={() => {
+                            setShareRequest(null);
+                            setDrawerOpen(false);
+                        }}
+                    />
+                )}
+
+                {leaveRequest && (
+                    <LeaveSharedChatDialog
+                        sharedSessionId={leaveRequest.sharedSessionId}
+                        label={leaveRequest.label}
+                        owner={leaveRequest.owner}
+                        onCancel={() => setLeaveRequest(null)}
+                        onLeft={handleSharedChatLeft}
+                    />
+                )}
+
                 {deleteRequest && (
                     <DeleteChatDialog
                         chatId={deleteRequest.chatId}
@@ -732,15 +983,39 @@ function ChatHistory({userId, drawerOpen, setDrawerOpen}) {
                     />
                 )}
             </div>
+
+            <div
+                className={resizer.resizing ? "chat-drawer-resize-handle chat-drawer-resize-handle-active" : "chat-drawer-resize-handle"}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize chat history"
+                aria-valuenow={resizer.width}
+                aria-valuemin={resizer.minimumWidth}
+                aria-valuemax={resizer.maximumWidth}
+                tabIndex={0}
+                {...resizer.handleProps}
+            />
         </div>
     );
+}
+
+function isOpenSharedRow(row, openSharedSessionId) {
+    return !!openSharedSessionId && isSharedChat(row.chat) && row.chat.sharedSessionId === openSharedSessionId;
+}
+
+function chatItemClassName(baseClassName, row, openSharedSessionId) {
+    return isOpenSharedRow(row, openSharedSessionId) ? `${baseClassName} chat-item-active` : baseClassName;
 }
 
 function rowClassName(row, {dragging, dropEdge} = {}) {
     const classNames = ["chat-history-row"];
 
-    if (row.type === CHAT_HISTORY_HEADER_ROW) {
+    if (row.type === CHAT_HISTORY_HEADER_ROW || row.type === CHAT_GROUPS_SECTION_ROW) {
         classNames.push("chat-history-header-row");
+
+        if (row.type === CHAT_GROUPS_SECTION_ROW) {
+            classNames.push("chat-groups-section-row");
+        }
 
         if (!row.firstInList) {
             classNames.push("chat-history-header-row-spaced");

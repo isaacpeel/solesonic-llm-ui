@@ -1,0 +1,9 @@
+.all-memories {
+    display: flex;
+    flex-direction: column;
+}
+
+.all-memories .memory-row-admin {
+    padding-top: 6px;
+    border-top: 1px dashed var(--border-color);
+}

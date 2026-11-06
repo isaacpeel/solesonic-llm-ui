@@ -16,3 +16,27 @@
     justify-content: space-between;
     align-items: center
 }
+
+.header-left {
+    flex: 0 0 auto;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.header-chat-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.header-chat-actions:empty {
+    display: none;
+}

@@ -102,4 +102,30 @@ describe('parseSseStream', () => {
         expect(firstEvent).toBeDefined();
         expect(firstEvent.data).toBe('first');
     });
+
+    it('reports activity for a keepalive comment that yields no event', async () => {
+        const stream = makeStream([': keepalive\n\n']);
+        let activityCount = 0;
+        const events = [];
+
+        for await (const event of parseSseStream(stream, {onActivity: () => { activityCount += 1; }})) {
+            events.push(event);
+        }
+
+        expect(events).toHaveLength(0);
+        expect(activityCount).toBe(1);
+    });
+
+    it('reports activity once per chunk read', async () => {
+        const stream = makeStream(['event: chunk\n', 'data: hello\n\n', ': keepalive\n\n']);
+        let activityCount = 0;
+        const events = [];
+
+        for await (const event of parseSseStream(stream, {onActivity: () => { activityCount += 1; }})) {
+            events.push(event);
+        }
+
+        expect(events).toEqual([{ event: 'chunk', data: 'hello' }]);
+        expect(activityCount).toBe(3);
+    });
 });

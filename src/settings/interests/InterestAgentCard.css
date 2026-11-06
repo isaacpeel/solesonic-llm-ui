@@ -1,0 +1,192 @@
+.interest-agent-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.interest-agent-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.interest-agent-label {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.interest-agent-status {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+}
+
+.interest-agent-status-active {
+    color: #4caf50;
+}
+
+.interest-agent-status-paused {
+    color: var(--settings-muted);
+}
+
+.interest-agent-query {
+    margin: 0;
+    font-size: 13px;
+    color: var(--settings-muted);
+    overflow-wrap: anywhere;
+}
+
+.interest-agent-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 16px;
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    color: var(--settings-muted);
+    list-style: none;
+}
+
+.interest-agent-failure {
+    color: #ffb74d;
+}
+
+.interest-agent-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.interest-agent-cadence {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.interest-agent-cadence select {
+    padding: 4px 8px;
+    font-size: 13px;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius-sm);
+}
+
+.interest-agent-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.interest-agent-button {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius-sm);
+    cursor: pointer;
+}
+
+.interest-agent-button:hover:not(:disabled) {
+    background-color: var(--accent-color);
+}
+
+.interest-agent-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.interest-agent-button-primary {
+    color: #fff;
+    background-color: var(--settings-accent);
+    border-color: var(--settings-accent);
+}
+
+.interest-agent-button-primary:hover:not(:disabled) {
+    background-color: var(--settings-accent-hover);
+}
+
+.interest-agent-button-destructive {
+    color: #ff8a80;
+    background: none;
+}
+
+.interest-agent-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.interest-agent-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.interest-agent-field input,
+.interest-agent-field textarea {
+    padding: 6px 8px;
+    font: inherit;
+    font-weight: 400;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--settings-radius-sm);
+    resize: vertical;
+}
+
+.interest-agent-hint {
+    margin: -4px 0 0;
+    font-size: 12px;
+    color: var(--settings-muted);
+}
+
+.interest-agent-field-error {
+    margin: 0;
+    font-size: 12px;
+    color: #ff8a80;
+}
+
+.interest-agent-updates-status {
+    margin: 0;
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+.interest-agent-updates {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 13px;
+}
+
+.interest-agent-update a {
+    color: var(--settings-accent);
+    text-decoration: none;
+}
+
+.interest-agent-update a:hover {
+    text-decoration: underline;
+}

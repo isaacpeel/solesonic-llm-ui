@@ -1,16 +1,31 @@
 import authService from '../service/AuthService.js';
 
 export class ApiError extends Error {
-    constructor({ message, status, method, uri }) {
+    constructor({ message, status, method, uri, code, serverMessage, usernames }) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.method = method;
         this.uri = uri;
+        this.code = code;
+        this.serverMessage = serverMessage;
+        this.usernames = usernames;
     }
 }
 
-async function request(method, uri, { body, headers = {}, noOp = false, responseType = 'json' } = {}) {
+export async function readApiErrorBody(response) {
+    try {
+        const errorBody = await response.json();
+
+        const usernames = Array.isArray(errorBody?.usernames) ? errorBody.usernames : undefined;
+
+        return {message: errorBody?.message, code: errorBody?.code, usernames};
+    } catch {
+        return {message: undefined, code: undefined, usernames: undefined};
+    }
+}
+
+async function request(method, uri, { body, headers = {}, noOp = false, responseType = 'json', signal } = {}) {
     const token = await authService.getAccessToken();
 
     const requestHeaders = { ...headers };
@@ -27,6 +42,7 @@ async function request(method, uri, { body, headers = {}, noOp = false, response
         method,
         headers: requestHeaders,
         body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+        signal,
     };
 
     let response = await fetch(uri, init);
@@ -44,19 +60,16 @@ async function request(method, uri, { body, headers = {}, noOp = false, response
             return null;
         }
 
-        let errorMessage = response.statusText;
-        try {
-            const errorBody = await response.json();
-            errorMessage = errorBody.message || response.statusText;
-        } catch {
-            // keep statusText fallback
-        }
+        const errorBody = await readApiErrorBody(response);
 
         throw new ApiError({
-            message: `${response.status}: ${method} - ${uri} ${errorMessage}`,
+            message: `${response.status}: ${method} - ${uri} ${errorBody.message || response.statusText}`,
             status: response.status,
             method,
             uri,
+            code: errorBody.code,
+            serverMessage: errorBody.message,
+            usernames: errorBody.usernames,
         });
     }
 

@@ -7,6 +7,7 @@ import {CHAT_HISTORY_PORTAL_ATTRIBUTE} from "./ChatRowMenu.jsx";
 import {handleDialogKeyDown} from "../../util/dialogFocus.js";
 import chatGroupService from "../../service/ChatGroupService.js";
 import chatService from "../../service/ChatService.js";
+import {isSharedChat} from "../../util/sharedChats.js";
 
 const DELETE_GROUP_FAILED_ERROR = "Could not delete the group. Please try again.";
 
@@ -46,6 +47,7 @@ const MAXIMUM_PAGES = 100;
  *   chatGroupId: string,
  *   label: string,
  *   streamingChatId: string|null,
+ *   sharedChatCount?: number,
  *   onCancel: () => void,
  *   onConversationsDeleted: (deletedChatIds: Array<string>) => void,
  *   onDeleted: (chatGroupId: string, deletedChatIds: Array<string>) => void,
@@ -55,6 +57,7 @@ function DeleteChatGroupDialog({
     chatGroupId,
     label,
     streamingChatId,
+    sharedChatCount = 0,
     onCancel,
     onConversationsDeleted,
     onDeleted,
@@ -116,14 +119,16 @@ function DeleteChatGroupDialog({
             throw new Error(STREAMING_REFUSAL);
         }
 
+        const deletableChats = chats.filter(chat => !isSharedChat(chat));
+        const keptSharedCount = chats.length - deletableChats.length;
         const deletedChatIds = [];
 
         /*
          * One at a time. A burst of deletes is faster but leaves "how far did it get" unanswerable,
          * and this is the one operation where that question matters.
          */
-        for (const chat of chats) {
-            setProgress({done: deletedChatIds.length, total: chats.length});
+        for (const chat of deletableChats) {
+            setProgress({done: deletedChatIds.length, total: deletableChats.length});
 
             try {
                 await chatService.deleteChat(chat.id);
@@ -140,7 +145,7 @@ function DeleteChatGroupDialog({
                     onConversationsDeleted(deletedChatIds);
                     throw new Error(deletedChatIds.length === 0
                         ? DELETE_GROUP_FAILED_ERROR
-                        : `Deleted ${deletedChatIds.length} of ${chats.length} conversations, then stopped. Please try again.`);
+                        : `Deleted ${deletedChatIds.length} of ${deletableChats.length} conversations, then stopped. Please try again.`);
                 }
             }
 
@@ -148,7 +153,7 @@ function DeleteChatGroupDialog({
         }
 
         await chatGroupService.deleteGroup(chatGroupId);
-        onDeleted(chatGroupId, deletedChatIds);
+        onDeleted(chatGroupId, deletedChatIds, {keptSharedCount});
     };
 
     const confirm = async (deleteConversations) => {
@@ -210,6 +215,12 @@ function DeleteChatGroupDialog({
                 <p className="delete-chat-group-dialog-body">
                     <span className="delete-chat-group-dialog-label">{`"${label}"`}</span>
                 </p>
+
+                {sharedChatCount > 0 && (
+                    <p className="delete-chat-group-dialog-body">
+                        {`Shared chats in this group will not be deleted. They move back to your chat list.`}
+                    </p>
+                )}
 
                 {progress && (
                     <p className="delete-chat-group-dialog-progress" role="status">

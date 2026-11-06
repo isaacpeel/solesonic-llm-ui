@@ -1,5 +1,5 @@
 import "./ElicitationPrompt.css";
-import elicitationService from '../service/ElicitationService.js';
+import elicitationService, {isDismissibleElicitation} from '../service/ElicitationService.js';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -16,6 +16,40 @@ const SpinnerLabel = () => (
 const { getEnumOptions, getMultiEnumOptions } = elicitationService;
 
 const PRIMARY_ACTION_KEYWORDS = new Set(['ACCEPT', 'CONFIRM', 'YES', 'OK', 'APPROVE']);
+
+const FOCUSABLE_CONTROL_SELECTOR = 'button:not(:disabled), input:not(:disabled)';
+
+const DROPDOWN_PANEL_GAP = 4;
+const DROPDOWN_PANEL_MAX_HEIGHT = 224;
+const DROPDOWN_VIEWPORT_MARGIN = 8;
+
+function isBlank(fieldValue) {
+    if (fieldValue === undefined || fieldValue === null) {
+        return true;
+    }
+
+    if (typeof fieldValue === 'string') {
+        return fieldValue.trim().length === 0;
+    }
+
+    if (typeof fieldValue === 'number') {
+        return Number.isNaN(fieldValue);
+    }
+
+    if (Array.isArray(fieldValue)) {
+        return fieldValue.length === 0;
+    }
+
+    return false;
+}
+
+function rendersTextInput(propertyDef) {
+    if (getEnumOptions(propertyDef)) {
+        return false;
+    }
+
+    return !(propertyDef?.type === 'array' && getMultiEnumOptions(propertyDef));
+}
 
 const Dropdown = ({ options, value, onChange, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -37,10 +71,19 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
         }
 
         const triggerRect = containerRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const spaceBelow = viewportHeight - triggerRect.bottom - DROPDOWN_PANEL_GAP - DROPDOWN_VIEWPORT_MARGIN;
+        const spaceAbove = triggerRect.top - DROPDOWN_PANEL_GAP - DROPDOWN_VIEWPORT_MARGIN;
+        const opensUpward = spaceBelow < DROPDOWN_PANEL_MAX_HEIGHT && spaceAbove > spaceBelow;
+        const verticalPlacement = opensUpward
+            ? { bottom: viewportHeight - triggerRect.top + DROPDOWN_PANEL_GAP }
+            : { top: triggerRect.bottom + DROPDOWN_PANEL_GAP };
+
         setPanelPosition({
-            top: triggerRect.bottom + 4,
+            ...verticalPlacement,
             left: triggerRect.left,
             width: triggerRect.width,
+            maxHeight: Math.max(0, Math.min(DROPDOWN_PANEL_MAX_HEIGHT, opensUpward ? spaceAbove : spaceBelow)),
         });
     }, [isOpen]);
 
@@ -63,16 +106,26 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
             }
         };
 
-        const closeOnScroll = () => setIsOpen(false);
+        const closeOnScroll = (event) => {
+            if (panelRef.current?.contains(event.target)) {
+                return;
+            }
+
+            setIsOpen(false);
+        };
+
+        const closeOnResize = () => setIsOpen(false);
 
         document.addEventListener('mousedown', handleOutsideClick);
         document.addEventListener('keydown', handleEscapeKey);
         document.addEventListener('scroll', closeOnScroll, true);
+        window.addEventListener('resize', closeOnResize);
 
         return () => {
             document.removeEventListener('mousedown', handleOutsideClick);
             document.removeEventListener('keydown', handleEscapeKey);
             document.removeEventListener('scroll', closeOnScroll, true);
+            window.removeEventListener('resize', closeOnResize);
         };
     }, [isOpen]);
 
@@ -107,9 +160,11 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
                     role="listbox"
                     aria-labelledby={triggerId}
                     style={{
-                        top: `${panelPosition.top}px`,
+                        top: panelPosition.top === undefined ? undefined : `${panelPosition.top}px`,
+                        bottom: panelPosition.bottom === undefined ? undefined : `${panelPosition.bottom}px`,
                         left: `${panelPosition.left}px`,
                         width: `${panelPosition.width}px`,
+                        maxHeight: `${panelPosition.maxHeight}px`,
                     }}
                 >
                     {options.map((option) => {
@@ -142,6 +197,17 @@ const Dropdown = ({ options, value, onChange, disabled }) => {
 };
 
 function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting }) {
+    const containerRef = useRef(null);
+    const elicitationId = elicitation?.elicitationId;
+
+    useEffect(() => {
+        if (!elicitationId) {
+            return;
+        }
+
+        containerRef.current?.querySelector(FOCUSABLE_CONTROL_SELECTOR)?.focus();
+    }, [elicitationId]);
+
     if (!elicitation) {
         return null;
     }
@@ -162,6 +228,30 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
         const options = getEnumOptions(propertyDef);
         return options?.some((option) => option.value.toLowerCase() === 'cancel');
     });
+
+    // A dismissible prompt (an A2A agent's) leaves the composer open: typing the move is the way out, so it
+    // gets no button of its own for that.
+    const offersCancel = !hasExplicitCancelOption && !isDismissibleElicitation(elicitation);
+    const fieldNames = new Set(nonMetaPropertyEntries.map(([propertyName]) => propertyName));
+    const requiredFieldNames = new Set((Array.isArray(schema.required) ? schema.required : []).filter((fieldName) => fieldNames.has(fieldName)));
+    const missingRequired = [...requiredFieldNames].filter((fieldName) => isBlank(values[fieldName]));
+    const canSubmitForm = !submitting && missingRequired.length === 0;
+    const lastTextFieldName = nonMetaPropertyEntries
+        .filter(([, propertyDef]) => rendersTextInput(propertyDef))
+        .map(([propertyName]) => propertyName)
+        .at(-1);
+
+    const submitOnEnter = (propertyName) => (event) => {
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing || propertyName !== lastTextFieldName || singleActionAutoSubmits) {
+            return;
+        }
+
+        event.preventDefault();
+
+        if (canSubmitForm) {
+            onSubmit();
+        }
+    };
 
     const fieldControl = (propertyName, propertyDef) => {
         const currentValue = values[propertyName] ?? '';
@@ -187,22 +277,28 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
 
             return (
                 <div className="elicitation-boolean-container">
-                    {enumOptions.map((option) => (
-                        <button
-                            key={option.value}
-                            type="button"
-                            className={option.value === primaryValue ? 'elicitation-button-primary' : 'elicitation-button-secondary'}
-                            disabled={submitting || isReadOnlyField}
-                            onClick={() => {
-                                onChange(propertyName, option.value);
-                                if (isSingleActionField) {
-                                    onSubmit({ [propertyName]: option.value });
+                    {enumOptions.map((option) => {
+                        const isSelected = !isSingleActionField && option.value === currentValue;
+                        const variantClassName = option.value === primaryValue ? 'elicitation-button-primary' : 'elicitation-button-secondary';
+
+                        return (
+                            <button
+                                key={option.value}
+                                type="button"
+                                className={isSelected ? `${variantClassName} elicitation-button-selected` : variantClassName}
+                                aria-pressed={isSingleActionField ? undefined : isSelected}
+                                disabled={submitting || isReadOnlyField}
+                                onClick={() => {
+                                    onChange(propertyName, option.value);
+                                    if (isSingleActionField) {
+                                        onSubmit({ [propertyName]: option.value });
                                     }
-                            }}
-                        >
-                            {option.label}
-                        </button>
-                    ))}
+                                }}
+                            >
+                                {option.label}
+                            </button>
+                        );
+                    })}
                     {submitting && isSingleActionField && <SpinnerLabel />}
                 </div>
             );
@@ -255,6 +351,7 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                     max={propertyDef.maximum ?? undefined}
                     step={propertyDef.type === 'integer' ? 1 : 'any'}
                     onChange={(event) => onChange(propertyName, event.target.valueAsNumber)}
+                    onKeyDown={submitOnEnter(propertyName)}
                     disabled={submitting || isReadOnlyField}
                 />
             );
@@ -274,38 +371,44 @@ function ElicitationPrompt({ elicitation, values, onChange, onSubmit, submitting
                 minLength={propertyDef?.minLength ?? undefined}
                 maxLength={propertyDef?.maxLength ?? undefined}
                 onChange={(event) => onChange(propertyName, event.target.value)}
+                onKeyDown={submitOnEnter(propertyName)}
                 disabled={submitting || isReadOnlyField}
             />
         );
     };
 
     return (
-        <div className="elicitation-container">
+        <div className="elicitation-container" ref={containerRef}>
             <div className="elicitation-container-title">{elicitation.message}</div>
             <div className="space-y-3">
                 {nonMetaPropertyEntries.map(([propertyName, propertyDef]) => (
                     <div key={propertyName}>
                         {propertyDef.title && (
-                            <label className="block text-xs font-medium text-slate-300 mb-1">{propertyDef.title}</label>
+                            <label className="block text-xs font-medium text-slate-300 mb-1">
+                                {propertyDef.title}
+                                {requiredFieldNames.has(propertyName) && !singleActionAutoSubmits && (
+                                    <span className="elicitation-required-marker" aria-hidden="true"> *</span>
+                                )}
+                            </label>
                         )}
                         {fieldControl(propertyName, propertyDef)}
                     </div>
                 ))}
             </div>
-            {(!singleActionAutoSubmits || !hasExplicitCancelOption) && (
+            {(!singleActionAutoSubmits || offersCancel) && (
                 <div className="mt-3 flex items-center gap-3">
                     {!singleActionAutoSubmits && (
                         <button
                             type="button"
                             className="elicitation-button-primary"
                             onClick={() => onSubmit()}
-                            disabled={submitting}
+                            disabled={!canSubmitForm}
                         >
                             Submit
                         </button>
                     )}
 
-                    {!hasExplicitCancelOption && (
+                    {offersCancel && (
                         <button
                             type="button"
                             className="elicitation-button-secondary"

@@ -80,6 +80,9 @@ repeating the policy text means the two copies cannot disagree.
 `init()` rejects, and the app is stuck on "Authentication Required" — a login loop
 with no visible error beyond a "Refused to connect" line in the browser console.
 
+`media-src` allows `data:` (the silent clip that unlocks audio on send) and `blob:` (agent sounds, fetched with the
+bearer token and played from an object URL). Without it both fall back to `default-src 'self'` and no sound plays.
+
 ## Running the Container
 
 Start the container with Docker Compose:
@@ -145,3 +148,9 @@ curl http://localhost:3000
 The Docker build process uses environment variables from `.env`:
 - Vite variables (`VITE_*`) are used at build time to configure the React application
 - Other variables are passed through docker-compose to the container environment
+
+## Log rotation
+
+The container writes `/var/log/solesonic-llm-ui-nginx/{access,error}.log` on the host and nothing rotates them.
+solesonic-log-agent ships a logrotate config for them (`deploy/logrotate/solesonic-log-agent`, `copytruncate`,
+14 days) and ingests `error.log` only: behind the host nginx, the access log's only client is that proxy.

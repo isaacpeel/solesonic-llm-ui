@@ -1,6 +1,7 @@
 import {useState, useCallback, useEffect} from 'react';
+import {isSettingCommand} from '../chat/command/settingCommands.js';
 
-function useSlashCommandSelection({commandCandidates, setInputValue}) {
+function useSlashCommandSelection({commandCandidates, setInputValue, onSettingCommandSelect}) {
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [selectedCommand, setSelectedCommand] = useState(null);
     const [isPinned, setIsPinned] = useState(false);
@@ -18,12 +19,22 @@ function useSlashCommandSelection({commandCandidates, setInputValue}) {
     }, []);
 
     const handleCommandSelect = useCallback((commandObject) => {
-        if (!commandObject) return;
+        if (!commandObject) {
+            return;
+        }
+
+        if (isSettingCommand(commandObject)) {
+            setInputValue('');
+            setSelectedIndex(-1);
+            onSettingCommandSelect?.(commandObject);
+            return;
+        }
+
         setSelectedCommand(commandObject);
         setIsPinned(false);
         setInputValue('');
         setSelectedIndex(-1);
-    }, [setInputValue]);
+    }, [setInputValue, onSettingCommandSelect]);
 
     const handleDismiss = useCallback(() => {
         setSelectedCommand(null);

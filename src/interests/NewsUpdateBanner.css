@@ -1,0 +1,42 @@
+.news-update-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 45%;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.news-update-banner-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    opacity: 0.8;
+}
+
+.news-update-banner-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.news-update-banner-manage {
+    color: #4da3ff;
+    text-decoration: none;
+}
+
+.news-update-banner-manage:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+    .news-update-banner {
+        width: 85%;
+    }
+}

@@ -16,8 +16,14 @@ vi.mock('react-toastify', () => ({
     toast: {error: vi.fn()},
 }));
 
+vi.mock('../../src/service/PushSubscriptionService.js', () => ({
+    default: {releaseOnLogout: vi.fn()},
+}));
+
 let lastKeycloakInstance;
 let mockInit;
+let mockTokenParsed;
+let mockUserInfo;
 
 vi.mock('keycloak-js', () => ({
     default: vi.fn().mockImplementation(function KeycloakMock() {
@@ -26,8 +32,9 @@ vi.mock('keycloak-js', () => ({
             updateToken: vi.fn(),
             login: vi.fn(),
             logout: vi.fn(),
-            loadUserInfo: vi.fn().mockResolvedValue({}),
+            loadUserInfo: vi.fn().mockResolvedValue(mockUserInfo ?? {}),
             token: 'fake-token',
+            tokenParsed: mockTokenParsed,
         };
 
         return lastKeycloakInstance;
@@ -39,6 +46,7 @@ vi.mock('../../src/util/pageLifecycle.js', () => ({
 }));
 
 import {observePageResumed} from '../../src/util/pageLifecycle.js';
+import pushSubscriptionService from '../../src/service/PushSubscriptionService.js';
 
 const Consumer = () => {
     const {authenticated, loading, keycloak, login} = useKeycloak();
@@ -194,5 +202,159 @@ describe('KeycloakProvider', () => {
 
         expect(toast.error).not.toHaveBeenCalled();
         expect(lastKeycloakInstance.login).not.toHaveBeenCalled();
+    });
+
+    test('removes the session a previous release stored in localStorage', () => {
+        const removeItem = vi.fn();
+        vi.stubGlobal('localStorage', {removeItem});
+        mockInit = vi.fn().mockReturnValue(new Promise(() => {}));
+
+        try {
+            render(
+                <KeycloakProvider>
+                    <Consumer/>
+                </KeycloakProvider>
+            );
+        } finally {
+            vi.unstubAllGlobals();
+        }
+
+        expect(removeItem).toHaveBeenCalledWith('solesonic.keycloakSession');
+    });
+});
+
+const GroupConsumer = ({groupName}) => {
+    const {authenticated, hasGroup} = useKeycloak();
+
+    return (
+        <div>
+            <span data-testid="authenticated">{String(authenticated)}</span>
+            <span data-testid="has-group">{String(hasGroup(groupName))}</span>
+        </div>
+    );
+};
+
+const renderGroupConsumer = async (groupName) => {
+    render(
+        <KeycloakProvider>
+            <GroupConsumer groupName={groupName}/>
+        </KeycloakProvider>
+    );
+
+    await waitFor(() => {
+        expect(screen.getByTestId('authenticated').textContent).toBe('true');
+    });
+
+    return screen.getByTestId('has-group').textContent;
+};
+
+describe('KeycloakProvider hasGroup', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        observePageResumed.mockImplementation(() => () => {});
+        mockInit = vi.fn().mockResolvedValue(true);
+        mockTokenParsed = undefined;
+        mockUserInfo = undefined;
+    });
+
+    test('is true when the access token groups claim names the group', async () => {
+        mockTokenParsed = {sub: 'user-1', groups: ['izzy-bot-admin']};
+
+        expect(await renderGroupConsumer('izzy-bot-admin')).toBe('true');
+    });
+
+    test('is false when the access token carries no groups claim', async () => {
+        mockTokenParsed = {sub: 'user-1'};
+
+        expect(await renderGroupConsumer('izzy-bot-admin')).toBe('false');
+    });
+
+    test('is false when only a role of the same name is present', async () => {
+        mockTokenParsed = {sub: 'user-1', realm_access: {roles: ['izzy-bot-admin']}};
+        mockUserInfo = {roles: ['izzy-bot-admin']};
+
+        expect(await renderGroupConsumer('izzy-bot-admin')).toBe('false');
+    });
+
+    test('does not match a full group path, as the API compares the bare name', async () => {
+        mockTokenParsed = {sub: 'user-1', groups: ['/izzy-bot-admin']};
+
+        expect(await renderGroupConsumer('izzy-bot-admin')).toBe('false');
+    });
+});
+
+const LogoutConsumer = () => {
+    const {authenticated, logout} = useKeycloak();
+
+    return (
+        <div>
+            <span data-testid="authenticated">{String(authenticated)}</span>
+            <button onClick={logout}>logout</button>
+        </div>
+    );
+};
+
+const renderAndLogOut = async () => {
+    render(
+        <KeycloakProvider>
+            <LogoutConsumer/>
+        </KeycloakProvider>
+    );
+
+    await waitFor(() => {
+        expect(screen.getByTestId('authenticated').textContent).toBe('true');
+    });
+
+    await act(async () => {
+        screen.getByText('logout').click();
+    });
+};
+
+describe('KeycloakProvider logout', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        observePageResumed.mockImplementation(() => () => {});
+        mockInit = vi.fn().mockResolvedValue(true);
+        mockTokenParsed = undefined;
+        mockUserInfo = undefined;
+    });
+
+    test('releases this device before signing out', async () => {
+        pushSubscriptionService.releaseOnLogout.mockResolvedValue(undefined);
+
+        await renderAndLogOut();
+
+        await waitFor(() => {
+            expect(lastKeycloakInstance.logout).toHaveBeenCalledWith({redirectUri: window.location.origin});
+        });
+        expect(pushSubscriptionService.releaseOnLogout.mock.invocationCallOrder[0])
+            .toBeLessThan(lastKeycloakInstance.logout.mock.invocationCallOrder[0]);
+    });
+
+    test('waits for the release to settle before signing out', async () => {
+        let finishRelease;
+        pushSubscriptionService.releaseOnLogout.mockReturnValue(new Promise((resolve) => {
+            finishRelease = resolve;
+        }));
+
+        await renderAndLogOut();
+
+        expect(lastKeycloakInstance.logout).not.toHaveBeenCalled();
+
+        await act(async () => {
+            finishRelease();
+        });
+
+        expect(lastKeycloakInstance.logout).toHaveBeenCalledTimes(1);
+    });
+
+    test('still signs out when the release rejects', async () => {
+        pushSubscriptionService.releaseOnLogout.mockRejectedValue(new Error('network down'));
+
+        await renderAndLogOut();
+
+        await waitFor(() => {
+            expect(lastKeycloakInstance.logout).toHaveBeenCalledTimes(1);
+        });
     });
 });

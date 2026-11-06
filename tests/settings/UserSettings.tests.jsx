@@ -6,9 +6,14 @@ import UserSettings from '../../src/settings/UserSettings.jsx';
 import GeneralUserSettings from '../../src/settings/GeneralUserSettings.jsx';
 import ConnectionsSettings from '../../src/settings/connections/ConnectionsSettings.jsx';
 import {useKeycloak} from '../../src/providers/KeycloakProvider.jsx';
+import {useSharedData} from '../../src/context/useSharedData.jsx';
 
 vi.mock('../../src/providers/KeycloakProvider.jsx', () => ({
     useKeycloak: vi.fn(),
+}));
+
+vi.mock('../../src/context/useSharedData.jsx', () => ({
+    useSharedData: vi.fn(() => ({chatId: null})),
 }));
 
 vi.mock('../../src/service/AtlassianAuthService.js', () => ({
@@ -78,9 +83,13 @@ const activeNavLabel = () => document.querySelector('.settings-nav-row.selected'
 const navLabels = () => Array.from(document.querySelectorAll('.settings-nav-row'))
     .map((navRow) => navRow.textContent.trim());
 
+const navGroupLabels = () => Array.from(document.querySelectorAll('.settings-nav-group-label'))
+    .map((groupLabel) => groupLabel.textContent.trim());
+
 describe('UserSettings navigation', () => {
     beforeEach(() => {
         useKeycloak.mockReturnValue(keycloakMock({roles: ['rag-admin']}));
+        useSharedData.mockReturnValue({chatId: null});
     });
 
     afterEach(() => {
@@ -105,14 +114,40 @@ describe('UserSettings navigation', () => {
     it('offers one merged Connections entry rather than per-provider entries', () => {
         renderSettings('/settings/general');
 
-        expect(navLabels()).toEqual(['General', 'Connections', 'RAG', 'Images']);
+        expect(navLabels()).toEqual(['General', 'Notifications', 'Connections', 'RAG', 'Images', 'Memory', 'Interests']);
     });
 
-    it('renders a back link to the chat', () => {
+    it('hides the Administration group from a user without an admin role', () => {
+        renderSettings('/settings/general');
+
+        expect(navLabels()).not.toContain('Model Access');
+        expect(navGroupLabels()).not.toContain('Administration');
+    });
+
+    it('shows Model Access under Administration to an llm-key-admin', () => {
+        useKeycloak.mockReturnValue(keycloakMock({roles: ['llm-key-admin']}));
+
+        renderSettings('/settings/general');
+
+        expect(navGroupLabels()).toEqual(['Account', 'Connections', 'Data', 'Administration']);
+        expect(navLabels().at(-1)).toBe('Model Access');
+        expect(document.querySelector('a.settings-nav-row[href="/settings/model-access"]')).not.toBeNull();
+    });
+
+    it('renders a back link to a new chat when none is open', () => {
         renderSettings('/settings/general');
 
         const backLink = document.querySelector('.settings-back-link');
         expect(backLink.getAttribute('href')).toBe('/');
+    });
+
+    it('links back to the conversation that is open, so its turn is still on screen', () => {
+        useSharedData.mockReturnValue({chatId: 'chat-1'});
+
+        renderSettings('/settings/general');
+
+        const backLink = document.querySelector('.settings-back-link');
+        expect(backLink.getAttribute('href')).toBe('/chat/chat-1');
     });
 
     it('is not rendered as a fixed overlay', () => {
@@ -168,7 +203,7 @@ describe('General profile panel', () => {
 
         expect(screen.getByText('ada@example.com')).toBeDefined();
         expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThan(0);
-        expect(document.querySelector('.general-settings-profile-grid input')).toBeNull();
+        expect(document.querySelector('.general-settings-profile-grid input:not(.agent-sounds-setting-toggle)')).toBeNull();
     });
 
     it('renders one chip per assigned role', () => {

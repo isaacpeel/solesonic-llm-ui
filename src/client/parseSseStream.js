@@ -1,4 +1,4 @@
-export async function* parseSseStream(responseBody) {
+export async function* parseSseStream(responseBody, { onActivity } = {}) {
     if (!responseBody) {
         throw new Error('Response body is null');
     }
@@ -13,6 +13,8 @@ export async function* parseSseStream(responseBody) {
             if (done) {
                 break;
             }
+
+            onActivity?.();
 
             buffer += decoder.decode(value, { stream: true });
 

@@ -1,0 +1,366 @@
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {SAFE_APP_PATHS, UNSAFE_APP_PATHS} from './appPathFixtures.js';
+
+const ORIGIN = 'https://app.example.com';
+
+let listeners;
+let showNotification;
+let pushManager;
+let clients;
+
+async function loadWorker() {
+    listeners = {};
+    showNotification = vi.fn().mockResolvedValue(undefined);
+    pushManager = {subscribe: vi.fn().mockResolvedValue({})};
+    clients = {
+        matchAll: vi.fn().mockResolvedValue([]),
+        openWindow: vi.fn().mockResolvedValue(null),
+        claim: vi.fn().mockResolvedValue(undefined),
+    };
+
+    vi.stubGlobal('self', {
+        addEventListener: vi.fn((type, listener) => {
+            listeners[type] = listener;
+        }),
+        skipWaiting: vi.fn().mockResolvedValue(undefined),
+        registration: {showNotification, pushManager},
+        clients,
+        location: {origin: ORIGIN},
+    });
+
+    vi.resetModules();
+    await import('../../public/service-worker.js');
+}
+
+async function dispatch(type, event = {}) {
+    let pendingWork = Promise.resolve();
+
+    listeners[type]({
+        ...event,
+        waitUntil: (promise) => {
+            pendingWork = promise;
+        },
+    });
+
+    await pendingWork;
+}
+
+function pushEventWith(payload) {
+    return {data: {json: () => payload}};
+}
+
+function windowClient(overrides = {}) {
+    return {
+        focused: false,
+        visibilityState: 'hidden',
+        focus: vi.fn().mockResolvedValue(undefined),
+        postMessage: vi.fn(),
+        ...overrides,
+    };
+}
+
+function notificationClickFor(url, {action = '', type} = {}) {
+    return {action, notification: {close: vi.fn(), data: {url, type}}};
+}
+
+const OFFER_PAYLOAD = {
+    version: 1,
+    type: 'INTEREST_OFFER',
+    title: 'Solesonic',
+    body: 'I can keep you posted on something you\'re interested in',
+    url: '/interests/offers/offer-1',
+    tag: 'interest-offer:offer-1',
+    timestamp: '2026-10-21T12:00:00Z',
+    actions: [{action: 'enable', title: 'Enable'}, {action: 'dismiss', title: 'Not now'}],
+};
+
+beforeEach(async () => {
+    await loadWorker();
+});
+
+afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+});
+
+describe('service worker lifecycle', () => {
+    it('activates immediately and claims open pages', async () => {
+        await dispatch('install');
+        expect(self.skipWaiting).toHaveBeenCalledTimes(1);
+
+        await dispatch('activate');
+        expect(clients.claim).toHaveBeenCalledTimes(1);
+    });
+
+    it('registers no fetch handler', () => {
+        expect(listeners.fetch).toBeUndefined();
+    });
+});
+
+describe('service worker push', () => {
+    it('shows the payload as given', async () => {
+        await dispatch('push', pushEventWith({
+            version: 1,
+            type: 'TURN_FINISHED',
+            title: 'Solesonic',
+            body: 'Your reply is ready',
+            url: '/chat/chat-1',
+            tag: 'chat:chat-1',
+            timestamp: '2026-10-20T12:00:00Z',
+        }));
+
+        expect(showNotification).toHaveBeenCalledWith('Solesonic', {
+            body: 'Your reply is ready',
+            tag: 'chat:chat-1',
+            icon: '/icons/icon-192.png',
+            badge: '/icons/badge-96.png',
+            data: {url: '/chat/chat-1', type: 'TURN_FINISHED'},
+            timestamp: Date.parse('2026-10-20T12:00:00Z'),
+            renotify: true,
+        });
+    });
+
+    it('opens the shared session for a shared chat message that names it', async () => {
+        await dispatch('push', pushEventWith({
+            version: 1,
+            type: 'shared_chat_message',
+            title: 'Solesonic',
+            body: 'Sam sent a message',
+            chatId: 'chat-7',
+            sessionId: '5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e',
+            runId: 'run-1',
+        }));
+
+        expect(showNotification.mock.calls[0][1].data).toEqual({
+            url: '/shared-sessions/5f0c2d1e-3b4a-49c8-8d7e-6f5a4b3c2d1e',
+            type: 'shared_chat_message',
+        });
+    });
+
+    it('prefers the url the payload carries over the session it names', async () => {
+        await dispatch('push', pushEventWith({
+            type: 'shared_chat_message',
+            url: '/shared-sessions/aaa',
+            sessionId: 'bbb',
+        }));
+
+        expect(showNotification.mock.calls[0][1].data.url).toBe('/shared-sessions/aaa');
+    });
+
+    it.each(['../evil', 'a/b', '', 42, null])('falls back to home for a shared chat message naming the session %s', async (sessionId) => {
+        await dispatch('push', pushEventWith({type: 'shared_chat_message', sessionId}));
+
+        expect(showNotification.mock.calls[0][1].data.url).toBe('/');
+    });
+
+    it('does not build a session path for other push types', async () => {
+        await dispatch('push', pushEventWith({type: 'TURN_FINISHED', sessionId: 'abc'}));
+
+        expect(showNotification.mock.calls[0][1].data.url).toBe('/');
+    });
+
+    it('shows the two offer actions and keeps the offer url and type', async () => {
+        await dispatch('push', pushEventWith(OFFER_PAYLOAD));
+
+        const options = showNotification.mock.calls[0][1];
+
+        expect(options.actions).toEqual([{action: 'enable', title: 'Enable'}, {action: 'dismiss', title: 'Not now'}]);
+        expect(options.data).toEqual({url: '/interests/offers/offer-1', type: 'INTEREST_OFFER'});
+    });
+
+    it('drops unknown actions, untitled actions and anything past the limit', async () => {
+        await dispatch('push', pushEventWith({
+            ...OFFER_PAYLOAD,
+            actions: [
+                {action: 'open-evil', title: 'Go'},
+                {action: 'enable', title: 42},
+                {action: 'dismiss', title: ''},
+                {action: 'enable', title: 'E'.repeat(50)},
+                {action: 'dismiss', title: 'Not now'},
+                {action: 'enable', title: 'Third'},
+                null,
+            ],
+        }));
+
+        expect(showNotification.mock.calls[0][1].actions).toEqual([
+            {action: 'enable', title: 'E'.repeat(32)},
+            {action: 'dismiss', title: 'Not now'},
+        ]);
+    });
+
+    it('honours a smaller platform action limit', async () => {
+        vi.stubGlobal('Notification', {maxActions: 1});
+
+        await dispatch('push', pushEventWith(OFFER_PAYLOAD));
+
+        expect(showNotification.mock.calls[0][1].actions).toEqual([{action: 'enable', title: 'Enable'}]);
+    });
+
+    it('shows no actions for a payload without them', async () => {
+        await dispatch('push', pushEventWith({version: 1, type: 'INTEREST_UPDATE', title: 'Bot', body: 'News', url: '/chat/chat-9'}));
+        await dispatch('push', pushEventWith({...OFFER_PAYLOAD, actions: 'enable'}));
+
+        expect(showNotification.mock.calls[0][1]).not.toHaveProperty('actions');
+        expect(showNotification.mock.calls[1][1]).not.toHaveProperty('actions');
+    });
+
+    it('shows an unknown type using its title and body', async () => {
+        await dispatch('push', pushEventWith({version: 1, type: 'SOMETHING_NEW', title: 'Bot', body: 'New thing', url: '/'}));
+
+        expect(showNotification).toHaveBeenCalledWith('Bot', expect.objectContaining({body: 'New thing'}));
+    });
+
+    it('still shows the default notification with no data', async () => {
+        await dispatch('push', {data: null});
+
+        expect(showNotification).toHaveBeenCalledWith('Notification', expect.objectContaining({
+            body: 'You have a new notification',
+            data: {url: '/'},
+            renotify: false,
+        }));
+    });
+
+    it('still shows the default notification for an unparseable payload', async () => {
+        await dispatch('push', {
+            data: {
+                json: () => {
+                    throw new SyntaxError('Unexpected token');
+                },
+            },
+        });
+
+        expect(showNotification).toHaveBeenCalledWith('Notification', expect.objectContaining({body: 'You have a new notification'}));
+    });
+
+    it('caps an oversized title and body', async () => {
+        await dispatch('push', pushEventWith({title: 't'.repeat(500), body: 'b'.repeat(500), url: '/'}));
+
+        expect(showNotification.mock.calls[0][0]).toHaveLength(100);
+        expect(showNotification.mock.calls[0][1].body).toHaveLength(200);
+    });
+
+    it('stores a safe path even when the payload url is not one', async () => {
+        await dispatch('push', pushEventWith({title: 'Bot', body: 'Hi', url: 'https://evil.example/x'}));
+
+        expect(showNotification.mock.calls[0][1].data).toEqual({url: '/'});
+    });
+});
+
+describe('service worker notificationclick', () => {
+    it('focuses an open window and asks it to navigate', async () => {
+        const openWindowClient = windowClient();
+        clients.matchAll.mockResolvedValue([openWindowClient]);
+        const clickEvent = notificationClickFor('/chat/chat-1');
+
+        await dispatch('notificationclick', clickEvent);
+
+        expect(clickEvent.notification.close).toHaveBeenCalledTimes(1);
+        expect(clients.matchAll).toHaveBeenCalledWith({type: 'window', includeUncontrolled: true});
+        expect(openWindowClient.focus).toHaveBeenCalledTimes(1);
+        expect(openWindowClient.postMessage).toHaveBeenCalledWith({type: 'push:navigate', url: '/chat/chat-1'});
+        expect(clients.openWindow).not.toHaveBeenCalled();
+    });
+
+    it('prefers a focused window, then a visible one', async () => {
+        const hiddenClient = windowClient();
+        const visibleClient = windowClient({visibilityState: 'visible'});
+        const focusedClient = windowClient({focused: true, visibilityState: 'visible'});
+
+        clients.matchAll.mockResolvedValue([hiddenClient, visibleClient, focusedClient]);
+        await dispatch('notificationclick', notificationClickFor('/chat/chat-1'));
+        expect(focusedClient.postMessage).toHaveBeenCalledTimes(1);
+        expect(visibleClient.postMessage).not.toHaveBeenCalled();
+
+        clients.matchAll.mockResolvedValue([hiddenClient, visibleClient]);
+        await dispatch('notificationclick', notificationClickFor('/chat/chat-1'));
+        expect(visibleClient.postMessage).toHaveBeenCalledTimes(1);
+        expect(hiddenClient.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('opens a window when none is open', async () => {
+        await dispatch('notificationclick', notificationClickFor('/settings/notifications'));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/settings/notifications');
+    });
+
+    it.each(SAFE_APP_PATHS)('opens the safe target %s', async (safeUrl) => {
+        await dispatch('notificationclick', notificationClickFor(safeUrl));
+
+        expect(clients.openWindow).toHaveBeenCalledWith(safeUrl);
+    });
+
+    it.each(UNSAFE_APP_PATHS)('falls back to / for the unsafe target %s', async (unsafeUrl) => {
+        await dispatch('notificationclick', notificationClickFor(unsafeUrl));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/');
+    });
+
+    it('opens the offer asking to accept when Enable is pressed', async () => {
+        const clickEvent = notificationClickFor('/interests/offers/offer-1', {action: 'enable', type: 'INTEREST_OFFER'});
+
+        await dispatch('notificationclick', clickEvent);
+
+        expect(clickEvent.notification.close).toHaveBeenCalledTimes(1);
+        expect(clients.openWindow).toHaveBeenCalledWith('/interests/offers/offer-1?intent=accept');
+    });
+
+    it('only closes the notification when Not now is pressed', async () => {
+        const openWindowClient = windowClient();
+        clients.matchAll.mockResolvedValue([openWindowClient]);
+        const clickEvent = notificationClickFor('/interests/offers/offer-1', {action: 'dismiss', type: 'INTEREST_OFFER'});
+
+        await dispatch('notificationclick', clickEvent);
+
+        expect(clickEvent.notification.close).toHaveBeenCalledTimes(1);
+        expect(clients.matchAll).not.toHaveBeenCalled();
+        expect(openWindowClient.focus).not.toHaveBeenCalled();
+        expect(clients.openWindow).not.toHaveBeenCalled();
+    });
+
+    it('opens the plain offer url for a tap on the body', async () => {
+        await dispatch('notificationclick', notificationClickFor('/interests/offers/offer-1', {type: 'INTEREST_OFFER'}));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/interests/offers/offer-1');
+    });
+
+    it('ignores Enable on anything that is not an offer', async () => {
+        await dispatch('notificationclick', notificationClickFor('/chat/chat-1', {action: 'enable', type: 'TURN_FINISHED'}));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/chat/chat-1');
+    });
+
+    it('falls back to / when Enable is pressed on an unsafe offer url', async () => {
+        await dispatch('notificationclick', notificationClickFor('https://evil.example/x', {action: 'enable', type: 'INTEREST_OFFER'}));
+
+        expect(clients.openWindow).toHaveBeenCalledWith('/');
+    });
+
+    it('opens the news chat for a tap on an interest update', async () => {
+        const openWindowClient = windowClient({focused: true});
+        clients.matchAll.mockResolvedValue([openWindowClient]);
+
+        await dispatch('notificationclick', notificationClickFor('/chat/chat-9', {type: 'INTEREST_UPDATE'}));
+
+        expect(openWindowClient.postMessage).toHaveBeenCalledWith({type: 'push:navigate', url: '/chat/chat-9'});
+    });
+});
+
+describe('service worker pushsubscriptionchange', () => {
+    it('resubscribes with the previous server key', async () => {
+        const applicationServerKey = new Uint8Array([4, 1, 2]).buffer;
+
+        await dispatch('pushsubscriptionchange', {oldSubscription: {options: {applicationServerKey}}});
+
+        expect(pushManager.subscribe).toHaveBeenCalledWith({userVisibleOnly: true, applicationServerKey});
+    });
+
+    it('does nothing without a previous key, and swallows failures', async () => {
+        await dispatch('pushsubscriptionchange', {oldSubscription: null});
+        expect(pushManager.subscribe).not.toHaveBeenCalled();
+
+        pushManager.subscribe.mockRejectedValue(new Error('denied'));
+        await expect(dispatch('pushsubscriptionchange', {
+            oldSubscription: {options: {applicationServerKey: new Uint8Array([4]).buffer}},
+        })).resolves.toBeUndefined();
+    });
+});

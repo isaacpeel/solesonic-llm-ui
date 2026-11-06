@@ -7,22 +7,27 @@ import chatService, {
     RESUME_UNAVAILABLE,
     TERMINAL_RUN_EVENTS,
 } from '../service/ChatService.js';
-import {AI, USER} from '../chat/message/ChatMessage.jsx';
+import {AI, SYSTEM, USER} from '../chat/message/ChatMessage.jsx';
 import {isPageHidden, observePageResumed} from '../util/pageLifecycle.js';
 
 /*
- * Backs off rather than hammering: the backend may still be generating when the user returns,
- * and a cold model can take tens of seconds. Sums to roughly 95 seconds, after which a turn is
- * assumed lost rather than left spinning.
+ * Backs off rather than hammering: the backend may still be generating when the user returns.
+ * Sums to roughly five minutes — past the image tool's 180 second deadline plus the answer the
+ * model writes after it — after which a turn is assumed lost rather than left spinning.
  */
-const RECOVERY_POLL_DELAYS_MILLISECONDS = [0, 1000, 2000, 4000, 8000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000];
+const RECOVERY_POLL_DELAYS_MILLISECONDS = [0, 1000, 2000, 4000, 8000, ...Array(28).fill(10000)];
+
+/* Indexed by consecutive attempts that did not advance the cursor. */
+const RESUME_RETRY_DELAYS_MILLISECONDS = [0, 1000, 2000, 4000, 8000, 15000, 15000, 15000, 15000, 15000];
 
 /*
- * True once the server holds an assistant reply for this turn. Anchored on the user message id
- * adopted from RUN_STARTED so a turn cannot be satisfied by an older reply already in the chat; with
- * no id — the frame never arrived — the last USER row is the best available anchor.
+ * True once the server holds the outcome of this turn: an assistant reply with text or a
+ * generated image, or the system message a cancelled turn writes. An answered elicitation is also
+ * a system message, but it lands mid-turn, so it settles nothing. Anchored on the user message id
+ * adopted from RUN_STARTED so a turn cannot be satisfied by an older reply already in the chat;
+ * with no id — the frame never arrived — the last USER row is the best available anchor.
  */
-export function hasCompletedAssistantReply(chatDetails, userMessageId) {
+export function hasSettledTurn(chatDetails, userMessageId) {
     const chatMessages = Array.isArray(chatDetails?.chatMessages) ? chatDetails.chatMessages : [];
 
     if (chatMessages.length === 0) {
@@ -47,10 +52,18 @@ export function hasCompletedAssistantReply(chatDetails, userMessageId) {
     }
 
     return chatMessages.slice(userMessageIndex + 1).some((chatMessage) => {
-        return chatMessage.messageType === AI
-            && !chatMessage.progressData
-            && typeof chatMessage.message === 'string'
-            && chatMessage.message.trim().length > 0;
+        if (chatMessage.messageType === SYSTEM) {
+            return !chatMessage.elicitationId;
+        }
+
+        if (chatMessage.messageType !== AI || chatMessage.progressData) {
+            return false;
+        }
+
+        const hasText = typeof chatMessage.message === 'string' && chatMessage.message.trim().length > 0;
+        const hasGeneratedImages = Array.isArray(chatMessage.generatedImages) && chatMessage.generatedImages.length > 0;
+
+        return hasText || hasGeneratedImages;
     });
 }
 
@@ -73,6 +86,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
         }
 
         activeRecovery.cancelled = true;
+        activeRecovery.abortController.abort();
         activeRecovery.unsubscribe?.();
 
         if (activeRecovery.timeoutId) {
@@ -89,7 +103,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
         };
     }, [cancelActiveRecovery]);
 
-    const runRecovery = useCallback(async (recoveryToken, {recoveryChatId, userMessageId, lastEventId, onResumeChunk}) => {
+    const runRecovery = useCallback(async (recoveryToken, {recoveryChatId, userMessageId, lastEventId, onResumeChunk, quietWhenUnavailable = false}) => {
         const finishRecovery = (failed) => {
             if (activeRecoveryRef.current === recoveryToken) {
                 activeRecoveryRef.current = null;
@@ -112,7 +126,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
              * wholesale by the persisted text. Reconciliation stays as the fallback.
              */
             if (onResumeChunk) {
-                const resumeOutcome = await attemptResume(recoveryChatId, lastEventId, onResumeChunk);
+                const resumeOutcome = await resumeUntilTerminal(recoveryToken, recoveryChatId, lastEventId, onResumeChunk);
 
                 if (recoveryToken.cancelled) {
                     return;
@@ -128,7 +142,20 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
 
                 if (resumeOutcome === RESUME_ALREADY_COMPLETE) {
                     stopStreamingLastAIMessage();
-                    await reloadChatHistory();
+                    await reloadChatHistory(recoveryChatId);
+
+                    if (recoveryToken.cancelled) {
+                        return;
+                    }
+
+                    finishRecovery(false);
+
+                    return;
+                }
+
+                if (quietWhenUnavailable) {
+                    stopStreamingLastAIMessage();
+                    await reloadChatHistory(recoveryChatId);
 
                     if (recoveryToken.cancelled) {
                         return;
@@ -169,14 +196,14 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
                     return;
                 }
 
-                if (hasCompletedAssistantReply(chatDetails, userMessageId)) {
+                if (hasSettledTurn(chatDetails, userMessageId)) {
                     /*
                      * Order matters. The merge in useChatHistory deliberately preserves a
                      * *streaming* local bubble and discards the server's copy of it, which is
                      * exactly backwards here — clear the flag first so the server's text wins.
                      */
                     stopStreamingLastAIMessage();
-                    await reloadChatHistory();
+                    await reloadChatHistory(recoveryChatId);
 
                     if (recoveryToken.cancelled) {
                         return;
@@ -207,7 +234,7 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
 
         lastRecoveryRequestRef.current = recoveryRequest;
 
-        const recoveryToken = {cancelled: false, unsubscribe: null, timeoutId: null};
+        const recoveryToken = {cancelled: false, unsubscribe: null, timeoutId: null, abortController: new AbortController()};
         activeRecoveryRef.current = recoveryToken;
 
         setRecovering(true);
@@ -245,34 +272,65 @@ function useStreamRecovery({reloadChatHistory, stopStreamingLastAIMessage}) {
 
 export default useStreamRecovery;
 
-/*
- * A resumed stream that ends without a terminal frame died the same way the original did, so it
- * is reported as unavailable and recovery falls through to reconciling from history.
- */
-async function attemptResume(recoveryChatId, lastEventId, onResumeChunk) {
-    let sawTerminalFrame = false;
+async function resumeUntilTerminal(recoveryToken, recoveryChatId, initialLastEventId, onResumeChunk) {
+    let lastEventId = initialLastEventId;
+    let fruitlessAttempts = 0;
 
-    try {
-        const resumeOutcome = await chatService.chatStreamResume(recoveryChatId, lastEventId, {
-            onChunk: (rawEvent) => {
-                if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
-                    sawTerminalFrame = true;
-                }
+    while (fruitlessAttempts < RESUME_RETRY_DELAYS_MILLISECONDS.length) {
+        const retryDelayMilliseconds = RESUME_RETRY_DELAYS_MILLISECONDS[fruitlessAttempts];
 
-                onResumeChunk(rawEvent);
-            },
-        });
+        if (retryDelayMilliseconds > 0) {
+            await waitForRetry(recoveryToken, retryDelayMilliseconds);
+        }
 
-        if (resumeOutcome === RESUME_STREAMED && !sawTerminalFrame) {
+        await waitForPageResumed(recoveryToken);
+        await waitForOnline(recoveryToken);
+
+        if (recoveryToken.cancelled) {
             return RESUME_UNAVAILABLE;
         }
 
-        return resumeOutcome;
-    } catch (caughtError) {
-        log.warn('[useStreamRecovery] Resume failed; reconciling from history instead.', caughtError);
+        let sawTerminalFrame = false;
+        const lastEventIdBeforeAttempt = lastEventId;
+        let resumeOutcome;
 
-        return RESUME_UNAVAILABLE;
+        try {
+            resumeOutcome = await chatService.chatStreamResume(recoveryChatId, lastEventId, {
+                signal: recoveryToken.abortController.signal,
+                onChunk: (rawEvent) => {
+                    if (recoveryToken.cancelled) {
+                        return;
+                    }
+
+                    if (rawEvent?.id) {
+                        lastEventId = rawEvent.id;
+                    }
+
+                    if (TERMINAL_RUN_EVENTS.includes(rawEvent?.event)) {
+                        sawTerminalFrame = true;
+                    }
+
+                    onResumeChunk(rawEvent);
+                },
+            });
+        } catch (caughtError) {
+            log.warn('[useStreamRecovery] Resume attempt failed; retrying.', caughtError);
+        }
+
+        if (resumeOutcome !== undefined && resumeOutcome !== RESUME_STREAMED) {
+            return resumeOutcome;
+        }
+
+        if (sawTerminalFrame) {
+            return RESUME_STREAMED;
+        }
+
+        fruitlessAttempts = lastEventId !== lastEventIdBeforeAttempt ? 0 : fruitlessAttempts + 1;
     }
+
+    log.warn('[useStreamRecovery] Resume kept failing; reconciling from history instead.');
+
+    return RESUME_UNAVAILABLE;
 }
 
 function waitForMilliseconds(recoveryToken, delayMilliseconds) {
@@ -281,6 +339,58 @@ function waitForMilliseconds(recoveryToken, delayMilliseconds) {
             recoveryToken.timeoutId = null;
             resolve();
         }, delayMilliseconds);
+    });
+}
+
+function waitForRetry(recoveryToken, delayMilliseconds) {
+    return new Promise((resolve) => {
+        let stopObservingPageResumed = () => {};
+
+        const stopWaiting = () => {
+            clearTimeout(recoveryToken.timeoutId);
+            recoveryToken.timeoutId = null;
+            recoveryToken.unsubscribe = null;
+            stopObservingPageResumed();
+
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('online', finishWaiting);
+            }
+        };
+
+        const finishWaiting = () => {
+            stopWaiting();
+            resolve();
+        };
+
+        stopObservingPageResumed = observePageResumed(finishWaiting);
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('online', finishWaiting);
+        }
+
+        recoveryToken.timeoutId = setTimeout(finishWaiting, delayMilliseconds);
+        recoveryToken.unsubscribe = stopWaiting;
+    });
+}
+
+function waitForOnline(recoveryToken) {
+    if (typeof navigator === 'undefined' || navigator.onLine !== false || typeof window === 'undefined') {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const stopWaiting = () => {
+            window.removeEventListener('online', finishWaiting);
+            recoveryToken.unsubscribe = null;
+        };
+
+        const finishWaiting = () => {
+            stopWaiting();
+            resolve();
+        };
+
+        window.addEventListener('online', finishWaiting);
+        recoveryToken.unsubscribe = stopWaiting;
     });
 }
 

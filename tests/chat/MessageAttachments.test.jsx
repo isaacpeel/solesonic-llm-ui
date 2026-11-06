@@ -127,39 +127,72 @@ describe('MessageAttachments', () => {
         expect(screen.queryByLabelText('Expand notes.pdf')).toBeNull();
     });
 
-    it('warns when an image failed to describe', () => {
-        render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false, reason: 'vision model unavailable'}]}/>);
+    it('warns with the mapped text when an image failed to describe', () => {
+        const {container} = render(
+            <MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false, reason: 'VISION_UNAVAILABLE'}]}/>
+        );
 
-        expect(screen.getByTitle('vision model unavailable')).toBeTruthy();
+        expect(screen.getByTitle('The image reader is unavailable, so the assistant could not see this image.')).toBeTruthy();
+        expect(container.querySelector('.attachment-thumbnail-notice--warning')).toBeTruthy();
+        expect(screen.queryByTitle('VISION_UNAVAILABLE')).toBeNull();
     });
 
-    it('warns with a default message when described is false without a reason', () => {
-        render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false}]}/>);
+    it('shows no notice when described is false without a reason, since that image was never attempted', () => {
+        const {container} = render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false}]}/>);
 
-        expect(screen.getByTitle('The assistant may not have been able to read this image.')).toBeTruthy();
+        expect(container.querySelector('.attachment-thumbnail-notice')).toBeNull();
     });
 
-    it('warns when a document failed to index', () => {
+    it('shows a neutral info notice, not a warning, for an image the tool did not need read', () => {
+        const {container} = render(
+            <MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false, reason: 'NOT_NEEDED'}]}/>
+        );
+
+        expect(container.querySelector('.attachment-thumbnail-notice--info')).toBeTruthy();
+        expect(container.querySelector('.attachment-thumbnail-notice--warning')).toBeNull();
+        expect(screen.getByTitle('Sent to the image tool as is. The assistant did not need to read it.')).toBeTruthy();
+    });
+
+    it('reads the history field name for a reloaded image', () => {
         render(
+            <MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: false, descriptionFailureReason: 'NOT_NEEDED'}]}/>
+        );
+
+        expect(screen.getByTitle('Sent to the image tool as is. The assistant did not need to read it.')).toBeTruthy();
+    });
+
+    it('warns with the mapped text when a document failed to index', () => {
+        const {container} = render(
             <MessageAttachments
-                attachments={[{id: 'a1', fileName: 'notes.pdf', contentType: 'application/pdf', indexed: false, extractionReason: 'unsupported file type'}]}
+                attachments={[{id: 'a1', fileName: 'notes.pdf', contentType: 'application/pdf', indexed: false, extractionReason: 'DOCUMENT_UNREADABLE'}]}
             />
         );
 
-        expect(screen.getByTitle('unsupported file type')).toBeTruthy();
+        expect(screen.getByTitle('This document could not be read. It may be encrypted, corrupt, or scanned.')).toBeTruthy();
+        expect(container.querySelector('.attachment-thumbnail-notice--warning')).toBeTruthy();
     });
 
-    it('shows no warning once described and indexed are confirmed true', () => {
+    it('shows no image warning on a reloaded document that indexed fine', () => {
+        const {container} = render(
+            <MessageAttachments
+                attachments={[{id: 'a1', fileName: 'notes.pdf', described: false, descriptionFailureReason: null, indexed: true}]}
+            />
+        );
+
+        expect(container.querySelector('.attachment-thumbnail-notice')).toBeNull();
+    });
+
+    it('shows no notice once described and indexed are confirmed true', () => {
         const {container} = render(
             <MessageAttachments attachments={[{id: 'a1', fileName: 'one.png', described: true}]}/>
         );
 
-        expect(container.querySelector('.attachment-thumbnail-warning')).toBeNull();
+        expect(container.querySelector('.attachment-thumbnail-notice')).toBeNull();
     });
 
-    it('shows no warning while described/indexed are still undefined', () => {
+    it('shows no notice while described/indexed are still undefined', () => {
         const {container} = render(<MessageAttachments attachments={[{id: 'a1', fileName: 'one.png'}]}/>);
 
-        expect(container.querySelector('.attachment-thumbnail-warning')).toBeNull();
+        expect(container.querySelector('.attachment-thumbnail-notice')).toBeNull();
     });
 });

@@ -1,0 +1,232 @@
+.chat-input-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    padding-bottom: max(10px, calc(10px + env(safe-area-inset-bottom) - var(--keyboard-inset, 0px)));
+    position: fixed;
+    bottom: var(--keyboard-inset, 0px);
+    left: 0;
+    right: 0;
+}
+
+.textarea-parent {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    flex-direction: column;
+}
+
+.composer-card {
+    box-sizing: border-box;
+    padding: 8px 8px 4px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.composer-card--bare {
+    padding: 8px;
+}
+
+.composer-field {
+    background-color: var(--input-well-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+    transition: border-color var(--transition-speed), box-shadow var(--transition-speed);
+}
+
+.composer-field:focus-within {
+    border-color: var(--send-color);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(122, 162, 247, 0.2);
+}
+
+.chat-input-row {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    box-sizing: border-box;
+}
+
+.chat-text-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 2px 0;
+    max-height: 15rem;
+    overflow-y: auto;
+    resize: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    box-sizing: border-box;
+
+    background-color: transparent;
+    color: var(--text-color);
+    border: none;
+    position: relative;
+    z-index: 1;
+}
+
+.chat-text-input:focus {
+    outline: none;
+}
+
+.chat-text-input::placeholder {
+    color: var(--text-color);
+    opacity: 0.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.composer-strip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 30px;
+    padding-top: 4px;
+}
+
+.composer-strip-separator {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 14px;
+    margin: 0 4px;
+    background-color: var(--border-color);
+}
+
+.composer-popovers {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+}
+
+.composer-send-button,
+.composer-stop-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color var(--transition-speed), opacity var(--transition-speed);
+}
+
+.composer-send-button {
+    background-color: var(--send-color);
+    color: var(--send-ink);
+}
+
+.composer-stop-button {
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+}
+
+.composer-send-button svg {
+    width: 18px;
+    height: 18px;
+    color: inherit;
+}
+
+.composer-stop-button svg {
+    width: 16px;
+    height: 16px;
+    color: inherit;
+}
+
+.composer-send-button:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.composer-stop-button:hover {
+    background-color: var(--icon-hover-bg);
+}
+
+.composer-send-button:disabled {
+    cursor: not-allowed;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+}
+
+.composer-send-button:disabled svg {
+    opacity: 0.45;
+}
+
+.composer-send-button:focus-visible,
+.composer-stop-button:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.composer-stop-button + .composer-send-button {
+    margin-left: 6px;
+}
+
+.dots-loader {
+    display: flex;
+    gap: 5px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 10px 0;
+}
+
+.dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--text-color);
+    border-radius: 50%;
+    animation: blink 1.5s infinite;
+}
+
+.dot:nth-child(2) {
+    animation-delay: 0.3s;
+}
+
+.dot:nth-child(3) {
+    animation-delay: 0.6s;
+}
+
+@keyframes blink {
+    0%, 50%, 100% {
+        opacity: 0;
+    }
+    25%, 75% {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .chat-input-row {
+        padding: 4px 4px 4px 10px;
+    }
+
+    .chat-text-input {
+        padding: 4px 0;
+    }
+
+    .composer-strip {
+        min-height: 40px;
+    }
+
+    .composer-send-button,
+    .composer-stop-button {
+        width: 32px;
+        height: 32px;
+    }
+}

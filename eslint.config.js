@@ -35,4 +35,9 @@ export default [{ ignores: ['dist'] }, {
       { allowConstantExport: true },
     ],
   },
+}, {
+  files: ['public/service-worker.js'],
+  languageOptions: {
+    globals: globals.serviceworker,
+  },
 }, ...storybook.configs["flat/recommended"]];

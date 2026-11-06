@@ -110,8 +110,8 @@ The one thing a plain text message depends on:
   `tests/image/GeneratedImage.test.jsx`) — the Storybook equivalent would be a `viteFinal`
   `resolve.alias` pointing the hook's import at a mock implementation under a new
   `.storybook/mocks/` directory, scoped to Storybook's own Vite instance only.
-- **`useKeycloak()` / `RoleGuard`** (`src/authorizer/`) — depends on `KeycloakProvider`, which
-  initializes a real Keycloak client. There is no mock provider for this yet. A component that
-  calls `useKeycloak()` (directly, or via `RoleGuard`) isn't currently coverable in Storybook.
+- **`useKeycloak()` / `RoleGuard`** (`src/authorizer/`) — `KeycloakContext` is exported from
+  `KeycloakProvider.jsx` so stories can wrap components with a mock `KeycloakContext.Provider`
+  (see `src/settings/UserDialog.stories.jsx` and `src/common/Header.stories.jsx` for examples).
 - No visual regression / interaction testing is wired in (that's what `addon-vitest` would have
   given us, at the cost described above). Storybook here is for manual/visual development only.

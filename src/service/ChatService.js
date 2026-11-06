@@ -1,10 +1,12 @@
-import apiClient from '../client/ApiClient.js';
+import apiClient, {ApiError, readApiErrorBody} from '../client/ApiClient.js';
 import { parseSseStream } from '../client/parseSseStream.js';
 import authService from './AuthService.js';
 import config from "../properties/ApplicationProperties";
 import {getProgressNotificationText} from './ProgressNotificationService.js';
 import {normalizeGeneratedImage} from './ImageGenerationService.js';
 import {SYSTEM as SYSTEM_MESSAGE_TYPE} from '../chat/message/ChatMessage.jsx';
+import {isAnalyzableCode} from '../util/analyzeRequest.js';
+import {TOOL_ACTIVITY_EVENT} from '../chat/activity/toolActivity.js';
 
 export const RUN_STARTED = "RUN_STARTED";
 export const RUN_FINISHED = "RUN_FINISHED";
@@ -22,8 +24,15 @@ export const CUSTOM_ATTACHMENT = "attachment";
 export const CUSTOM_IMAGE = "image";
 export const CUSTOM_FAILURE = "failure";
 export const CUSTOM_CANCEL = "cancel";
+export const CUSTOM_TOOL = TOOL_ACTIVITY_EVENT;
 
 export const TERMINAL_RUN_EVENTS = [RUN_FINISHED, RUN_ERROR];
+
+export const SOUND_METADATA_KEY = "solesonic/sound";
+
+const SOUND_ID_PATTERN = /^[0-9a-f]{64}$/;
+const SOUND_SOURCE_PATH_SUFFIX = '/sounds/';
+const MAX_SOUND_CUE_ID_LENGTH = 128;
 
 /* Outcomes of a resume attempt, mapped from the status codes the resume endpoint decides up front. */
 export const RESUME_STREAMED = "streamed";
@@ -36,6 +45,16 @@ export const RESUME_REJECTED = "rejected";
  * never emits it as a frame id, so there is no ambiguity with a real cursor.
  */
 const RESUME_FROM_BEGINNING = "0";
+
+/* Three keepalive intervals: one missed comment is jitter, three is a connection that is gone. */
+export const STREAM_IDLE_TIMEOUT_MILLISECONDS = 45000;
+
+export class StreamStalledError extends Error {
+    constructor() {
+        super('The stream stopped sending data.');
+        this.name = 'StreamStalledError';
+    }
+}
 
 /* One drawer-height of rows plus enough slack that the sentinel starts below the fold. */
 export const DEFAULT_CHAT_HISTORY_PAGE_SIZE = 20;
@@ -114,12 +133,103 @@ export function findRunStartedUserMessageId(runStartedData) {
     return null;
 }
 
-const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
+/*
+ * A half-open connection neither delivers bytes nor errors, so a reader parked on one waits
+ * forever. The server writes a keepalive whenever it is otherwise silent, which makes silence
+ * itself the signal that the connection is gone.
+ */
+function createIdleWatchdog(callerSignal) {
+    const watchdogController = new AbortController();
+    let idleTimeoutId = null;
+    let stalled = false;
 
-function surfaceErrorText(errorText, appendErrorMessage) {
-    if (typeof errorText === 'string' && errorText.length > 0) {
-        appendErrorMessage(errorText);
+    const abortOnCallerAbort = () => watchdogController.abort(callerSignal.reason);
+
+    if (callerSignal?.aborted) {
+        watchdogController.abort(callerSignal.reason);
+    } else {
+        callerSignal?.addEventListener('abort', abortOnCallerAbort);
     }
+
+    const rearm = () => {
+        clearTimeout(idleTimeoutId);
+        idleTimeoutId = setTimeout(() => {
+            stalled = true;
+            watchdogController.abort();
+        }, STREAM_IDLE_TIMEOUT_MILLISECONDS);
+    };
+
+    return {
+        signal: watchdogController.signal,
+        rearm,
+        translate: (caughtError) => (stalled ? new StreamStalledError() : caughtError),
+        dispose: () => {
+            clearTimeout(idleTimeoutId);
+            callerSignal?.removeEventListener('abort', abortOnCallerAbort);
+        },
+    };
+}
+
+async function withIdleWatchdog(callerSignal, streamOperation) {
+    const idleWatchdog = createIdleWatchdog(callerSignal);
+    idleWatchdog.rearm();
+
+    try {
+        return await streamOperation(idleWatchdog);
+    } catch (caughtError) {
+        throw idleWatchdog.translate(caughtError);
+    } finally {
+        idleWatchdog.dispose();
+    }
+}
+
+const ROUTED_EVENTS = new Set([RUN_STARTED, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, RUN_FINISHED, RUN_ERROR, CUSTOM]);
+
+function isSoundSourcePath(sourceValue, soundId) {
+    return typeof sourceValue === 'string'
+        && sourceValue.startsWith('/')
+        && !sourceValue.startsWith('//')
+        && !/[?#\\]/.test(sourceValue)
+        && sourceValue.endsWith(`${SOUND_SOURCE_PATH_SUFFIX}${soundId}`);
+}
+
+/*
+ * The cue only names a clip; the bytes are always fetched from our own sounds endpoint by id,
+ * so a frame can never steer an authenticated request at an arbitrary URL.
+ */
+export function readSoundCue(metadata) {
+    const soundCue = metadata?.[SOUND_METADATA_KEY];
+
+    if (typeof soundCue !== 'object' || soundCue === null) {
+        return null;
+    }
+
+    const source = soundCue.source;
+
+    const isValidCue = typeof soundCue.cueId === 'string'
+        && soundCue.cueId.length > 0
+        && soundCue.cueId.length <= MAX_SOUND_CUE_ID_LENGTH
+        && typeof soundCue.soundId === 'string'
+        && SOUND_ID_PATTERN.test(soundCue.soundId)
+        && source?.type === 'url'
+        && isSoundSourcePath(source.value, soundCue.soundId)
+        && typeof source.mimeType === 'string'
+        && source.mimeType.startsWith('audio/');
+
+    return isValidCue ? soundCue : null;
+}
+
+function surfaceErrorText(errorText, appendErrorMessage, details) {
+    if (typeof errorText === 'string' && errorText.length > 0) {
+        appendErrorMessage(errorText, details);
+    }
+}
+
+function failureDetails(failureData) {
+    const code = typeof failureData?.code === 'string' ? failureData.code : undefined;
+    const occurredAt = typeof failureData?.occurredAt === 'string' ? failureData.occurredAt : undefined;
+
+    return {code, occurredAt, analyzable: isAnalyzableCode(code)};
 }
 
 /*
@@ -141,6 +251,22 @@ function readFailureText(failureValue) {
 function handleRunStarted(runStartedData, {ensureChatIdFromResponse, adoptMessageId}) {
     ensureChatIdFromResponse({chatId: runStartedData?.threadId});
     adoptMessageId?.(findRunStartedUserMessageId(runStartedData));
+}
+
+function handleTextMessageStart(textMessageData, {playSound, mergeMessageMetadata}) {
+    const metadata = textMessageData?.metadata;
+
+    if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+        return;
+    }
+
+    mergeMessageMetadata?.(metadata);
+
+    const soundCue = readSoundCue(metadata);
+
+    if (soundCue) {
+        playSound?.(soundCue);
+    }
 }
 
 function handleTextMessageContent(textMessageData, {
@@ -245,13 +371,13 @@ function handleRunFinished(runFinishedData, {
 }
 
 function handleRunError(runErrorData, {appendErrorMessage, stopStreamingLastAIMessage, setActiveElicitation, setElicitationSubmitting}) {
-    surfaceErrorText(runErrorData?.message, appendErrorMessage);
+    surfaceErrorText(runErrorData?.message, appendErrorMessage, failureDetails(runErrorData));
     stopStreamingLastAIMessage?.();
     setActiveElicitation(null);
     setElicitationSubmitting(false);
 }
 
-function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, appendErrorMessage}) {
+function handleCustomEvent(customEventData, {appendNotificationMessage, attachGeneratedImages, updateAttachmentStatus, appendErrorMessage, recordToolActivity}) {
     const customValue = customEventData?.value;
 
     switch (customEventData?.name) {
@@ -276,8 +402,12 @@ function handleCustomEvent(customEventData, {appendNotificationMessage, attachGe
         case CUSTOM_ATTACHMENT:
             updateAttachmentStatus?.(customValue);
             break;
+        case CUSTOM_TOOL:
+            recordToolActivity?.(customValue);
+            break;
         case CUSTOM_FAILURE:
-            surfaceErrorText(readFailureText(customValue), appendErrorMessage);
+            surfaceErrorText(readFailureText(customValue), appendErrorMessage,
+                typeof customValue === 'object' ? failureDetails(customValue) : undefined);
             break;
     }
 }
@@ -316,6 +446,9 @@ const chatService = {
             case RUN_STARTED:
                 handleRunStarted(eventData, handlers);
                 break;
+            case TEXT_MESSAGE_START:
+                handleTextMessageStart(eventData, handlers);
+                break;
             case TEXT_MESSAGE_CONTENT:
                 handleTextMessageContent(eventData, handlers);
                 break;
@@ -342,24 +475,34 @@ const chatService = {
             requestHeaders.Authorization = `Bearer ${token}`;
         }
 
-        const response = await fetch(uri, {
-            method,
-            body: JSON.stringify(normalizePayload(payload)),
-            signal,
-            headers: requestHeaders,
-        });
+        await withIdleWatchdog(signal, async (idleWatchdog) => {
+            const response = await fetch(uri, {
+                method,
+                body: JSON.stringify(normalizePayload(payload)),
+                signal: idleWatchdog.signal,
+                headers: requestHeaders,
+            });
 
-        if (!response.ok) {
-            throw new Error(`Streaming failed: ${response.status} ${response.statusText}`);
-        }
+            if (!response.ok) {
+                const errorBody = await readApiErrorBody(response);
 
-        for await (const event of parseSseStream(response.body)) {
-            onChunk?.(event);
-
-            if (TERMINAL_RUN_EVENTS.includes(event.event)) {
-                break;
+                throw new ApiError({
+                    message: `Streaming failed: ${response.status} ${errorBody.message || response.statusText}`,
+                    status: response.status,
+                    method,
+                    uri,
+                    code: errorBody.code,
+                });
             }
-        }
+
+            for await (const event of parseSseStream(response.body, {onActivity: idleWatchdog.rearm})) {
+                onChunk?.(event);
+
+                if (TERMINAL_RUN_EVENTS.includes(event.event)) {
+                    break;
+                }
+            }
+        });
     },
 
     /*
@@ -369,60 +512,66 @@ const chatService = {
      * emitted in the same millisecond onto one cursor and lose a frame on replay.
      */
     async chatStreamResume(chatId, lastEventId, { onChunk, signal } = {}) {
-        const token = await authService.getAccessToken();
         const userId = await authService.getUserId();
         const uri = `${config.streamingChatsUri}/${encodeURIComponent(chatId)}/users/${userId}/stream`;
+        return await withIdleWatchdog(signal, async (idleWatchdog) => {
+            const requestResume = async ({forceRefresh = false} = {}) => {
+                const token = await authService.getAccessToken({forceRefresh});
 
-        const requestHeaders = {
-            Accept: 'text/event-stream',
-            'Last-Event-ID': lastEventId || RESUME_FROM_BEGINNING,
-        };
+                return await fetch(uri, {
+                    method: 'GET',
+                    signal: idleWatchdog.signal,
+                    headers: buildResumeHeaders(token, lastEventId),
+                });
+            };
 
-        if (token) {
-            requestHeaders.Authorization = `Bearer ${token}`;
-        }
+            let response = await requestResume();
 
-        const response = await fetch(uri, {
-            method: 'GET',
-            signal,
-            headers: requestHeaders,
-        });
-
-        /* The turn finished and we already hold every frame, the terminal one included. */
-        if (response.status === 204) {
-            return RESUME_ALREADY_COMPLETE;
-        }
-
-        /* Our cursor was not something the server ever sent — recoverable, but log it as our bug. */
-        if (response.status === 400) {
-            console.error('[ChatService] Stream resume rejected an invalid cursor:', lastEventId);
-            return RESUME_UNAVAILABLE;
-        }
-
-        /* Not our chat. Reconciling against it would fail the same way. */
-        if (response.status === 403) {
-            console.error('[ChatService] Stream resume forbidden for chat:', chatId);
-            return RESUME_REJECTED;
-        }
-
-        /* Buffer aged out, cursor trimmed away, or no such chat — reconcile from history instead. */
-        if (response.status === 404 || response.status === 410) {
-            return RESUME_UNAVAILABLE;
-        }
-
-        if (!response.ok) {
-            throw new Error(`Stream resume failed: ${response.status} ${response.statusText}`);
-        }
-
-        for await (const event of parseSseStream(response.body)) {
-            onChunk?.(event);
-
-            if (TERMINAL_RUN_EVENTS.includes(event.event)) {
-                break;
+            if (response.status === 401) {
+                response = await requestResume({forceRefresh: true});
             }
-        }
 
-        return RESUME_STREAMED;
+            if (response.status === 401) {
+                console.error('[ChatService] Stream resume unauthorized for chat:', chatId);
+                return RESUME_REJECTED;
+            }
+
+            /* The turn finished and we already hold every frame, the terminal one included. */
+            if (response.status === 204) {
+                return RESUME_ALREADY_COMPLETE;
+            }
+
+            /* Our cursor was not something the server ever sent — recoverable, but log it as our bug. */
+            if (response.status === 400) {
+                console.error('[ChatService] Stream resume rejected an invalid cursor:', lastEventId);
+                return RESUME_UNAVAILABLE;
+            }
+
+            /* Not our chat. Reconciling against it would fail the same way. */
+            if (response.status === 403) {
+                console.error('[ChatService] Stream resume forbidden for chat:', chatId);
+                return RESUME_REJECTED;
+            }
+
+            /* Buffer aged out, cursor trimmed away, or no such chat — reconcile from history instead. */
+            if (response.status === 404 || response.status === 410) {
+                return RESUME_UNAVAILABLE;
+            }
+
+            if (!response.ok) {
+                throw new Error(`Stream resume failed: ${response.status} ${response.statusText}`);
+            }
+
+            for await (const event of parseSseStream(response.body, {onActivity: idleWatchdog.rearm})) {
+                onChunk?.(event);
+
+                if (TERMINAL_RUN_EVENTS.includes(event.event)) {
+                    break;
+                }
+            }
+
+            return RESUME_STREAMED;
+        });
     },
 
     findChatDetails: async (chatId) => {
@@ -467,9 +616,15 @@ const chatService = {
      * cursor is the page index — built with `URLSearchParams` rather than `buildUrl` so the service
      * stays callable without a `window`.
      */
-    findChatHistory: async ({page = 0, size = DEFAULT_CHAT_HISTORY_PAGE_SIZE} = {}) => {
+    findChatHistory: async ({page = 0, size = DEFAULT_CHAT_HISTORY_PAGE_SIZE, query = null} = {}) => {
         const userId = await authService.getUserId();
-        const queryString = new URLSearchParams({page: String(page), size: String(size)}).toString();
+        const searchParameters = new URLSearchParams({page: String(page), size: String(size)});
+
+        if (query) {
+            searchParameters.set('q', query);
+        }
+
+        const queryString = searchParameters.toString();
         const response = await apiClient.get(`${config.chatsUri}/users/${userId}?${queryString}`);
 
         return normalizeChatHistoryPage(response, page);
@@ -486,6 +641,19 @@ function buildStreamingRequest(chatId, userId, baseUri) {
     return chatId
         ? {uri: `${baseUri}/${encodeURIComponent(chatId)}/users/${userId}`, method: 'PUT'}
         : {uri: `${baseUri}/users/${userId}`, method: 'POST'};
+}
+
+function buildResumeHeaders(token, lastEventId) {
+    const requestHeaders = {
+        Accept: 'text/event-stream',
+        'Last-Event-ID': lastEventId || RESUME_FROM_BEGINNING,
+    };
+
+    if (token) {
+        requestHeaders.Authorization = `Bearer ${token}`;
+    }
+
+    return requestHeaders;
 }
 
 function normalizePayload(input) {

@@ -1,0 +1,40 @@
+.memory-reflections {
+    display: flex;
+    flex-direction: column;
+}
+
+.memory-reflections-table-wrapper {
+    overflow-x: auto;
+}
+
+.memory-reflections-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.memory-reflections-table th,
+.memory-reflections-table td {
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.memory-reflections-table th {
+    font-weight: 600;
+    color: var(--settings-muted);
+}
+
+.memory-reflections-table td {
+    color: var(--text-color);
+}
+
+.memory-reflection-row-failed td {
+    background-color: rgba(248, 81, 73, 0.08);
+}
+
+.memory-reflection-chat {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12px;
+}

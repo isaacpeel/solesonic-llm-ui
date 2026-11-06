@@ -9,11 +9,23 @@ import RagManagement from "./settings/rag/RagManagement.jsx";
 import {DEFAULT_RAG_LEVEL} from "./settings/rag/ragLevels.js";
 import GeneratedImageManagement from "./settings/images/GeneratedImageManagement.jsx";
 import {DEFAULT_IMAGE_LEVEL} from "./settings/images/imageLevels.js";
+import MemoryManagement from "./settings/memory/MemoryManagement.jsx";
+import {DEFAULT_MEMORY_LEVEL} from "./settings/memory/memoryLevels.js";
+import NotificationSettings from "./settings/notifications/NotificationSettings.jsx";
+import InterestOfferScreen from "./interests/InterestOfferScreen.jsx";
+import SharedSessionsScreen from "./sharedsessions/SharedSessionsScreen.jsx";
+import SharedSessionScreen from "./sharedsessions/SharedSessionScreen.jsx";
+import SharedSessionInviteScreen from "./sharedsessions/SharedSessionInviteScreen.jsx";
+import InterestSettings from "./settings/interests/InterestSettings.jsx";
+import ModelAccessSettings from "./settings/modelaccess/ModelAccessSettings.jsx";
 import GoogleAuthCallback from "./settings/connections/GoogleAuthCallback.jsx";
 import AtlassianAuthCallback from "./settings/connections/AtlassianAuthCallback.jsx";
 import Header from "./common/Header.jsx";
 import {SharedDataProvider} from "./context/SharedDataContext.jsx";
+import {ChatTurnProvider} from "./context/ChatTurnContext.jsx";
 import AuthenticationWrapper from "./authorizer/AuthenticationWrapper.jsx";
+import PushSubscriptionSync from "./push/PushSubscriptionSync.jsx";
+import usePushNavigation from "./push/usePushNavigation.js";
 
 const Layout = () => (
     <div>
@@ -37,17 +49,26 @@ export const routes = [
         children: [
             {index: true, element: <ChatPage/>},
             {path: "chat/:chatId", element: <ChatPage/>},
+            {path: "interests/offers/:offerId", element: <InterestOfferScreen/>},
+            {path: "shared-sessions", element: <SharedSessionsScreen/>},
+            {path: "shared-sessions/invites/:inviteId", element: <SharedSessionInviteScreen/>},
+            {path: "shared-sessions/:sessionId", element: <SharedSessionScreen/>},
             {
                 path: "settings",
                 element: <UserSettings/>,
                 children: [
                     {index: true, element: <Navigate to="general" replace/>},
                     {path: "general", element: <GeneralUserSettings/>},
+                    {path: "notifications", element: <NotificationSettings/>},
                     {path: "connections", element: <ConnectionsSettings/>},
                     {path: "rag", element: <Navigate to={DEFAULT_RAG_LEVEL} replace/>},
                     {path: "rag/:level", element: <RagManagement/>},
                     {path: "images", element: <Navigate to={DEFAULT_IMAGE_LEVEL} replace/>},
                     {path: "images/:level", element: <GeneratedImageManagement/>},
+                    {path: "memory", element: <Navigate to={DEFAULT_MEMORY_LEVEL} replace/>},
+                    {path: "memory/:level", element: <MemoryManagement/>},
+                    {path: "interests", element: <InterestSettings/>},
+                    {path: "model-access", element: <ModelAccessSettings/>},
                 ]
             },
             {path: "google/auth/callback", element: <GoogleAuthCallback/>},
@@ -58,11 +79,18 @@ export const routes = [
 
 const router = createBrowserRouter(routes);
 
+const navigateToPushTarget = (url) => router.navigate(url);
+
 const App = () => {
+    usePushNavigation(navigateToPushTarget);
+
     return (
         <AuthenticationWrapper>
+            <PushSubscriptionSync/>
             <SharedDataProvider>
-                <RouterProvider router={router}/>
+                <ChatTurnProvider>
+                    <RouterProvider router={router}/>
+                </ChatTurnProvider>
             </SharedDataProvider>
         </AuthenticationWrapper>
     );

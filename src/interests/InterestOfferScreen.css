@@ -1,0 +1,184 @@
+.interest-offer-screen {
+    --interest-accent: #0074d9;
+    --interest-accent-hover: #005fb2;
+    --interest-muted: #b0b0b0;
+
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    padding: 48px 16px 64px;
+    box-sizing: border-box;
+    color: var(--text-color);
+}
+
+.interest-offer-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    width: 100%;
+    max-width: 480px;
+    padding: 24px;
+    box-sizing: border-box;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.interest-offer-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.interest-offer-rationale,
+.interest-offer-message {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.interest-offer-rationale {
+    color: var(--interest-muted);
+}
+
+.interest-offer-cadence {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.interest-offer-cadence-option {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.interest-offer-cadence-option + .interest-offer-cadence-option {
+    border-left: 1px solid var(--border-color);
+}
+
+.interest-offer-cadence-option-selected {
+    color: #fff;
+    background-color: var(--interest-accent);
+}
+
+.interest-offer-cadence-option:disabled {
+    cursor: default;
+}
+
+.interest-offer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.interest-offer-button {
+    min-height: 40px;
+    padding: 8px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    background-color: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.interest-offer-button:hover:not(:disabled) {
+    background-color: var(--accent-color);
+}
+
+.interest-offer-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.interest-offer-button-primary {
+    color: #fff;
+    background-color: var(--interest-accent);
+    border-color: var(--interest-accent);
+}
+
+.interest-offer-button-primary:hover:not(:disabled) {
+    background-color: var(--interest-accent-hover);
+}
+
+.interest-offer-button:focus-visible,
+.interest-offer-cadence-option:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.interest-offer-error {
+    margin: 0;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #ff8a80;
+    border: 1px solid rgba(255, 82, 82, 0.4);
+    border-radius: 4px;
+}
+
+.interest-offer-error a,
+.interest-offer-why,
+.interest-offer-manage,
+.interest-offer-back {
+    color: var(--interest-accent);
+    text-decoration: none;
+}
+
+.interest-offer-error a:hover,
+.interest-offer-why:hover,
+.interest-offer-manage:hover,
+.interest-offer-back:hover {
+    text-decoration: underline;
+}
+
+.interest-offer-why {
+    font-size: 12px;
+    color: var(--interest-muted);
+}
+
+.interest-offer-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+}
+
+.interest-offer-skeleton-line {
+    width: 70%;
+    height: 14px;
+    border-radius: 4px;
+    background-color: var(--secondary-color);
+    animation: interest-offer-pulse 1.2s ease-in-out infinite;
+}
+
+.interest-offer-skeleton-line-wide {
+    width: 90%;
+    height: 22px;
+}
+
+.interest-offer-skeleton-line-short {
+    width: 40%;
+}
+
+@keyframes interest-offer-pulse {
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .interest-offer-skeleton-line {
+        animation: none;
+    }
+}
