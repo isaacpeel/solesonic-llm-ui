@@ -1,6 +1,6 @@
 /* Ensures the chat content takes up the available space */
 .chat-app {
-    --composer-clearance: calc(125px + env(safe-area-inset-bottom));
+    --composer-clearance: calc(112px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -32,11 +32,11 @@
  * because the tray is capped at 4 images and never wraps to a second row.
  */
 .chat-app--tray-open {
-    --composer-clearance: calc(160px + env(safe-area-inset-bottom));
+    --composer-clearance: calc(148px + env(safe-area-inset-bottom));
 }
 
 .chat-app--caption-open {
-    --composer-clearance: calc(215px + env(safe-area-inset-bottom));
+    --composer-clearance: calc(203px + env(safe-area-inset-bottom));
 }
 
 /*
@@ -140,15 +140,15 @@
 
 @media (max-width: 768px) {
     .chat-app {
-        --composer-clearance: calc(135px + env(safe-area-inset-bottom));
+        --composer-clearance: calc(120px + env(safe-area-inset-bottom));
     }
 
     .chat-app--tray-open {
-        --composer-clearance: calc(170px + env(safe-area-inset-bottom));
+        --composer-clearance: calc(155px + env(safe-area-inset-bottom));
     }
 
     .chat-app--caption-open {
-        --composer-clearance: calc(225px + env(safe-area-inset-bottom));
+        --composer-clearance: calc(210px + env(safe-area-inset-bottom));
     }
 
     .chat-content {

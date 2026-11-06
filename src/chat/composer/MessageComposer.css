@@ -48,7 +48,7 @@
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    padding: 8px 8px 8px 12px;
+    padding: 6px 6px 6px 12px;
     box-sizing: border-box;
 }
 
@@ -88,7 +88,7 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    min-height: 34px;
+    min-height: 30px;
     padding-top: 4px;
 }
 
@@ -115,8 +115,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     flex: 0 0 auto;
     align-self: flex-end;
@@ -213,16 +213,20 @@
 
 @media (max-width: 768px) {
     .chat-input-row {
-        padding: 6px 6px 6px 10px;
+        padding: 4px 4px 4px 10px;
+    }
+
+    .chat-text-input {
+        padding: 4px 0;
     }
 
     .composer-strip {
-        min-height: 42px;
+        min-height: 40px;
     }
 
     .composer-send-button,
     .composer-stop-button {
-        width: 36px;
-        height: 36px;
+        width: 32px;
+        height: 32px;
     }
 }
