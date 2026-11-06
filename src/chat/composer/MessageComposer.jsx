@@ -3,7 +3,13 @@ import {ArrowUpIcon, StopIcon} from '@heroicons/react/20/solid';
 import useIsMobile from '../../hooks/useIsMobile.js';
 import './MessageComposer.css';
 
-const renderPlainRow = (row) => <div className="chat-input-row">{row}</div>;
+const renderPlainRow = (row) => (
+    <div className="composer-card composer-card--bare">
+        <div className="composer-field">
+            <div className="chat-input-row">{row}</div>
+        </div>
+    </div>
+);
 
 function MessageComposer({
     inputRef,

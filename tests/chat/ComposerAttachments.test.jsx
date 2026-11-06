@@ -163,4 +163,46 @@ describe('ComposerAttachments', () => {
         expect(errorNode.textContent).toBe('Images must be under 20MB');
         expect(errorNode.getAttribute('role')).toBe('status');
     });
+
+    it('keeps the text field and the options strip as separate regions', () => {
+        const {container} = renderComposer({trayEntries: [trayEntry()]});
+
+        const field = container.querySelector('.composer-field');
+        const strip = container.querySelector('.composer-strip');
+
+        expect(field.contains(container.querySelector('.chat-input-row'))).toBe(true);
+        expect(field.contains(container.querySelector('.composer-attachment-tray'))).toBe(true);
+        expect(field.contains(screen.getByLabelText('Attach a file'))).toBe(false);
+        expect(strip.contains(screen.getByLabelText('Attach a file'))).toBe(true);
+    });
+
+    it('renders the footer start content in the strip, ahead of the attach button', () => {
+        const {container} = render(
+            <ComposerAttachments
+                trayEntries={[]}
+                addFiles={vi.fn()}
+                removeEntry={vi.fn()}
+                retryEntry={vi.fn()}
+                setEntryCaption={vi.fn()}
+                trayError={null}
+                loading={false}
+                footerStart={<button type="button">Model: Sonnet</button>}
+            >
+                <textarea/>
+            </ComposerAttachments>
+        );
+
+        const strip = container.querySelector('.composer-strip');
+        const modelButton = screen.getByText('Model: Sonnet');
+
+        expect(strip.contains(modelButton)).toBe(true);
+        expect(container.querySelector('.composer-field').contains(modelButton)).toBe(false);
+        expect(strip.querySelector('.composer-strip-separator')).not.toBeNull();
+    });
+
+    it('omits the strip separator when there is no footer start content', () => {
+        const {container} = renderComposer();
+
+        expect(container.querySelector('.composer-strip-separator')).toBeNull();
+    });
 });

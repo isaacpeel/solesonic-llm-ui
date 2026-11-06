@@ -1,7 +1,6 @@
 .composer-attachments {
     display: flex;
     flex-direction: column;
-    border-radius: 22px;
 }
 
 /* An outline rather than a border, so nothing shifts when the drag state toggles. */
@@ -25,8 +24,8 @@
 
 .composer-attachment-caption-input {
     width: 100%;
-    padding: 5px 12px;
-    border-radius: 14px;
+    padding: 5px 10px;
+    border-radius: 6px;
     box-sizing: border-box;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
@@ -52,13 +51,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     flex: 0 0 auto;
-    align-self: flex-end;
     border: none;
-    border-radius: 50%;
+    border-radius: 6px;
     background: none;
     cursor: pointer;
     transition: background-color var(--transition-speed);
@@ -94,4 +92,11 @@
 
 .composer-attachment-file-input {
     display: none;
+}
+
+@media (max-width: 768px) {
+    .composer-attach-button {
+        width: 38px;
+        height: 36px;
+    }
 }

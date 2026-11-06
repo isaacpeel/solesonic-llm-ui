@@ -8,6 +8,9 @@
     --text-color: #e0e0e0; /* Softer white text */
     --accent-color: #4a4a4a; /* Accent color remains the same */
     --border-color: #4a4a4a; /* Slightly lighter border */
+    --input-well-color: #171717; /* Recessed text field inside the composer panel */
+    --send-color: #7aa2f7;
+    --send-ink: #0f1626;
 
     --background-dark: #1e1e2f;
     --background-darker: #14141f;

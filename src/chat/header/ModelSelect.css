@@ -138,6 +138,46 @@
     cursor: pointer;
 }
 
+/* Docked in the composer strip: a quiet chip that opens upward. */
+.model-select--above .model-select-button {
+    height: 26px;
+    padding: 0 8px;
+    border-color: transparent;
+    border-radius: 6px;
+    background-color: transparent;
+    max-width: min(220px, 52vw);
+}
+
+.model-select--above .model-select-button:hover,
+.model-select--above .model-select-button[aria-expanded="true"] {
+    background-color: var(--icon-hover-bg);
+}
+
+.model-select--above .model-select-chevron {
+    transform: rotate(180deg);
+}
+
+.model-select--above .model-select-chevron--open {
+    transform: none;
+}
+
+.model-select--above .model-select-panel {
+    top: auto;
+    bottom: calc(100% + 6px);
+    right: auto;
+    left: 0;
+}
+
+@media (max-width: 768px) {
+    .model-select--above .model-select-button {
+        height: 36px;
+    }
+
+    .model-select--above .model-select-option {
+        padding: 12px 10px;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .model-select-chevron {
         transition: none;

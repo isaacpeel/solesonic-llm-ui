@@ -1,6 +1,5 @@
 import {useCallback, useRef, useState, useEffect} from 'react';
 import {ArrowDownIcon} from '@heroicons/react/20/solid';
-import {createPortal} from 'react-dom';
 import {toast} from 'react-toastify';
 import log from 'loglevel';
 import {useSharedData} from "../context/useSharedData.jsx";
@@ -9,7 +8,6 @@ import './ChatScreen.css';
 
 import ChatMessage, {USER} from "./message/ChatMessage.jsx";
 import ChatHeader from "./header/ChatHeader.jsx";
-import ModelSelect from "./header/ModelSelect.jsx";
 import {ASSISTANT_NAME, latestModelName} from "./message/messageIdentity.js";
 import ChatInput from "./composer/ChatInput.jsx";
 import ElicitationPrompt from "../elicitation/ElicitationPrompt.jsx";
@@ -37,7 +35,7 @@ import {buildAnalyzeRequest, LOGS_COMMAND} from '../util/analyzeRequest.js';
 
 
 function ChatScreen() {
-    const {chatInputRef, headerActionsElement, setReloadHistoryTrigger} = useSharedData();
+    const {chatInputRef, setReloadHistoryTrigger} = useSharedData();
 
     useEffect(() => {
         const handleCopy = (event) => {
@@ -259,11 +257,6 @@ function ChatScreen() {
                     busy={loading}
                 />
 
-                {headerActionsElement && createPortal(
-                    <ModelSelect chatModel={chatModel} fallbackLabel={modelFallback}/>,
-                    headerActionsElement,
-                )}
-
                 <NewsUpdateBanner update={interestUpdate}/>
 
 
@@ -346,6 +339,7 @@ function ChatScreen() {
                     onCaptionOpenChange={setIsCaptionRowOpen}
                     composerContainerRef={composerRef}
                     modelPicker={chatModel}
+                    modelFallbackLabel={modelFallback}
                 />
             </div>
 

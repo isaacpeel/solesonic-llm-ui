@@ -1,6 +1,7 @@
 import SlashCommandList from '../command/SlashCommandList.jsx';
 import SelectedCommandChip from '../command/SelectedCommandChip.jsx';
 import ModelPicker from '../command/ModelPicker.jsx';
+import ModelSelect from '../header/ModelSelect.jsx';
 import ComposerAttachments from './ComposerAttachments.jsx';
 import MessageComposer from './MessageComposer.jsx';
 import {ACCEPTED_ATTACHMENT_CONTENT_TYPES} from '../../util/imageValidation.js';
@@ -33,6 +34,7 @@ function ChatInput({
     onCaptionOpenChange,
     composerContainerRef,
     modelPicker,
+    modelFallbackLabel,
     placeholder,
     ariaLabel,
     maxLength,
@@ -171,6 +173,9 @@ function ChatInput({
             trayError={trayError}
             loading={loading}
             onCaptionOpenChange={onCaptionOpenChange}
+            footerStart={modelPicker ? (
+                <ModelSelect chatModel={modelPicker} fallbackLabel={modelFallbackLabel} placement="above"/>
+            ) : null}
         >
             {row}
         </ComposerAttachments>

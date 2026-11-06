@@ -9,7 +9,7 @@ import pushSubscriptionService from '../service/PushSubscriptionService.js';
 import {observePageResumed} from '../util/pageLifecycle.js';
 
 // Create Keycloak context
-const KeycloakContext = createContext(null);
+export const KeycloakContext = createContext(null);
 
 const REMOVED_SESSION_STORAGE_KEY = 'solesonic.keycloakSession';
 

@@ -25,7 +25,7 @@ function errorText(error) {
     }
 }
 
-function ModelSelect({chatModel, fallbackLabel}) {
+function ModelSelect({chatModel, fallbackLabel, placement = 'below'}) {
     const [open, setOpen] = useState(false);
     const [activeIndex, setActiveIndex] = useState(-1);
     const containerRef = useRef(null);
@@ -124,7 +124,7 @@ function ModelSelect({chatModel, fallbackLabel}) {
         && chatModel.pickerError !== PICKER_ERROR_UNAVAILABLE;
 
     return (
-        <div className="model-select" ref={containerRef}>
+        <div className={`model-select${placement === 'above' ? ' model-select--above' : ''}`} ref={containerRef}>
             <button
                 ref={buttonRef}
                 type="button"

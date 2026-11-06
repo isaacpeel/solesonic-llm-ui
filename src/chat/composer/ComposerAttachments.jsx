@@ -13,6 +13,7 @@ function ComposerAttachments({
     trayError,
     loading,
     onCaptionOpenChange,
+    footerStart = null,
     children,
 }) {
     const [isDragOver, setIsDragOver] = useState(false);
@@ -89,46 +90,49 @@ function ComposerAttachments({
 
     return (
         <div
-            className={`composer-attachments${isDragOver ? ' composer-attachments--drag-over' : ''}`}
+            className={`composer-attachments composer-card${isDragOver ? ' composer-attachments--drag-over' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
-            <AttachmentTray
-                trayEntries={entries}
-                openCaptionTrayKey={openCaptionTrayKey}
-                onToggleCaption={handleToggleCaption}
-                onRemoveEntry={handleRemoveEntry}
-                onRetryEntry={retryEntry}
-            />
+            <div className="composer-field">
+                <AttachmentTray
+                    trayEntries={entries}
+                    openCaptionTrayKey={openCaptionTrayKey}
+                    onToggleCaption={handleToggleCaption}
+                    onRemoveEntry={handleRemoveEntry}
+                    onRetryEntry={retryEntry}
+                />
 
-            {openCaptionEntry && (
-                <div className="composer-attachment-caption-row">
-                    <label className="composer-attachment-caption-label" htmlFor="composer-attachment-caption-input">
-                        {openCaptionEntry.fileName}
-                    </label>
-                    <input
-                        id="composer-attachment-caption-input"
-                        className="composer-attachment-caption-input"
-                        type="text"
-                        value={openCaptionEntry.caption}
-                        placeholder="What should the assistant look for?"
-                        onChange={(event) => setEntryCaption(openCaptionEntry.trayKey, event.target.value)}
-                    />
-                </div>
-            )}
+                {openCaptionEntry && (
+                    <div className="composer-attachment-caption-row">
+                        <label className="composer-attachment-caption-label" htmlFor="composer-attachment-caption-input">
+                            {openCaptionEntry.fileName}
+                        </label>
+                        <input
+                            id="composer-attachment-caption-input"
+                            className="composer-attachment-caption-input"
+                            type="text"
+                            value={openCaptionEntry.caption}
+                            placeholder="What should the assistant look for?"
+                            onChange={(event) => setEntryCaption(openCaptionEntry.trayKey, event.target.value)}
+                        />
+                    </div>
+                )}
 
-            {trayError && (
-                <div className="composer-attachment-tray-error" role="status">{trayError}</div>
-            )}
+                {trayError && (
+                    <div className="composer-attachment-tray-error" role="status">{trayError}</div>
+                )}
 
-            {/*
-              * The pill itself: attach on the left, the textarea (and the send button, passed in
-              * as the last child) filling the rest. The attach button used to sit outside this
-              * row, which left the composer looking like two unrelated controls.
-              */}
-            <div className="chat-input-row">
+                <div className="chat-input-row">{children}</div>
+            </div>
+
+            <div className="composer-strip">
+                {footerStart}
+
+                {footerStart && <span className="composer-strip-separator" aria-hidden="true"/>}
+
                 <button
                     type="button"
                     className="composer-attach-button"
@@ -139,8 +143,6 @@ function ComposerAttachments({
                 >
                     <PaperClipIcon/>
                 </button>
-
-                {children}
             </div>
 
             <input

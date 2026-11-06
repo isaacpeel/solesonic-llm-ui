@@ -12,32 +12,50 @@
 
 .textarea-parent {
     position: relative;
-    width: 45%;
+    width: 100%;
+    max-width: 720px;
     display: flex;
     flex-direction: column;
+}
+
+.composer-card {
+    box-sizing: border-box;
+    padding: 8px 8px 4px;
+    background-color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.composer-card--bare {
+    padding: 8px;
+}
+
+.composer-field {
+    background-color: var(--input-well-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+    transition: border-color var(--transition-speed), box-shadow var(--transition-speed);
+}
+
+.composer-field:focus-within {
+    border-color: var(--send-color);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(122, 162, 247, 0.2);
 }
 
 .chat-input-row {
     position: relative;
     display: flex;
     align-items: flex-end;
-    gap: 4px;
-    padding: 6px 6px 6px 8px;
-    border-radius: 22px;
+    gap: 8px;
+    padding: 8px 8px 8px 12px;
     box-sizing: border-box;
-    background-color: var(--primary-color);
-    border: 1px solid var(--border-color);
-    transition: border-color var(--transition-speed);
-}
-
-.chat-input-row:focus-within {
-    border-color: #6f6f6f;
 }
 
 .chat-text-input {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 5px 4px;
+    padding: 2px 0;
     max-height: 15rem;
     overflow-y: auto;
     resize: none;
@@ -65,12 +83,28 @@
     text-overflow: ellipsis;
 }
 
-/* Inset by the pill's 22px border-radius so the popover's square corners land on its flat edge. */
+.composer-strip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 34px;
+    padding-top: 4px;
+}
+
+.composer-strip-separator {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 14px;
+    margin: 0 4px;
+    background-color: var(--border-color);
+}
+
 .composer-popovers {
     position: absolute;
     bottom: 100%;
-    left: 22px;
-    right: 22px;
+    left: 0;
+    right: 0;
     z-index: 100;
     display: flex;
     flex-direction: column;
@@ -86,33 +120,50 @@
     padding: 0;
     flex: 0 0 auto;
     align-self: flex-end;
-    border: 1px solid var(--border-color);
-    border-radius: 50%;
-    background-color: var(--secondary-color);
+    border: none;
+    border-radius: 6px;
     cursor: pointer;
     transition: background-color var(--transition-speed), opacity var(--transition-speed);
+}
+
+.composer-send-button {
+    background-color: var(--send-color);
+    color: var(--send-ink);
+}
+
+.composer-stop-button {
+    background-color: var(--secondary-color);
+    color: var(--text-color);
 }
 
 .composer-send-button svg {
     width: 18px;
     height: 18px;
-    color: var(--text-color);
+    color: inherit;
 }
 
 .composer-stop-button svg {
     width: 16px;
     height: 16px;
-    color: var(--text-color);
+    color: inherit;
 }
 
-.composer-send-button:hover:not(:disabled),
+.composer-send-button:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
 .composer-stop-button:hover {
     background-color: var(--icon-hover-bg);
 }
 
 .composer-send-button:disabled {
     cursor: not-allowed;
-    opacity: 0.4;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+}
+
+.composer-send-button:disabled svg {
+    opacity: 0.45;
 }
 
 .composer-send-button:focus-visible,
@@ -161,7 +212,17 @@
 }
 
 @media (max-width: 768px) {
-    .textarea-parent {
-        width: 94%;
+    .chat-input-row {
+        padding: 6px 6px 6px 10px;
+    }
+
+    .composer-strip {
+        min-height: 42px;
+    }
+
+    .composer-send-button,
+    .composer-stop-button {
+        width: 36px;
+        height: 36px;
     }
 }
