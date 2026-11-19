@@ -97,10 +97,10 @@ A synchronous test send that bypasses preferences and presence. `204` accepted; 
 ### `GET` / `PUT /users/{userId}/push-preferences`
 
 ```json
-{ "turnComplete": true, "elicitation": true, "interestOffers": true, "interestUpdates": true }
+{ "turnComplete": true, "elicitation": true, "interestOffers": true, "interestUpdates": true, "jobUpdates": true }
 ```
 
-`GET` with nothing stored returns every field `true`. `PUT` requires `turnComplete` and `elicitation` (`400` `INVALID_PREFERENCES` otherwise), so the UI always sends both; `interestOffers` and `interestUpdates` are optional and left unchanged when absent. `updatePreferences` sends them only when defined, and the settings page treats a server that does not return them yet as `true`. This is deliberately not part of `UserPreferences`, whose full-replace `PUT` would silently switch notifications off for a client that omits the fields.
+`GET` with nothing stored returns every field `true`. `PUT` requires `turnComplete` and `elicitation` (`400` `INVALID_PREFERENCES` otherwise), so the UI always sends both; `interestOffers`, `interestUpdates`, `sessionInvites`, `sessionTurns` and `jobUpdates` (the "Job alerts" toggle) are optional and left unchanged when absent. `updatePreferences` sends them only when defined, and the settings page treats a server that does not return them yet as `true`. This is deliberately not part of `UserPreferences`, whose full-replace `PUT` would silently switch notifications off for a client that omits the fields.
 
 ### Push payload
 
@@ -116,6 +116,7 @@ A synchronous test send that bypasses preferences and presence. `204` accepted; 
 | `TEST` | `Notifications are working` | `/settings/notifications` | `test` |
 | `INTEREST_OFFER` | `I can keep you posted on something you're interested in` | `/interests/offers/<offerId>` | `interest-offer:<offerId>` |
 | `INTEREST_UPDATE` | `There's news on one of your interests` | `/chat/<chatId>` | `interest:<agentId>` |
+| `AGENT_UPDATE` | `There are new job matches` | `/chat/<chatId>` | `chat:<chatId>` |
 
 `INTEREST_OFFER` alone carries `"actions": [{"action": "enable", "title": "Enable"}, {"action": "dismiss", "title": "Not now"}]`. Neither interest type names the topic, so the lock screen never shows it.
 

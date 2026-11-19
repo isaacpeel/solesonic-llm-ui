@@ -28,6 +28,7 @@ const PREFERENCE_TOGGLES = [
     {key: "interestUpdates", label: "News on interests I follow"},
     {key: "sessionInvites", label: "Invitations to a shared session"},
     {key: "sessionTurns", label: "Shared sessions activity"},
+    {key: "jobUpdates", label: "Job alerts"},
 ];
 
 const DEFAULT_PREFERENCES = {
@@ -37,6 +38,7 @@ const DEFAULT_PREFERENCES = {
     interestUpdates: true,
     sessionInvites: true,
     sessionTurns: true,
+    jobUpdates: true,
 };
 
 const LOAD_FAILED_MESSAGE = "Could not load your notification settings.";

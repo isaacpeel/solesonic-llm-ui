@@ -5,6 +5,9 @@ import {KeycloakProvider} from './providers/KeycloakProvider.jsx';
 import {ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './main.css';
+import {initTelemetry} from './telemetry.js';
+
+initTelemetry();
 
 createRoot(document.getElementById('root')).render(
     <React.StrictMode>

@@ -74,6 +74,35 @@ describe('NotificationSettings preferences', () => {
     });
 });
 
+describe('NotificationSettings job alerts', () => {
+    it('shows job alerts on by default and saves the toggle with the other preferences', async () => {
+        await renderSettingsInState('on');
+        await waitFor(() => expect(screen.getByLabelText('Job alerts').checked).toBe(true));
+
+        fireEvent.click(screen.getByLabelText('Job alerts'));
+
+        await waitFor(() => {
+            expect(pushSubscriptionService.updatePreferences).toHaveBeenCalledWith({
+                turnComplete: true,
+                elicitation: true,
+                interestOffers: true,
+                interestUpdates: true,
+                sessionInvites: true,
+                sessionTurns: true,
+                jobUpdates: false,
+            });
+        });
+        expect(screen.getByLabelText('Job alerts').checked).toBe(false);
+    });
+
+    it('loads job alerts off when the server says so', async () => {
+        pushSubscriptionService.getPreferences.mockResolvedValue({turnComplete: true, elicitation: true, jobUpdates: false});
+        await renderSettingsInState('on');
+
+        await waitFor(() => expect(screen.getByLabelText('Job alerts').checked).toBe(false));
+    });
+});
+
 describe('NotificationSettings device card', () => {
     it('shows a spinner while checking', () => {
         pushSubscriptionService.fetchPublicKey.mockReturnValue(new Promise(() => {}));
@@ -212,6 +241,7 @@ describe('NotificationSettings preferences', () => {
                 interestUpdates: true,
                 sessionInvites: true,
                 sessionTurns: true,
+                jobUpdates: true,
             });
         });
     });
@@ -250,6 +280,7 @@ describe('NotificationSettings preferences', () => {
                 interestUpdates: false,
                 sessionInvites: true,
                 sessionTurns: true,
+                jobUpdates: true,
             });
         });
         expect(screen.getByLabelText('News on interests I follow').checked).toBe(false);

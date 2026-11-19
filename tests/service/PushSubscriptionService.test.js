@@ -500,6 +500,12 @@ describe('PushSubscriptionService endpoints', () => {
         });
         expect(apiClient.put.mock.calls[1][1]).toStrictEqual({turnComplete: true, elicitation: true});
     });
+
+    it('writes job alerts only when defined', async () => {
+        await pushSubscriptionService.updatePreferences({turnComplete: true, elicitation: true, jobUpdates: false});
+
+        expect(apiClient.put.mock.calls[0][1]).toStrictEqual({turnComplete: true, elicitation: true, jobUpdates: false});
+    });
 });
 
 describe('PushSubscriptionService device helpers', () => {

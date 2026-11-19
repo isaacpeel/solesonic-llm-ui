@@ -61,11 +61,18 @@ require_absolute_url VITE_KEYCLOAK_URL "$VITE_KEYCLOAK_URL"
 
 CSP_API_ORIGIN="$(origin_of "$VITE_API_BASE_URI")"
 CSP_KEYCLOAK_ORIGIN="$(origin_of "$VITE_KEYCLOAK_URL")"
+# Optional: the HyperDX browser SDK's OTLP endpoint (src/telemetry.js), only when it is configured.
+CSP_HYPERDX_ORIGIN=""
+if [ -n "$VITE_HYPERDX_URL" ]; then
+    require_absolute_url VITE_HYPERDX_URL "$VITE_HYPERDX_URL"
+    CSP_HYPERDX_ORIGIN="$(origin_of "$VITE_HYPERDX_URL")"
+fi
 export CSP_API_ORIGIN
 export CSP_KEYCLOAK_ORIGIN
+export CSP_HYPERDX_ORIGIN
 
-# Naming both variables explicitly means envsubst replaces only these two and
+# Naming the variables explicitly means envsubst replaces only these and
 # leaves nginx's own $uri / $host / $content_security_policy alone.
-envsubst '${CSP_API_ORIGIN} ${CSP_KEYCLOAK_ORIGIN}' < "$TEMPLATE_PATH" > "$OUTPUT_PATH"
+envsubst '${CSP_API_ORIGIN} ${CSP_KEYCLOAK_ORIGIN} ${CSP_HYPERDX_ORIGIN}' < "$TEMPLATE_PATH" > "$OUTPUT_PATH"
 
-echo "$0: connect-src allows 'self' $CSP_API_ORIGIN $CSP_KEYCLOAK_ORIGIN"
+echo "$0: connect-src allows 'self' $CSP_API_ORIGIN $CSP_KEYCLOAK_ORIGIN $CSP_HYPERDX_ORIGIN"

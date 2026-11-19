@@ -117,8 +117,8 @@ const GeneralUserSettings = () => {
         try {
             const userPreferences = await userPreferencesService.get();
 
-            if (userPreferences?.timezone) {
-                setTimezone(userPreferences.timezone);
+            if (userPreferences?.timeZone) {
+                setTimezone(userPreferences.timeZone);
             }
 
             if (!userPreferences?.addressId) {
@@ -152,7 +152,7 @@ const GeneralUserSettings = () => {
         setIsSavingTimezone(true);
 
         try {
-            await userPreferencesService.patch({timezone: nextTimezone});
+            await userPreferencesService.patch({timeZone: nextTimezone});
             toast('Timezone updated');
         } catch (caughtError) {
             log.error('[GeneralUserSettings] Failed to save timezone:', caughtError);
