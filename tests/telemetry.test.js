@@ -1,19 +1,24 @@
 import {describe, expect, it, vi} from 'vitest';
-import {initTelemetry, telemetryConfig} from '../src/telemetry.js';
+import {initTelemetry, PLACEHOLDER_API_KEY, telemetryConfig} from '../src/telemetry.js';
 
 const env = {
     VITE_HYPERDX_URL: 'https://izzy-bot.example/otlp',
-    VITE_HYPERDX_API_KEY: 'browser-key',
     VITE_API_BASE_URI: 'https://api.izzy-bot.example/izzybot',
     MODE: 'production',
 };
 
 describe('telemetry', () => {
-    it('does nothing unless the HyperDX URL and key are set', () => {
+    it('does nothing unless the HyperDX URL is set', () => {
         const client = {init: vi.fn()};
-        expect(initTelemetry({VITE_HYPERDX_URL: 'https://x'}, client)).toBe(false);
         expect(initTelemetry({}, client)).toBe(false);
+        expect(initTelemetry({VITE_HYPERDX_URL: ''}, client)).toBe(false);
         expect(client.init).not.toHaveBeenCalled();
+    });
+
+    it('never sends a real ingestion key, even when one is in the env', () => {
+        const config = telemetryConfig({...env, VITE_HYPERDX_API_KEY: 'leaked-key'});
+        expect(config.apiKey).toBe(PLACEHOLDER_API_KEY);
+        expect(JSON.stringify(config)).not.toContain('leaked-key');
     });
 
     it('masks every text and input and captures no network bodies', () => {
